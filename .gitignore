@@ -1,0 +1,14 @@
+.snakemake/
+*.fastq
+*.fastq.gz
+*.bam
+*.bai
+*.bigWig
+*.bw
+*.bedGraph
+*.log
+
+results/
+tmp/
+
+.DS_Store
