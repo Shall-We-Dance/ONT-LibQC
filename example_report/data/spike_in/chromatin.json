@@ -1,0 +1,9 @@
+{
+  "interpretation": "Optional host+spike-in competitive-alignment screen.",
+  "label": "spike-in",
+  "minimum_screened_reads": 500,
+  "qualifying_fraction": null,
+  "qualifying_read_ids": [],
+  "qualifying_reads": null,
+  "status": "NOT_CONFIGURED"
+}

@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "samples": [
+    "chromatin",
+    "microc"
+  ],
+  "validation": {
+    "sample_reports": 2,
+    "html_pages": 4,
+    "local_links": 172
+  },
+  "source_run_id": null,
+  "synthetic_example": true
+}

@@ -1,0 +1,76 @@
+{
+  "default_reference": "synthetic",
+  "mycoplasma_screen": {
+    "enabled": false
+  },
+  "output_dir": ".work",
+  "params": {
+    "alignment_threads": 2,
+    "collision_qc_bin_size": 10000,
+    "dedup_method": "exact unordered strand-aware aligned 5-prime endpoints within index scope",
+    "dedup_order": "after_contact_selection",
+    "dedup_tolerance_bp": 0,
+    "gene_profile_sublibrary_threads": 2,
+    "gene_profile_threads": 2,
+    "karyotype_gene_window_bp": 1000,
+    "mapq": 20,
+    "metric_definition_version": "2026.09.10",
+    "metric_profile": "ont_native",
+    "microc_long_range_cis_min_bp": 10000,
+    "microc_minimum_contacts": 200,
+    "microc_minimum_query_coverage": 0.8,
+    "microc_short_inward_bp": 200,
+    "minimum_complete_units": 200,
+    "minimum_raw_reads": 500
+  },
+  "references": {
+    "synthetic": {
+      "annotation": "synthetic_inputs/genes.gtf",
+      "assembly": "synthetic",
+      "bowtie2_index": "synthetic_inputs/bowtie2",
+      "bwa_mem2_index": "synthetic_inputs/genome.fa",
+      "chrom_sizes": "synthetic_inputs/genome.sizes",
+      "fasta": "synthetic_inputs/genome.fa",
+      "primary_chromosomes": [
+        "chr1",
+        "chr2"
+      ]
+    }
+  },
+  "report_dir": "report",
+  "samples": {
+    "chromatin": {
+      "custom_regions": {
+        "assembly": "synthetic",
+        "bed": "synthetic_inputs/regions.bed",
+        "label": "Synthetic target regions"
+      },
+      "fastq": [
+        "synthetic_inputs/chromatin.fastq"
+      ],
+      "reference": "synthetic",
+      "type": "chromatin"
+    },
+    "microc": {
+      "fastq": [
+        "synthetic_inputs/microc.fastq"
+      ],
+      "reference": "synthetic",
+      "type": "microc"
+    }
+  },
+  "spike_in": {
+    "enabled": false
+  },
+  "tools": {
+    "bamCoverage": "bamCoverage",
+    "bedGraphToBigWig": "bedGraphToBigWig",
+    "bowtie2": "bowtie2",
+    "bwa_mem2": "bwa-mem2",
+    "computeMatrix": "computeMatrix",
+    "plotProfile": "plotProfile",
+    "python": "python3",
+    "rscript": "Rscript",
+    "samtools": "samtools"
+  }
+}

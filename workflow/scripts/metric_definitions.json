@@ -1,0 +1,69 @@
+{
+  "version": "2026.09.10",
+  "common": {
+    "collision_qc_bin_size": 10000,
+    "microc_minimum_contacts": 200,
+    "microc_short_inward_bp": 200,
+    "microc_minimum_query_coverage": 0.8,
+    "microc_long_range_cis_min_bp": 10000,
+    "minimum_raw_reads": 500,
+    "minimum_complete_units": 200
+  },
+  "profiles": {
+    "ont_native": {
+      "mapq": 20,
+      "dedup_tolerance_bp": 0,
+      "dedup_order": "after_contact_selection",
+      "dedup_method": "exact unordered strand-aware aligned 5-prime endpoints within index scope"
+    },
+    "matched_comparison": {
+      "mapq": 30,
+      "dedup_tolerance_bp": 1,
+      "dedup_order": "before_contact_selection",
+      "dedup_method": "transitive strand-aware aligned 5-prime endpoints within index scope"
+    }
+  },
+  "primary_chromosomes": {
+    "dm6": [
+      "chr2L",
+      "chr2R",
+      "chr3L",
+      "chr3R",
+      "chr4",
+      "chrX"
+    ],
+    "hg38": [
+      "chr1",
+      "chr2",
+      "chr3",
+      "chr4",
+      "chr5",
+      "chr6",
+      "chr7",
+      "chr8",
+      "chr9",
+      "chr10",
+      "chr11",
+      "chr12",
+      "chr13",
+      "chr14",
+      "chr15",
+      "chr16",
+      "chr17",
+      "chr18",
+      "chr19",
+      "chr20",
+      "chr21",
+      "chr22",
+      "chrX"
+    ]
+  },
+  "definitions": {
+    "cis_ratio": "cis contacts / all unique valid contacts",
+    "long_range_cis_fraction": "cis contacts at or above configured distance / all unique valid contacts",
+    "long_range_within_cis_fraction": "long-range cis contacts / all cis contacts",
+    "collision_oe": "observed midpoint same-bin pairs / (N choose 2 * uniform-base null); terminal-bin widths corrected",
+    "uncertainty": "Wilson 95% intervals assume independent contacts; molecule-subset 5th-95th percentile bands are conditional sampling ranges",
+    "classification": "No default biological success/failure classification. Contact-count sufficiency is an evidence descriptor."
+  }
+}

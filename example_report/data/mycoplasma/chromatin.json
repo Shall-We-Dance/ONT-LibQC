@@ -1,0 +1,9 @@
+{
+  "interpretation": "Opportunistic screen only; zero hits never excludes contamination.",
+  "minimum_screened_reads": 500,
+  "qualifying_fraction": null,
+  "qualifying_loci": null,
+  "qualifying_read_loci": {},
+  "qualifying_reads": null,
+  "status": "NOT_CONFIGURED"
+}
