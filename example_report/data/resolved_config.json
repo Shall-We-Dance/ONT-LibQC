@@ -1,76 +1,179 @@
 {
-  "default_reference": "synthetic",
-  "mycoplasma_screen": {
-    "enabled": false
-  },
+  "metric_profile": "ont_native",
   "output_dir": ".work",
-  "params": {
-    "alignment_threads": 2,
-    "collision_qc_bin_size": 10000,
-    "dedup_method": "exact unordered strand-aware aligned 5-prime endpoints within index scope",
-    "dedup_order": "after_contact_selection",
-    "dedup_tolerance_bp": 0,
-    "gene_profile_sublibrary_threads": 2,
-    "gene_profile_threads": 2,
-    "karyotype_gene_window_bp": 1000,
-    "mapq": 20,
-    "metric_definition_version": "2026.09.10",
-    "metric_profile": "ont_native",
-    "microc_long_range_cis_min_bp": 10000,
-    "microc_minimum_contacts": 200,
-    "microc_minimum_query_coverage": 0.8,
-    "microc_short_inward_bp": 200,
-    "minimum_complete_units": 200,
-    "minimum_raw_reads": 500
-  },
+  "default_reference": "dm6",
   "references": {
-    "synthetic": {
-      "annotation": "synthetic_inputs/genes.gtf",
-      "assembly": "synthetic",
-      "bowtie2_index": "synthetic_inputs/bowtie2",
-      "bwa_mem2_index": "synthetic_inputs/genome.fa",
-      "chrom_sizes": "synthetic_inputs/genome.sizes",
-      "fasta": "synthetic_inputs/genome.fa",
+    "dm6": {
+      "assembly": "dm6",
+      "primary_chromosomes": [
+        "chr2L",
+        "chr2R",
+        "chr3L",
+        "chr3R",
+        "chr4",
+        "chrX"
+      ],
+      "fasta": "/path/to/dm6.fa",
+      "chrom_sizes": "/path/to/dm6.chrom.sizes",
+      "annotation": "/path/to/dm6.ncbiRefSeq.gtf",
+      "bowtie2_index": "/path/to/dm6",
+      "bwa_mem2_index": "/path/to/dm6.fa",
+      "mycoplasma_index": "/path/to/index"
+    },
+    "hg38": {
+      "assembly": "hg38",
       "primary_chromosomes": [
         "chr1",
-        "chr2"
-      ]
+        "chr2",
+        "chr3",
+        "chr4",
+        "chr5",
+        "chr6",
+        "chr7",
+        "chr8",
+        "chr9",
+        "chr10",
+        "chr11",
+        "chr12",
+        "chr13",
+        "chr14",
+        "chr15",
+        "chr16",
+        "chr17",
+        "chr18",
+        "chr19",
+        "chr20",
+        "chr21",
+        "chr22",
+        "chrX"
+      ],
+      "fasta": "/path/to/hg38.fa",
+      "chrom_sizes": "/path/to/hg38.chrom.sizes",
+      "annotation": "/path/to/hg38.ncbiRefSeq.gtf",
+      "bowtie2_index": "/path/to/hg38",
+      "bwa_mem2_index": "/path/to/hg38.fa",
+      "mycoplasma_index": "/path/to/index"
     }
   },
-  "report_dir": "report",
-  "samples": {
-    "chromatin": {
-      "custom_regions": {
-        "assembly": "synthetic",
-        "bed": "synthetic_inputs/regions.bed",
-        "label": "Synthetic target regions"
-      },
-      "fastq": [
-        "synthetic_inputs/chromatin.fastq"
-      ],
-      "reference": "synthetic",
-      "type": "chromatin"
+  "mycoplasma_screen": {
+    "enabled": true,
+    "target_contig_regex": "mycoplasma_target|mycoplasmopsis|mycoplasmoides|metamycoplasma|mesomycoplasma|acholeplasma|spiroplasma|ureaplasma|mollicutes",
+    "minimum_screened_reads": 500
+  },
+  "spike_in": {
+    "enabled": true,
+    "mode": "auto",
+    "database_manifest": "resources/spikein_v1/manifest.json",
+    "declared_spike_in": false,
+    "threads": 4,
+    "minimum_aligned_bp": 80,
+    "minimum_query_coverage": 0.8,
+    "minimum_identity": 0.85
+  },
+  "alignment": {
+    "chromatin_mapper": "bowtie2",
+    "microc_mapper": "bwa-mem2"
+  },
+  "params": {
+    "collision_qc_bin_size": 10000,
+    "microc_minimum_contacts": 200,
+    "microc_short_inward_bp": 200,
+    "microc_minimum_query_coverage": 0.8,
+    "microc_long_range_cis_min_bp": 10000,
+    "minimum_raw_reads": 500,
+    "minimum_complete_units": 200,
+    "mapq": 20,
+    "dedup_tolerance_bp": 0,
+    "dedup_order": "after_contact_selection",
+    "dedup_method": "exact unordered strand-aware aligned 5-prime endpoints within index scope",
+    "metric_profile": "ont_native",
+    "metric_definition_version": "2026.09.10",
+    "ligation_minimum_segment_bp": 40,
+    "ligation_minimum_query_coverage": 0.8,
+    "ligation_maximum_query_gap": 30,
+    "annotation_promoter_window_bp": 2000,
+    "gene_profile_upstream_bp": 5000,
+    "gene_profile_downstream_bp": 5000,
+    "gene_profile_body_bp": 5000,
+    "gene_profile_bin_size": 100,
+    "gene_profile_sublibrary_threads": 16,
+    "karyotype_bins_per_longest_chromosome": 250,
+    "karyotype_gene_window_bp": 250000,
+    "size_trace_max_bp": 2000,
+    "size_trace_bandwidth": 0.045,
+    "single_index_pair_fraction": 0.9,
+    "index_variant_max_edit": 2,
+    "index_variant_dominance_ratio": 5.0
+  },
+  "qc_reference_ranges": {
+    "raw_reads": {
+      "min": 500,
+      "warning_min": 250
     },
-    "microc": {
+    "mean_read_q": null,
+    "complete_read_rate": {
+      "min": 0.5,
+      "max": 1.0,
+      "warning_min": 0.3,
+      "type": "percent"
+    },
+    "adapter_dimer_rate": {
+      "min": 0.0,
+      "max": 0.05,
+      "warning_max": 0.1,
+      "type": "percent"
+    },
+    "primary_mapping_rate": {
+      "min": 0.5,
+      "max": 1.0,
+      "warning_min": 0.3,
+      "type": "percent"
+    },
+    "usable_fragment_rate": {
+      "min": 0.3,
+      "max": 1.0,
+      "warning_min": 0.15,
+      "type": "percent"
+    },
+    "mitochondrial_fraction": {
+      "min": 0.0,
+      "max": 0.2,
+      "warning_max": 0.4,
+      "type": "percent"
+    },
+    "both_legs_mapping_rate": {
+      "min": 0.5,
+      "max": 1.0,
+      "warning_min": 0.3,
+      "type": "percent"
+    },
+    "cis_ratio": null
+  },
+  "samples": {
+    "HL240": {
       "fastq": [
-        "synthetic_inputs/microc.fastq"
+        "inputs/8KXMVK_4_CR_HL240.fastq"
       ],
-      "reference": "synthetic",
+      "type": "chromatin",
+      "reference": "hg38"
+    },
+    "HL120": {
+      "fastq": [
+        "inputs/TVKRTF_11_MC_A_HL120.fastq"
+      ],
       "type": "microc"
     }
   },
-  "spike_in": {
-    "enabled": false
-  },
   "tools": {
-    "bamCoverage": "bamCoverage",
-    "bedGraphToBigWig": "bedGraphToBigWig",
+    "python": "python3",
     "bowtie2": "bowtie2",
     "bwa_mem2": "bwa-mem2",
+    "samtools": "samtools",
+    "bamCoverage": "bamCoverage",
     "computeMatrix": "computeMatrix",
     "plotProfile": "plotProfile",
-    "python": "python3",
-    "rscript": "Rscript",
-    "samtools": "samtools"
-  }
+    "bedGraphToBigWig": "bedGraphToBigWig",
+    "rscript": "Rscript"
+  },
+  "report_dir": "report"
 }

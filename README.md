@@ -45,17 +45,3 @@ Open `report/index.html` after the run. Copy the entire `report/` folder to shar
 All calculation intermediates go to `output_dir` (default `.work`). After the report is generated and its links are checked, the workflow removes BAM/BAI, SAM, extracted FASTQ, coverage tracks, matrices and the working directory. Failed runs retain working files for resumption. Original FASTQ and supplied references are preserved.
 
 Set `report_dir` to change the report location. It must be separate from `output_dir`; both directories must be outside the input/reference paths. Recomputing a completed analysis requires the original inputs because calculation intermediates have been removed.
-
-## Methods
-
-See [measurement definitions](docs/methods.md) and [shared settings](docs/shared_metric_definitions.md). Chromatin Collision O/E is descriptive; contact count measures evidence sufficiency. Screening cutoffs are local settings, not universal biological quality criteria. Hi-C requires the separate [restriction-aware design](docs/HiC_extension_design.md).
-
-## Tests
-
-```bash
-python -m unittest discover -s tests -p 'test_*.py'
-python tests/run_pipeline_smoke.py
-python workflow/scripts/report_bundle.py --report example_report --validate
-```
-
-The pipeline test generates a small reference and FASTQ, runs both assays, checks report links and intermediate-file cleanup, and verifies reuse and relocation. Node.js on `PATH` enables the additional Python/JavaScript BED-profile comparison.

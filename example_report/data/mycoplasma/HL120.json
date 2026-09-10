@@ -1,0 +1,10 @@
+{
+  "interpretation": "Opportunistic competitive-alignment screen; a negative result at shallow depth is not a contamination-free certificate.",
+  "minimum_screened_reads": 500,
+  "qualifying_fraction": 0.0,
+  "qualifying_loci": 0,
+  "qualifying_read_loci": {},
+  "qualifying_reads": 0,
+  "screened_reads": 4749,
+  "status": "NOT_DETECTED_AT_THIS_DEPTH"
+}

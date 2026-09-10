@@ -1,2 +1,2 @@
 sample	scope_id	scope_name	ligation_screened_units	ligation_resolved_units	ligation_resolved_fraction	ligation_single_block_units	ligation_two_units	ligation_three_units	ligation_four_units	ligation_five_plus_units	ligation_unresolved_units	ligation_multifragment_fraction	ligation_multifragment_fraction_resolved
-microc	total	Total library	32	32	1	0	32	0	0	0	0	1	1
+HL120	total	Total library	4749	3364	0.7084	1008	2300	52	4	0	1385	0.4961	0.7004

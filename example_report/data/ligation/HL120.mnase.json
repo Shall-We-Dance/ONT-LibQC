@@ -1,0 +1,43 @@
+{
+  "sample": "HL120",
+  "method": "reference_span_of_resolved_blocks_in_multi_block_units",
+  "denominator": "inferred genomic blocks from resolved units with at least two blocks",
+  "ranges_bp": {
+    "short": "<100",
+    "mono_range": "100 <= length < 200",
+    "intermediate": "200 <= length < 300",
+    "long": ">=300"
+  },
+  "fragment_table": "03_ONT/results/qc/ligation/HL120.mnase_fragments.tsv.gz",
+  "mnase_resolved_fragments": 4772,
+  "mnase_contributing_units": 2356,
+  "mnase_contributing_molecules": 2288,
+  "mnase_median_bp": 137.0,
+  "mnase_short_fraction": 0.15716680637049454,
+  "mnase_mono_range_fraction": 0.7979882648784576,
+  "mnase_intermediate_fraction": 0.03206202849958089,
+  "mnase_long_fraction": 0.01278290025146689,
+  "scopes": {
+    "lib01": {
+      "mnase_resolved_fragments": 4690,
+      "mnase_contributing_units": 2315,
+      "mnase_contributing_molecules": 2254,
+      "mnase_median_bp": 137.0,
+      "mnase_short_fraction": 0.15735607675906182,
+      "mnase_mono_range_fraction": 0.7987206823027718,
+      "mnase_intermediate_fraction": 0.03155650319829424,
+      "mnase_long_fraction": 0.012366737739872069
+    },
+    "unassigned": {
+      "mnase_resolved_fragments": 82,
+      "mnase_contributing_units": 41,
+      "mnase_contributing_molecules": 41,
+      "mnase_median_bp": 148.5,
+      "mnase_short_fraction": 0.14634146341463414,
+      "mnase_mono_range_fraction": 0.7560975609756098,
+      "mnase_intermediate_fraction": 0.06097560975609756,
+      "mnase_long_fraction": 0.036585365853658534
+    }
+  },
+  "limitations": "Conditional on successful ligation, library selection, sequencing and alignment resolution. Short/repetitive fragments may be lost. Adjacent collinear fragments can merge; reference span estimates protected genomic length, not exact physical pre-ligation length. No calibrated digestion efficiency or nucleosome identity is inferred."
+}

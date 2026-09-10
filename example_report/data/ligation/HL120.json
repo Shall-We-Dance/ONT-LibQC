@@ -1,0 +1,88 @@
+{
+  "sample": "HL120",
+  "method": "full_adapter_bounded_insert_BWA_MEM2_split_alignment",
+  "status": "EXPLORATORY",
+  "unit_of_analysis": "adapter_bounded_non_dimer_library_unit",
+  "ligation_screened_units": 4749,
+  "ligation_resolved_units": 3364,
+  "ligation_unresolved_units": 1385,
+  "ligation_resolved_fraction": 0.7083596546641399,
+  "ligation_two_units": 2300,
+  "ligation_three_units": 52,
+  "ligation_four_units": 4,
+  "ligation_five_plus_units": 0,
+  "ligation_single_block_units": 1008,
+  "ligation_multifragment_fraction": 0.4961044430406401,
+  "ligation_multifragment_fraction_resolved": 0.7003567181926278,
+  "category_counts": {
+    "1": 1008,
+    "2": 2300,
+    "3": 52,
+    "4": 4,
+    "5+": 0,
+    "unresolved": 1385
+  },
+  "raw_molecules_with_units": 4533,
+  "scopes": {
+    "lib01": {
+      "ligation_screened_units": 4678,
+      "ligation_resolved_units": 3308,
+      "ligation_unresolved_units": 1370,
+      "ligation_resolved_fraction": 0.7071398033347585,
+      "ligation_two_units": 2259,
+      "ligation_three_units": 52,
+      "ligation_four_units": 4,
+      "ligation_five_plus_units": 0,
+      "ligation_single_block_units": 993,
+      "ligation_multifragment_fraction": 0.49486960239418554,
+      "ligation_multifragment_fraction_resolved": 0.6998186215235792,
+      "category_counts": {
+        "1": 993,
+        "2": 2259,
+        "3": 52,
+        "4": 4,
+        "5+": 0,
+        "unresolved": 1370
+      },
+      "raw_molecules_with_units": 4476
+    },
+    "unassigned": {
+      "ligation_screened_units": 71,
+      "ligation_resolved_units": 56,
+      "ligation_unresolved_units": 15,
+      "ligation_resolved_fraction": 0.7887323943661971,
+      "ligation_two_units": 41,
+      "ligation_three_units": 0,
+      "ligation_four_units": 0,
+      "ligation_five_plus_units": 0,
+      "ligation_single_block_units": 15,
+      "ligation_multifragment_fraction": 0.5774647887323944,
+      "ligation_multifragment_fraction_resolved": 0.7321428571428571,
+      "category_counts": {
+        "1": 15,
+        "2": 41,
+        "3": 0,
+        "4": 0,
+        "5+": 0,
+        "unresolved": 15
+      },
+      "raw_molecules_with_units": 70
+    }
+  },
+  "parameters": {
+    "minimum_segment_bp": 40,
+    "mapq": 20,
+    "minimum_identity": 0.85,
+    "minimum_query_coverage": 0.8,
+    "maximum_query_gap": 30
+  },
+  "units_tsv": "/path/to/HL120.units.tsv.gz",
+  "segments_tsv": "/path/to/HL120.segments.tsv.gz",
+  "limitations": [
+    "Resolved blocks are evidence-supported minimum fragment counts, not exact biochemical insert counts.",
+    "Collinear or immediately adjacent genomic fragments may be indistinguishable from one continuous block.",
+    "Short, repetitive, low-quality or unaligned internal fragments may be missed.",
+    "ONT adapter-linked library units are not counted as Micro-C junctions; units sharing a raw molecule are dependent.",
+    "No positive wet-lab ligation standards or no-ligation control have been supplied."
+  ]
+}
