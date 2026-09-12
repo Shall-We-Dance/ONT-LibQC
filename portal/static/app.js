@@ -1,0 +1,342 @@
+'use strict';
+const $ = id => document.getElementById(id);
+let catalog, files = [], tasks = [], submitting = false, refreshing = false, retryRequestsAt = 0;
+const bytes = n => (n / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 2 }) + ' MB';
+function node(tag, attrs = {}, ...children) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+    else if (['checked', 'disabled', 'hidden', 'value', 'required'].includes(k)) n[k] = v;
+    else n.setAttribute(k, v);
+  }
+  for (const c of children.flat()) if (c !== null && c !== undefined) n.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  return n;
+}
+function showError(message, target = 'form-error') { $(target).textContent = message; $(target).hidden = !message; }
+async function api(path, method = 'GET', body, token) {
+  const headers = { 'X-Portal-Request': '1' };
+  if (token) headers.Authorization = 'Bearer ' + token;
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  const response = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), credentials: 'same-origin' });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    if ([429, 503].includes(response.status)) retryRequestsAt = Date.now() + (Math.min(120, Math.max(5, Number(response.headers.get('Retry-After')) || 5)) + Math.random() * 3) * 1000;
+    throw new Error(typeof data.detail === 'string' ? data.detail : 'The service is busy. Please try again shortly.');
+  }
+  return data;
+}
+function control(label, input) { const id = 'field-' + crypto.randomUUID(); input.id = id; return node('div', { class: 'field' }, node('label', { for: id }, label), input); }
+function select(values, value) { return node('select', { value }, values.map(([id, label]) => node('option', { value: id }, label))); }
+function check(label, description = '') {
+  const input = node('input', { type: 'checkbox' });
+  return { input, wrapper: node('label', { class: 'check' }, input, node('span', {}, label, description ? node('em', {}, description) : null)) };
+}
+function screenCheck(label, description) {
+  const field = check(label, description);
+  field.preferred = true;
+  field.input.addEventListener('change', () => { field.preferred = field.input.checked; });
+  return field;
+}
+function referenceChange(entry) {
+  const r = catalog.references.find(x => x.id === entry.ref.value);
+  entry.bedAssembly = r.assembly || r.id;
+  entry.bedConfirmText.textContent = 'I confirm this BED uses ' + entry.bedAssembly + ' coordinates';
+  entry.bedHint.textContent = 'Choose a BED file for ' + entry.bedAssembly + '. Up to 4 MiB. The metaplot will be included in your report.';
+  entry.bedConfirm.checked = false;
+  entry.myco.input.disabled = !r.mycoplasma;
+  entry.spike.input.disabled = !r.spike_in;
+  entry.myco.input.checked = Boolean(r.mycoplasma && entry.myco.preferred);
+  entry.spike.input.checked = Boolean(r.spike_in && entry.spike.preferred);
+  entry.chromosomes.placeholder = r.primary_chromosomes.join(', ');
+  entry.chromosomes.value = '';
+  updateAssay(entry);
+}
+function updateAssay(entry) {
+  const assay = entry.assay.value, r = catalog.references.find(x => x.id === entry.ref.value);
+  entry.mapper.replaceChildren(node('option', { value: 'auto' }, assay === 'microc' ? 'Default · BWA-MEM2' : 'Default · Bowtie2'),
+    ...r.mappers.filter(x => assay !== 'microc' || x !== 'bowtie2').map(x => node('option', { value: x }, x)));
+  entry.bedCheck.input.disabled = assay !== 'chromatin';
+  if (assay !== 'chromatin') entry.bedCheck.input.checked = false;
+  updateCustomRegions(entry);
+}
+function updateCustomRegions(entry) {
+  const enabled = entry.assay.value === 'chromatin' && entry.bedCheck.input.checked;
+  entry.bedBox.hidden = !enabled;
+  for (const input of [entry.bed, entry.bedLabel, entry.bedMode, entry.bedConfirm]) input.disabled = !enabled;
+  entry.bedConfirm.required = enabled;
+  if (!enabled) entry.bedConfirm.checked = false;
+}
+function customField(title, input) {
+  return node('label', { class: 'custom-field' }, node('span', { class: 'custom-field-title' }, title), input);
+}
+function filenameProblem(name) {
+  const suffix = ['.fastq.gz', '.fq.gz', '.fastq', '.fq'].find(ext => name.toLowerCase().endsWith(ext));
+  if (!suffix) return '“' + name + '” was not added. Choose a .fastq, .fq, .fastq.gz or .fq.gz file. POD5 and FAST5 files must be basecalled first; changing their extension does not convert them to FASTQ.';
+  const problems = [];
+  if (name.length > 180) problems.push('the filename exceeds 180 characters');
+  if (!/^[A-Za-z0-9]/.test(name)) problems.push('the filename must start with an English letter or number');
+  const unsupported = [...new Set(name.match(/[^A-Za-z0-9_. -]/gu) || [])];
+  if (unsupported.length) problems.push('unsupported characters: ' + unsupported.map(c => JSON.stringify(c)).join(', '));
+  if (!problems.length) return '';
+  let stem = name.slice(0, -suffix.length).replace(/[^A-Za-z0-9_.-]+/g, '_').replace(/_+/g, '_').replace(/[._-]+$/, '');
+  if (!/^[A-Za-z0-9]/.test(stem)) stem = 'sample_' + stem.replace(/^[^A-Za-z0-9]+/, '');
+  stem = stem.slice(0, 180 - suffix.length).replace(/[._-]+$/, '') || 'sample';
+  return '“' + name + '” was not added: ' + problems.join('; ') + '. Use English letters, numbers, spaces, dots, hyphens (-) or underscores (_). Rename it to “' + stem + name.slice(-suffix.length) + '” and try again.';
+}
+function showUploadErrors(messages) {
+  const box = $('upload-error');
+  box.replaceChildren(...messages.map(message => node('p', {}, message)));
+  box.hidden = !messages.length;
+}
+function addFiles(incoming) {
+  showError('');
+  const errors = [];
+  for (const file of incoming) {
+    if (files.length >= catalog.max_files) { errors.push('Some files were not added. Choose up to ' + catalog.max_files + ' files per submission.'); break; }
+    const problem = filenameProblem(file.name);
+    if (problem) { errors.push(problem); continue; }
+    if (!file.size) { errors.push('“' + file.name + '” was not added because it is empty. Choose a FASTQ file containing reads.'); continue; }
+    if (file.size > catalog.max_upload_bytes) { errors.push('“' + file.name + '” was not added: maximum ' + bytes(catalog.max_upload_bytes) + ' per file. For larger files, download the pipeline from GitHub and run it locally.'); continue; }
+    const entry = { file, id: crypto.randomUUID() };
+    entry.sample = node('input', { value: file.name.replace(/\.(fastq|fq)(\.gz)?$/i, '').replace(/[^A-Za-z0-9_-]/g, '_').replace(/^[^A-Za-z]/, 'S_').slice(0, 48), required: true, pattern: '[A-Za-z][A-Za-z0-9_-]{0,47}', maxlength: '48' });
+    entry.assay = select([['chromatin', 'Chromatin · CUT&RUN / CUT&Tag / ChIP / ATAC, etc.'], ['microc', 'Micro-C']], 'chromatin');
+    const available = catalog.references.filter(r => r.ready);
+    entry.ref = select(available.map(r => [r.id, r.label]), available[0].id);
+    entry.mapper = select([['auto', 'Default · Bowtie2']], 'auto');
+    entry.myco = screenCheck('Mycoplasma screen', 'An opportunistic screen; negative results do not exclude contamination.');
+    entry.spike = screenCheck('Spike-in / foreign-sequence screen', 'Use the host-competitive reference panel available for this assembly.');
+    entry.declared = check('A spike-in was intentionally added');
+    entry.bedCheck = check('Include custom BED regions', 'Optional. Chromatin reports also support BED uploads in the browser.');
+    entry.bed = node('input', { type: 'file', accept: '.bed,.tsv,.txt' });
+    entry.bedLabel = node('input', { value: 'Uploaded regions', maxlength: '80', pattern: '[A-Za-z0-9 _().-]{1,80}' });
+    entry.bedMode = select([['auto', 'Auto'], ['reference_point', 'Reference point'], ['region', 'Region (scaled)']], 'auto');
+    entry.bedConfirm = node('input', { type: 'checkbox' });
+    entry.bedConfirmText = node('span');
+    entry.bedHint = node('p', { class: 'field-note' });
+    entry.bedName = node('span', { class: 'custom-file-name', 'aria-hidden': 'true' }, 'No BED selected');
+    const bedPicker = node('span', { class: 'custom-file-picker' }, entry.bed,
+      node('span', { class: 'custom-file-button', 'aria-hidden': 'true' }, 'Choose BED'), entry.bedName);
+    entry.bedBox = node('div', { class: 'bed-input', hidden: true },
+      node('h3', {}, 'Custom region metaplot'), entry.bedHint,
+      node('div', { class: 'custom-controls' }, customField('Region BED', bedPicker),
+        customField('Region label', entry.bedLabel),
+        customField('Plot mode', node('span', { class: 'custom-select-shell' }, entry.bedMode)),
+        node('div', { class: 'custom-actions' }, node('label', { class: 'custom-confirm' }, entry.bedConfirm, entry.bedConfirmText))));
+    entry.bed.addEventListener('change', () => {
+      const name = entry.bed.files[0]?.name || 'No BED selected';
+      entry.bedName.textContent = name; bedPicker.title = name;
+      entry.bedConfirm.checked = false;
+    });
+    entry.bedCheck.input.addEventListener('change', () => updateCustomRegions(entry));
+    entry.pairs = node('textarea', { rows: '3', placeholder: 'libA ACGTACGT TGCATGCA\nlibB GATCTAGC CTAGATCG' });
+    entry.chromosomes = node('input', { placeholder: '' });
+    const advanced = node('details', {}, node('summary', {}, 'Advanced settings'));
+    const info = node('p', { class: 'field-note' }, 'Defaults match the ONT-native pipeline. Leave fields unchanged to use the standard settings. Rates are fractions: 0.8 means 80%.');
+    advanced.append(info, node('div', { class: 'fields' }, control('Alignment method', entry.mapper), control('Primary chromosomes (optional override)', entry.chromosomes)),
+      node('p', { class: 'advanced-group' }, 'Expected physical index pairs'), entry.pairs,
+      node('p', { class: 'field-note' }, 'One pair per line: name i5 i7. Leave empty to discover index pairs automatically.'));
+    entry.params = {};
+    for (const group of [...new Set(catalog.params.map(p => p.group))]) {
+      const grid = node('div', { class: 'fields' });
+      for (const p of catalog.params.filter(x => x.group === group)) {
+        const input = node('input', { type: 'number', min: String(p.min), max: String(p.max), step: p.kind === 'int' ? '1' : 'any', placeholder: String(p.default), value: '' });
+        entry.params[p.key] = input;
+        const field = control(p.label, input); field.insertBefore(node('span', { class: 'param-key' }, p.key), input); grid.append(field);
+      }
+      advanced.append(node('p', { class: 'advanced-group' }, group), grid);
+    }
+    entry.screen = {};
+    const screenGrid = node('div', { class: 'fields' });
+    for (const [key, label, value, min, max] of [
+      ['screen_minimum_reads', 'Minimum screened reads', 500, 1, 1000000],
+      ['spike_minimum_aligned_bp', 'Spike-in minimum aligned bp', 80, 20, 1000],
+      ['spike_minimum_query_coverage', 'Spike-in minimum coverage', 0.8, 0.1, 1],
+      ['spike_minimum_identity', 'Spike-in minimum identity', 0.85, 0.1, 1]]) {
+      const input = node('input', { type: 'number', value: String(value), min: String(min), max: String(max), step: max === 1 ? 'any' : '1' });
+      entry.screen[key] = input; screenGrid.append(control(label, input));
+    }
+    advanced.append(node('p', { class: 'advanced-group' }, 'Screening evidence'), screenGrid);
+    const ranges = node('details', {}, node('summary', {}, 'Report reference cutoffs'), node('p', { class: 'field-note' }, 'Edit local screening cutoffs. Check “Descriptive only” to remove the cutoff for a metric. These are not universal biological pass/fail criteria.'));
+    entry.ranges = {};
+    for (const [key, defaults] of Object.entries(catalog.ranges)) {
+      const disable = check('Descriptive only'); disable.input.checked = defaults === null;
+      const row = node('div', { class: 'range-row' }, node('span', {}, key));
+      const values = {};
+      for (const limit of ['min', 'max', 'warning_min', 'warning_max']) {
+        values[limit] = node('input', { type: 'number', step: 'any', min: '0', placeholder: limit, 'aria-label': key + ' ' + limit, value: defaults?.[limit] === undefined ? '' : String(defaults[limit]), disabled: defaults === null });
+        row.append(values[limit]);
+      }
+      disable.input.addEventListener('change', () => { for (const input of Object.values(values)) input.disabled = disable.input.checked; });
+      ranges.append(row, disable.wrapper); entry.ranges[key] = { values, disable: disable.input };
+    }
+    const header = node('div', { class: 'file-header' }, node('div', {}, node('strong', {}, file.name), node('br'), node('small', {}, bytes(file.size))),
+      node('button', { type: 'button', class: 'remove', 'aria-label': 'Remove ' + file.name, onclick: () => { files = files.filter(f => f.id !== entry.id); entry.card.remove(); updateCount(); } }, '×'));
+    entry.card = node('article', { class: 'file-card' }, header, node('div', { class: 'file-body' },
+      node('div', { class: 'fields' }, control('Sample name', entry.sample), control('Reference genome', entry.ref), node('div', { class: 'full' }, control('Library assay', entry.assay))),
+      node('div', { class: 'check-list' }, entry.myco.wrapper, entry.spike.wrapper, entry.declared.wrapper, entry.bedCheck.wrapper), entry.bedBox, advanced, ranges));
+    entry.ref.addEventListener('change', () => referenceChange(entry)); entry.assay.addEventListener('change', () => updateAssay(entry));
+    referenceChange(entry); files.push(entry); $('file-list').append(entry.card);
+  }
+  showUploadErrors(errors);
+  updateCount();
+}
+function updateCount() {
+  $('file-count').textContent = files.length + (files.length === 1 ? ' file' : ' files');
+  $('empty-hint').hidden = files.length > 0;
+  $('submit-button').disabled = !files.length || submitting || !catalog?.worker_online;
+  $('submit-note').textContent = files.length ? files.length + ' independent ' + (files.length === 1 ? 'analysis' : 'analyses') : 'Select a file to begin';
+}
+function optionsFor(e) {
+  const pairs = e.pairs.value.trim() ? e.pairs.value.trim().split(/\n+/).map(line => {
+    const columns = line.trim().split(/\s+/);
+    if (columns.length !== 3) throw new Error('Index pairs need exactly three columns: name i5 i7.');
+    return { name: columns[0], i5: columns[1].toUpperCase(), i7: columns[2].toUpperCase() };
+  }) : [];
+  if (e.bedCheck.input.checked && (!e.bed.files[0] || !e.bed.files[0].size || e.bed.files[0].size > 4 * 1024 ** 2)) throw new Error('Select a BED file of up to 4 MiB for ' + e.sample.value);
+  if (e.bedCheck.input.checked && !e.bedConfirm.checked) throw new Error('Confirm that the BED uses ' + e.bedAssembly + ' coordinates for ' + e.sample.value);
+  const qc_reference_ranges = {};
+  for (const [key, r] of Object.entries(e.ranges)) qc_reference_ranges[key] = r.disable.checked ? null : Object.fromEntries(Object.entries(r.values).filter(([, i]) => i.value !== '').map(([k, i]) => [k, Number(i.value)]));
+  return { sample: e.sample.value, assay: e.assay.value, reference: e.ref.value, mapper: e.mapper.value,
+    spike_in: e.spike.input.checked, mycoplasma: e.myco.input.checked, declared_spike_in: e.declared.input.checked,
+    custom_regions: e.bedCheck.input.checked, regions_label: e.bedLabel.value, index_pairs: pairs,
+    regions_mode: e.bedMode.value, regions_assembly: e.bedCheck.input.checked && e.bedConfirm.checked ? e.bedAssembly : null,
+    primary_chromosomes: e.chromosomes.value.trim() ? e.chromosomes.value.trim().split(/[,\s]+/) : null,
+    params: Object.fromEntries(Object.entries(e.params).filter(([, i]) => i.value !== '').map(([k, i]) => [k, Number(i.value)])), qc_reference_ranges,
+    ...Object.fromEntries(Object.entries(e.screen).map(([k, i]) => [k, Number(i.value)])) };
+}
+function privateLink(task) { return location.origin + '/jobs/' + task.id + '#' + task.token; }
+function saveLocation() {
+  if (tasks.length === 1) history.replaceState(null, '', '/jobs/' + tasks[0].id + '#' + tasks[0].token);
+  else history.replaceState(null, '', '/#jobs=' + tasks.map(t => t.id + ':' + t.token).join(','));
+}
+function binaryUploadOnce(task, file, endpoint, onprogress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest(); xhr.open('PUT', '/api/jobs/' + task.id + '/' + endpoint);
+    xhr.setRequestHeader('X-Portal-Request', '1'); xhr.setRequestHeader('Authorization', 'Bearer ' + task.token); xhr.setRequestHeader('Content-Type', 'application/octet-stream'); xhr.timeout = 610000;
+    xhr.upload.onprogress = e => { if (e.lengthComputable) onprogress(e.loaded / e.total); };
+    xhr.onload = () => { let data; try { data = JSON.parse(xhr.responseText); } catch { data = {}; } if (xhr.status >= 200 && xhr.status < 300) resolve(data); else { const error = new Error(data.detail || 'Upload failed.'); error.status = xhr.status; error.retryAfter = Number(xhr.getResponseHeader('Retry-After')) || 5; reject(error); } };
+    xhr.onerror = () => reject(new Error('Connection interrupted during upload.')); xhr.ontimeout = () => reject(new Error('Upload timed out.')); xhr.send(file);
+  });
+}
+async function binaryUpload(task, file, endpoint, onprogress) {
+  const deadline = Date.now() + 600000;
+  while (true) {
+    try {
+      task.waitingForUpload = false;
+      return await binaryUploadOnce(task, file, endpoint, onprogress);
+    } catch (error) {
+      if (![429, 503].includes(error.status) || Date.now() >= deadline) { task.waitingForUpload = false; throw error; }
+      task.waitingForUpload = true; renderTasks();
+      await new Promise(resolve => setTimeout(resolve, Math.min(60, Math.max(1, error.retryAfter)) * 1000));
+    }
+  }
+}
+const labels = { created: 'Waiting for upload', uploading: 'Uploading', uploaded: 'Upload complete', queued: 'Queued', running: 'Analyzing', succeeded: 'Report ready', failed: 'Analysis failed', cancelling: 'Cancelling', cancelled: 'Cancelled', expired: 'Expired' };
+function taskView(task) {
+  const job = task.job || { status: 'created', sample: task.name || 'Loading task…' };
+  const card = node('article', { class: 'task-card' });
+  const title = node('div', { class: 'task-title' }, node('h2', {}, job.sample || 'Analysis'), node('span', { class: 'status ' + job.status }, labels[job.status] || job.status));
+  card.append(title, node('p', { class: 'task-meta' }, [job.filename, job.assay === 'microc' ? 'Micro-C' : job.assay === 'chromatin' ? 'Chromatin' : '', job.reference].filter(Boolean).join(' · ')));
+  const percent = task.uploading ? Math.round(task.uploadProgress * 100) : job.progress || 0;
+  const bar = node('span'); bar.style.width = percent + '%';
+  const message = task.waitingForUpload ? 'Waiting to upload…' : task.uploading ? 'Uploading · ' + percent + '%' : job.status === 'queued' ? (job.queue_ahead ? job.queue_ahead + ' analysis ahead of you' : 'Waiting for the analysis worker') : job.status === 'running' ? 'Processing reads and building your report…' : job.status === 'succeeded' ? 'Your interactive report and downloads are ready.' : labels[job.status];
+  card.append(node('div', { class: 'progress', role: 'progressbar', 'aria-label': 'Analysis progress', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(percent) }, bar), node('p', { class: 'progress-label' }, message));
+  if (task.failure || task.fetchError || job.error) card.append(node('div', { class: 'error' }, task.failure || task.fetchError || job.error));
+  const actions = node('div', { class: 'task-actions' });
+  if (job.status === 'succeeded') {
+    actions.append(node('a', { class: 'primary button', href: job.report_url, target: '_blank', rel: 'noopener' }, 'Open ' + (job.sample || 'sample') + ' report ↗'), node('a', { class: 'secondary button', href: job.download_url }, 'Download report ZIP'));
+    card.append(node('p', { class: 'field-note' }, 'Available until ' + new Date(job.expires * 1000).toLocaleString()));
+  }
+  actions.append(node('button', { type: 'button', class: 'secondary', onclick: async event => { try { await navigator.clipboard.writeText(privateLink(task)); event.target.textContent = 'Link copied'; } catch { saveText('ont-libqc-private-link.txt', privateLink(task)); } } }, 'Copy private link'));
+  if (['created', 'uploaded', 'queued', 'running'].includes(job.status) && !task.uploading) actions.append(node('button', { type: 'button', class: 'secondary', onclick: async () => { try { await api('/api/jobs/' + task.id + '/cancel', 'POST', {}, task.token); await refreshTask(task); } catch (e) { task.failure = e.message; renderTasks(); } } }, 'Cancel analysis'));
+  if (['succeeded', 'failed', 'cancelled'].includes(job.status)) actions.append(node('button', { type: 'button', class: 'secondary', onclick: async event => { if (!task.confirmDelete) { task.confirmDelete = true; event.target.textContent = 'Confirm permanent deletion'; return; } try { await api('/api/jobs/' + task.id, 'DELETE', undefined, task.token); task.deletionRequested = true; event.target.textContent = 'Deletion requested'; event.target.disabled = true; } catch (e) { task.failure = e.message; renderTasks(); } } }, task.deletionRequested ? 'Deletion requested' : task.confirmDelete ? 'Confirm permanent deletion' : 'Delete report now'));
+  card.append(actions);
+  if (job.options && job.status !== 'expired') { const detail = node('details', {}, node('summary', {}, 'Submitted settings'), node('pre', { class: 'field-note' }, JSON.stringify(job.options, null, 2))); detail.open = Boolean(task.detailsOpen); detail.addEventListener('toggle', () => { task.detailsOpen = detail.open; }); card.append(detail); }
+  return card;
+}
+function renderTasks() { $('tasks-title').textContent = tasks.every(t => t.job?.status === 'succeeded') ? 'Your reports are ready.' : tasks.some(t => ['failed', 'cancelled', 'expired'].includes(t.job?.status)) ? 'Your analysis status.' : 'Your reports are on their way.'; $('submission-view').hidden = true; $('tasks-view').hidden = false; $('task-list').replaceChildren(...tasks.map(taskView)); }
+async function refreshTask(task) {
+  if (task.uploading) return;
+  try {
+    task.job = await api('/api/jobs/' + task.id, 'GET', undefined, task.token); task.fetchError = null;
+    if (task.job.status === 'succeeded' && (!task.session || Date.now() - task.session > 1200000)) {
+      await api('/api/jobs/' + task.id + '/session', 'POST', {}, task.token); task.session = Date.now();
+    }
+  } catch (e) { task.fetchError = e.message; }
+  if (!refreshing) renderTasks();
+}
+async function refreshTasks() {
+  if (refreshing) return;
+  refreshing = true;
+  try {
+    for (const task of tasks) {
+      if (Date.now() < retryRequestsAt) break;
+      if (!task.job || !['succeeded', 'expired', 'cancelled', 'failed'].includes(task.job.status) || task.fetchError || (task.job.status === 'succeeded' && (!task.session || Date.now() - task.session > 1200000))) await refreshTask(task);
+    }
+  } finally { refreshing = false; renderTasks(); }
+}
+function saveText(name, text) { const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' })); const a = node('a', { href: url, download: name }); document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
+$('save-links').addEventListener('click', () => saveText('ont-libqc-private-links.txt', tasks.map(t => (t.job?.sample || t.name || t.id) + '\n' + privateLink(t)).join('\n\n')));
+$('submission-form').addEventListener('submit', async event => {
+  event.preventDefault(); if (submitting || !files.length) return;
+  showError(''); let entries;
+  try {
+    if (files.length > catalog.max_files) throw new Error('Choose up to ' + catalog.max_files + ' files.');
+    entries = files.map(e => ({ entry: e, options: optionsFor(e) }));
+  } catch (e) { showError(e.message); return; }
+  submitting = true; updateCount();
+  try {
+    const batch = await api('/api/batches', 'POST', { files: entries.map(({ entry, options }) => ({
+      email: $('email').value, filename: entry.file.name, size: entry.file.size, options,
+      consent: $('consent').checked, submission_key: $('submission-code').value, website: $('website').value
+    })) });
+    tasks = batch.jobs.map((job, i) => ({ id: job.id, token: job.token, name: entries[i].options.sample,
+      uploadProgress: 0, job: { ...job, ...entries[i].options, filename: entries[i].entry.file.name } }));
+    saveLocation(); renderTasks();
+    for (let i = 0; i < entries.length; i++) {
+      const { entry, options } = entries[i], task = tasks[i];
+      if (['cancelled', 'cancelling', 'expired'].includes(task.job.status)) continue;
+      try {
+        task.uploading = true; renderTasks();
+        await binaryUpload(task, entry.file, 'upload', progress => { task.uploadProgress = progress; renderTasks(); });
+        if (options.custom_regions) await binaryUpload(task, entry.bed.files[0], 'regions', () => {});
+        task.job = await api('/api/jobs/' + task.id + '/submit', 'POST', {}, task.token);
+        task.uploading = false; renderTasks();
+      } catch (e) {
+        task.failure = e.message + ' Cancel this task and submit the file again.';
+        task.uploading = false; await refreshTask(task);
+      }
+    }
+  } catch (e) { showError(e.message); }
+  finally { submitting = false; updateCount(); }
+});
+async function init() {
+  try {
+    catalog = await api('/api/catalog');
+    $('availability').textContent = catalog.worker_online ? 'Ready for analysis' : 'Worker offline'; $('availability').classList.toggle('online', catalog.worker_online);
+    $('upload-limit').textContent = 'FASTQ / FASTQ.gz · ' + bytes(catalog.max_upload_bytes) + ' per file · up to ' + catalog.max_files + ' files';
+    $('pipeline-link').href = catalog.pipeline_url;
+    $('large-file-note').textContent = 'Larger than ' + bytes(catalog.max_upload_bytes) + '? Run the pipeline locally. Gzip files must also expand to at most ' + bytes(catalog.max_expanded_bytes) + '. Online analyses are limited to ' + catalog.max_reads.toLocaleString() + ' reads per file.';
+    $('retention').textContent = catalog.retention_days + ' days';
+    $('email-note').textContent = catalog.mail_enabled ? 'We’ll email your private report link when the analysis finishes.' : 'Email delivery is not enabled on this server. Save your private task links to collect the reports here.';
+    $('privacy-delivery-note').textContent = catalog.mail_enabled ? 'Your private link will also arrive by email. Keep it safe and share it only with people you trust.' : 'Save your task links before leaving. Without email delivery, lost links cannot be recovered here.';
+    $('code-field').hidden = !catalog.submission_key_required; $('submission-code').required = catalog.submission_key_required;
+    const single = location.pathname.match(/^\/jobs\/([0-9a-f]{32})$/);
+    if (single && /^[0-9a-f]{64}$/.test(location.hash.slice(1))) tasks = [{ id: single[1], token: location.hash.slice(1) }];
+    else if (location.hash.startsWith('#jobs=')) tasks = location.hash.slice(6).split(',').slice(0, 64).map(t => t.split(':')).filter(([id, token]) => /^[0-9a-f]{32}$/.test(id) && /^[0-9a-f]{64}$/.test(token)).map(([id, token]) => ({ id, token }));
+    if (single && !tasks.length) { $('submission-view').hidden = true; showError('This task needs its complete private link, including the part after #.', 'global-error'); }
+    if (tasks.length) { renderTasks(); await refreshTasks(); }
+    updateCount();
+  } catch (e) { showError('Cannot connect to the analysis service. ' + e.message, 'global-error'); $('submit-button').disabled = true; }
+}
+$('fastq-input').addEventListener('change', e => { if (catalog) addFiles(e.target.files); e.target.value = ''; });
+$('dropzone').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('fastq-input').click(); } });
+for (const type of ['dragenter', 'dragover']) $('dropzone').addEventListener(type, e => { e.preventDefault(); $('dropzone').classList.add('drag'); });
+for (const type of ['dragleave', 'drop']) $('dropzone').addEventListener(type, e => { e.preventDefault(); $('dropzone').classList.remove('drag'); });
+$('dropzone').addEventListener('drop', e => { if (catalog && !submitting) addFiles(e.dataTransfer.files); });
+async function pollTasks() {
+  if (tasks.length) await refreshTasks();
+  setTimeout(pollTasks, Math.max(document.hidden ? 30000 : 10000, retryRequestsAt - Date.now()) + Math.random() * 2000);
+}
+setTimeout(pollTasks, 10000);
+init();

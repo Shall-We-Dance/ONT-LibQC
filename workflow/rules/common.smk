@@ -45,7 +45,7 @@ def assay(sample):
     if value in {"microc", "microclike"}:
         return "microc"
     if value in {"hic", "insituhic", "dilutionhic", "3d", "contact"}:
-        raise ValueError(f"Sample {sample}: Hi-C must not be processed as Micro-C. See docs/HiC_extension_design.md and specify the restriction enzyme/kit before enabling the Hi-C branch.")
+        raise ValueError(f"Sample {sample}: Hi-C must not be processed as Micro-C. The supported assays are chromatin and Micro-C.")
     if value != "chromatin":
         raise ValueError(f"Sample {sample}: unsupported assay type {value!r}")
     return "chromatin"
@@ -74,7 +74,8 @@ def query2(wildcards):
     return f"{OUT}/prepared/{wildcards.sample}.leg2.fastq.gz" if assay(wildcards.sample) == "microc" else []
 
 def index_dependency(wildcards):
-    return []
+    ref=reference_for(wildcards.sample)
+    return [ref["minimap2_index"]] if sample_mapper(wildcards.sample)=="minimap2" and ref.get("minimap2_index") else []
 
 def index_prefix(wildcards):
     mapper = sample_mapper(wildcards.sample)
@@ -83,7 +84,7 @@ def index_prefix(wildcards):
         return reference["bowtie2_index"]
     if mapper == "bwa-mem2":
         return reference["bwa_mem2_index"]
-    return reference["fasta"]
+    return reference.get("minimap2_index") or reference["fasta"]
 
 def expected_index_pairs(wildcards):
     pairs = config["samples"][wildcards.sample].get("index_pairs", [])

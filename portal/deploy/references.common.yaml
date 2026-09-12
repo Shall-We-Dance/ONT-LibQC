@@ -1,0 +1,277 @@
+# Official HTTPS sources. Build once as the operator; inputs cannot trigger reference builds.
+# Chromosome names are normalized together in FASTA and GTF using the assembly report.
+verified_on: '2026-09-11'
+selection: Current annotated NCBI RefSeq reference assembly per species. Unannotated
+  newer assemblies are excluded.
+references:
+  hg38:
+    label: Human · hg38
+    assembly: hg38
+    fasta: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/001/405/GCF_000001405.40_GRCh38.p14/GCF_000001405.40_GRCh38.p14_genomic.fna.gz
+    annotation: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/001/405/GCF_000001405.40_GRCh38.p14/GCF_000001405.40_GRCh38.p14_genomic.gtf.gz
+    assembly_report: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/001/405/GCF_000001405.40_GRCh38.p14/GCF_000001405.40_GRCh38.p14_assembly_report.txt
+    assembly_accession: GCF_000001405.40
+    source_assembly: GRCh38.p14
+    annotation_release: GCF_000001405.40-RS_2025_08
+    source_page: https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_000001405.40/
+    sequence_bases: 3099441038
+    primary_chromosomes:
+    - chr1
+    - chr2
+    - chr3
+    - chr4
+    - chr5
+    - chr6
+    - chr7
+    - chr8
+    - chr9
+    - chr10
+    - chr11
+    - chr12
+    - chr13
+    - chr14
+    - chr15
+    - chr16
+    - chr17
+    - chr18
+    - chr19
+    - chr20
+    - chr21
+    - chr22
+    - chrX
+    - chrY
+    rename_from_assembly_report: true
+  mm39:
+    label: Mouse · mm39
+    assembly: mm39
+    fasta: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/001/635/GCF_000001635.27_GRCm39/GCF_000001635.27_GRCm39_genomic.fna.gz
+    annotation: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/001/635/GCF_000001635.27_GRCm39/GCF_000001635.27_GRCm39_genomic.gtf.gz
+    assembly_report: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/001/635/GCF_000001635.27_GRCm39/GCF_000001635.27_GRCm39_assembly_report.txt
+    assembly_accession: GCF_000001635.27
+    source_assembly: GRCm39
+    annotation_release: GCF_000001635.27-RS_2024_02
+    source_page: https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_000001635.27/
+    sequence_bases: 2728206152
+    primary_chromosomes:
+    - chr1
+    - chr2
+    - chr3
+    - chr4
+    - chr5
+    - chr6
+    - chr7
+    - chr8
+    - chr9
+    - chr10
+    - chr11
+    - chr12
+    - chr13
+    - chr14
+    - chr15
+    - chr16
+    - chr17
+    - chr18
+    - chr19
+    - chrX
+    - chrY
+    rename_from_assembly_report: true
+  rn8:
+    label: Rat · GRCr8
+    assembly: GRCr8
+    fasta: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/036/323/735/GCF_036323735.1_GRCr8/GCF_036323735.1_GRCr8_genomic.fna.gz
+    annotation: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/036/323/735/GCF_036323735.1_GRCr8/GCF_036323735.1_GRCr8_genomic.gtf.gz
+    assembly_report: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/036/323/735/GCF_036323735.1_GRCr8/GCF_036323735.1_GRCr8_assembly_report.txt
+    assembly_accession: GCF_036323735.1
+    source_assembly: GRCr8
+    annotation_release: GCF_036323735.1-RS_2026_08
+    source_page: https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_036323735.1/
+    sequence_bases: 2849581192
+    primary_chromosomes:
+    - chr1
+    - chr2
+    - chr3
+    - chr4
+    - chr5
+    - chr6
+    - chr7
+    - chr8
+    - chr9
+    - chr10
+    - chr11
+    - chr12
+    - chr13
+    - chr14
+    - chr15
+    - chr16
+    - chr17
+    - chr18
+    - chr19
+    - chr20
+    - chrX
+    - chrY
+    rename_from_assembly_report: true
+  dm6:
+    label: Fruit fly · dm6
+    assembly: dm6
+    fasta: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/001/215/GCF_000001215.4_Release_6_plus_ISO1_MT/GCF_000001215.4_Release_6_plus_ISO1_MT_genomic.fna.gz
+    annotation: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/001/215/GCF_000001215.4_Release_6_plus_ISO1_MT/GCF_000001215.4_Release_6_plus_ISO1_MT_genomic.gtf.gz
+    assembly_report: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/001/215/GCF_000001215.4_Release_6_plus_ISO1_MT/GCF_000001215.4_Release_6_plus_ISO1_MT_assembly_report.txt
+    assembly_accession: GCF_000001215.4
+    source_assembly: Release 6 plus ISO1 MT
+    annotation_release: FlyBase Release 6.54
+    source_page: https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_000001215.4/
+    sequence_bases: 143706478
+    primary_chromosomes:
+    - chrX
+    - chr2L
+    - chr2R
+    - chr3L
+    - chr3R
+    - chr4
+    - chrY
+    rename_from_assembly_report: true
+  ce11:
+    label: C. elegans · WBcel235
+    assembly: WBcel235
+    fasta: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/002/985/GCF_000002985.6_WBcel235/GCF_000002985.6_WBcel235_genomic.fna.gz
+    annotation: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/002/985/GCF_000002985.6_WBcel235/GCF_000002985.6_WBcel235_genomic.gtf.gz
+    assembly_report: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/002/985/GCF_000002985.6_WBcel235/GCF_000002985.6_WBcel235_assembly_report.txt
+    assembly_accession: GCF_000002985.6
+    source_assembly: WBcel235
+    annotation_release: WormBase WS298
+    source_page: https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_000002985.6/
+    sequence_bases: 100272607
+    primary_chromosomes:
+    - chrI
+    - chrII
+    - chrIII
+    - chrIV
+    - chrV
+    - chrX
+    rename_from_assembly_report: true
+  GRCz12ab:
+    label: Zebrafish · GRCz12ab
+    assembly: GRCz12ab
+    fasta: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/052/040/795/GCF_052040795.1_GRCz12ab/GCF_052040795.1_GRCz12ab_genomic.fna.gz
+    annotation: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/052/040/795/GCF_052040795.1_GRCz12ab/GCF_052040795.1_GRCz12ab_genomic.gtf.gz
+    assembly_report: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/052/040/795/GCF_052040795.1_GRCz12ab/GCF_052040795.1_GRCz12ab_assembly_report.txt
+    assembly_accession: GCF_052040795.1
+    source_assembly: GRCz12ab
+    annotation_release: GCF_052040795.1-RS_2026_07
+    source_page: https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_052040795.1/
+    sequence_bases: 1450693629
+    primary_chromosomes:
+    - chr1
+    - chr2
+    - chr3
+    - chr4
+    - chr5
+    - chr6
+    - chr7
+    - chr8
+    - chr9
+    - chr10
+    - chr11
+    - chr12
+    - chr13
+    - chr14
+    - chr15
+    - chr16
+    - chr17
+    - chr18
+    - chr19
+    - chr20
+    - chr21
+    - chr22
+    - chr23
+    - chr24
+    - chr25
+    rename_from_assembly_report: true
+  sacCer3:
+    label: Budding yeast · R64
+    assembly: R64
+    fasta: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/146/045/GCF_000146045.2_R64/GCF_000146045.2_R64_genomic.fna.gz
+    annotation: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/146/045/GCF_000146045.2_R64/GCF_000146045.2_R64_genomic.gtf.gz
+    assembly_report: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/146/045/GCF_000146045.2_R64/GCF_000146045.2_R64_assembly_report.txt
+    assembly_accession: GCF_000146045.2
+    source_assembly: R64
+    annotation_release: SGD R64-5-1
+    source_page: https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_000146045.2/
+    sequence_bases: 12071326
+    primary_chromosomes:
+    - chrI
+    - chrII
+    - chrIII
+    - chrIV
+    - chrV
+    - chrVI
+    - chrVII
+    - chrVIII
+    - chrIX
+    - chrX
+    - chrXI
+    - chrXII
+    - chrXIII
+    - chrXIV
+    - chrXV
+    - chrXVI
+    rename_from_assembly_report: true
+  ASM294v3:
+    label: Fission yeast · ASM294v3
+    assembly: ASM294v3
+    fasta: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/002/945/GCF_000002945.2_ASM294v3/GCF_000002945.2_ASM294v3_genomic.fna.gz
+    annotation: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/002/945/GCF_000002945.2_ASM294v3/GCF_000002945.2_ASM294v3_genomic.gtf.gz
+    assembly_report: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/002/945/GCF_000002945.2_ASM294v3/GCF_000002945.2_ASM294v3_assembly_report.txt
+    assembly_accession: GCF_000002945.2
+    source_assembly: ASM294v3
+    annotation_release: Annotation submitted by PomBase
+    source_page: https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_000002945.2/
+    sequence_bases: 12571820
+    primary_chromosomes:
+    - chrI
+    - chrII
+    - chrIII
+    rename_from_assembly_report: true
+  TAIR10:
+    label: Arabidopsis · TAIR10.1
+    assembly: TAIR10.1
+    fasta: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/001/735/GCF_000001735.4_TAIR10.1/GCF_000001735.4_TAIR10.1_genomic.fna.gz
+    annotation: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/001/735/GCF_000001735.4_TAIR10.1/GCF_000001735.4_TAIR10.1_genomic.gtf.gz
+    assembly_report: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/001/735/GCF_000001735.4_TAIR10.1/GCF_000001735.4_TAIR10.1_assembly_report.txt
+    assembly_accession: GCF_000001735.4
+    source_assembly: TAIR10.1
+    annotation_release: Annotation submitted by TAIR and Araport
+    source_page: https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_000001735.4/
+    sequence_bases: 119146348
+    primary_chromosomes:
+    - chr1
+    - chr2
+    - chr3
+    - chr4
+    - chr5
+    rename_from_assembly_report: true
+  AGIS1:
+    label: Rice · Nipponbare · AGIS1.0
+    assembly: AGIS1.0
+    fasta: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/034/140/825/GCF_034140825.1_ASM3414082v1/GCF_034140825.1_ASM3414082v1_genomic.fna.gz
+    annotation: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/034/140/825/GCF_034140825.1_ASM3414082v1/GCF_034140825.1_ASM3414082v1_genomic.gtf.gz
+    assembly_report: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/034/140/825/GCF_034140825.1_ASM3414082v1/GCF_034140825.1_ASM3414082v1_assembly_report.txt
+    assembly_accession: GCF_034140825.1
+    source_assembly: AGIS1.0
+    annotation_release: GCF_034140825.1-RS_2024_06
+    source_page: https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_034140825.1/
+    sequence_bases: 385710679
+    primary_chromosomes:
+    - chr1
+    - chr2
+    - chr3
+    - chr4
+    - chr5
+    - chr6
+    - chr7
+    - chr8
+    - chr9
+    - chr10
+    - chr11
+    - chr12
+    rename_from_assembly_report: true

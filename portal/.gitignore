@@ -1,0 +1,4 @@
+.env
+*.local.yaml
+*.local.json
+__pycache__/

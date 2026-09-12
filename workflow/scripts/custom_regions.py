@@ -1,9 +1,21 @@
-"""Offline custom BED profiles: exact mean coverage in scaled bins, with CPM."""
+"""Offline custom BED profiles: exact mean coverage around reference points or in scaled bins, with CPM."""
 import collections,html,json,math,re
 from pathlib import Path
 import numpy as np
 
-PARAMS=dict(upstream_bp=5000,downstream_bp=5000,flank_bins=50,body_bins=100)
+PARAMS=dict(mode='auto',upstream_bp=5000,downstream_bp=5000,flank_bins=50,body_bins=100,reference_bins=100)
+
+def resolve_parameters(regions,params=None):
+    resolved={**PARAMS,**(params or {})}
+    requested=resolved['mode']
+    if requested not in ('auto','reference_point','region'):raise ValueError('Custom region mode must be auto, reference_point or region')
+    resolved['requested_mode']=resolved.get('requested_mode',requested) if requested!='auto' else 'auto'
+    resolved['mode']=('reference_point' if all(r['end']-r['start']==1 for r in regions) else 'region') if requested=='auto' else requested
+    return resolved
+
+def mode_description(params):
+    return 'Reference point (interval midpoint)' if params['mode']=='reference_point' else 'Region (scaled body)'
+
 
 def parse_bed(text,sizes,primary):
     rows=[];seen=set();skipped=duplicates=0;unknown=[]
@@ -61,6 +73,7 @@ def region_edges(r,params=PARAMS):
     return np.r_[np.linspace(s-left,s,a+1)[:-1],np.linspace(s,e,b+1)[:-1],np.linspace(e,e+right,a+1)]
 
 def compute_profile(records,regions,sizes,params=PARAMS):
+    params=resolve_parameters(regions,params)
     by=collections.defaultdict(list)
     for r in records:by[r['chrom']].append(r)
     tracks={c:track(rs) for c,rs in by.items()};matrix=[]
@@ -77,7 +90,7 @@ def compute_profile(records,regions,sizes,params=PARAMS):
     clean=lambda v:[float(x) if math.isfinite(x) else None for x in v]
     return dict(mean=clean(mean),sem=clean(sem),regions_per_bin=counts.tolist(),eligible_alignments=len(records))
 
-def static_plot(profiles,label,path):
+def static_plot(profiles,label,path,params=PARAMS):
     import matplotlib;matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     plt.rcParams.update({'svg.fonttype':'none','pdf.fonttype':42})
@@ -85,12 +98,20 @@ def static_plot(profiles,label,path):
     for i,(scope,p) in enumerate(profiles.items()):
         y=np.array([np.nan if v is None else v for v in p['mean']]);se=np.array([np.nan if v is None else v for v in p['sem']]);x=np.arange(len(y))+.5
         if np.isfinite(y).any():ax.plot(x,y,label=scope,color=colors[i%len(colors)],lw=2);ax.fill_between(x,y-se,y+se,color=colors[i%len(colors)],alpha=.13)
-    ax.set(xlim=(0,200),ylim=(0,None),ylabel='Mean coverage (CPM)',title=label)
-    ax.set_xticks([0,50,150,200],['−5 kb','Region start','Region end','+5 kb']);ax.axvspan(50,150,color='#7793a6',alpha=.06)
+    point=params.get('mode')=='reference_point'
+    n=params['reference_bins'] if point else 2*params['flank_bins']+params['body_bins']
+    u,d=params['upstream_bp'],params['downstream_bp']
+    ax.set(xlim=(0,n),ylim=(0,None),ylabel='Mean coverage (CPM)',title=label)
+    if point:
+        center=n*u/(u+d)
+        ax.set_xticks([0,center,n],[f'−{u/1000:g} kb','Reference point (0)',f'+{d/1000:g} kb']);ax.axvline(center,color='#7793a6',ls='--',lw=1)
+    else:
+        a,b=params['flank_bins'],params['body_bins']
+        ax.set_xticks([0,a,a+b,n],[f'−{u/1000:g} kb','Region start','Region end',f'+{d/1000:g} kb']);ax.axvspan(a,a+b,color='#7793a6',alpha=.06)
     ax.spines[['top','right']].set_visible(False)
     if any(p['eligible_alignments'] for p in profiles.values()):ax.legend(frameon=False)
     else:ax.text(.5,.5,'No eligible nuclear alignments',ha='center',transform=ax.transAxes)
-    fig.text(.5,.015,'Equal region weights; scaled region bodies; bands = SEM across regions, not biological replicates.',ha='center',fontsize=9);fig.tight_layout(rect=(0,.04,1,1))
+    fig.text(.5,.015,'Equal region weights; '+('distance from interval midpoint' if point else 'scaled region bodies')+'; bands = SEM across regions.',ha='center',fontsize=9);fig.tight_layout(rect=(0,.04,1,1))
     for ext in ['svg','pdf','png']:fig.savefig(Path(path).with_suffix('.'+ext),dpi=180,bbox_inches='tight')
     plt.close(fig)
 
@@ -98,18 +119,20 @@ def report_html(out,sample,reference,sizes,primary,scope_records,scopes,sample_c
     eligible={s:[r for r in rs.values() if r['chrom'] in primary and mapq<=r['mapq']<255] for s,rs in scope_records.items()}
     payload=dict(sample=sample,reference=reference,sizes=sizes,primary=list(primary),parameters=PARAMS,
                  scopes={s:{'name':next(x.get('scope_name',s) for x in scopes if x['scope_id']==s),'records':[[r['chrom'],r['start'],r['end'],aligned_blocks(r)] for r in rs]} for s,rs in eligible.items()})
-    initial='';configured=sample_cfg.get('custom_regions')
+    initial='';configured=sample_cfg.get('custom_regions');requested_mode='auto'
     if configured:
         if isinstance(configured,str):configured=dict(bed=configured,assembly=reference)
         if configured.get('assembly')!=reference:raise ValueError(f'{sample}: custom BED assembly mismatch')
         source=Path(configured['bed']);source=source if source.is_absolute() else Path(config_root)/source
         bedtext=source.read_text();regions,info=parse_bed(bedtext,sizes,primary)
-        profiles={payload['scopes'][s]['name']:compute_profile(rs,regions,sizes) for s,rs in eligible.items()}
+        requested_mode=configured.get('mode','auto')
+        params=resolve_parameters(regions,dict(mode=requested_mode))
+        profiles={payload['scopes'][s]['name']:compute_profile(rs,regions,sizes,params) for s,rs in eligible.items()}
         folder=out/'qc/custom_regions';folder.mkdir(exist_ok=True)
-        result=dict(sample=sample,assembly=reference,label=configured.get('label',source.stem),bed=str(source.resolve()),region_origin=configured.get('region_origin',{}),parameters=PARAMS,**info,profiles=profiles)
+        result=dict(sample=sample,assembly=reference,label=configured.get('label',source.stem),bed=str(source.resolve()),region_origin=configured.get('region_origin',{}),parameters=params,**info,profiles=profiles)
         (folder/f'{sample}.json').write_text(json.dumps(result,indent=2)+'\n')
         bedasset=out/'reports/assets'/f'{sample}.custom_regions.bed';bedasset.write_text(bedtext)
-        plot=out/'reports/assets'/f'{sample}.custom_regions.svg';static_plot(profiles,sample+' · '+result['label'],plot)
+        plot=out/'reports/assets'/f'{sample}.custom_regions.svg';static_plot(profiles,sample+' · '+result['label'],plot,params)
         with (folder/f'{sample}.profile.tsv').open('w') as f:
             f.write('scope\tbin\tmean_cpm\tsem_across_regions\tregions_in_bin\n')
             for scope,p in profiles.items():
@@ -118,10 +141,11 @@ def report_html(out,sample,reference,sizes,primary,scope_records,scopes,sample_c
         if info['skipped_nonprimary']:exclusion+=f" · {info['skipped_nonprimary']} non-primary regions excluded"
         note=result['region_origin'].get('interpretation','')
         tip=f" <span class='metric-tip info-icon' tabindex='0' data-tip='{html.escape(note,quote=True)}'>?</span>" if note else ''
-        initial=f"<p class='muted'>{html.escape(result['label'])} · {info['retained_regions']:,} regions · {reference}{html.escape(exclusion)}{tip}</p><img class='custom-static' src='assets/{plot.name}' alt='Configured custom region metaplot'><p><a href='assets/{bedasset.name}'>BED</a> · <a href='../qc/custom_regions/{sample}.profile.tsv'>Profile data</a> · <a href='assets/{plot.with_suffix('.pdf').name}'>PDF</a></p>"
+        initial=f"<p class='muted'>{html.escape(result['label'])} · {info['retained_regions']:,} regions · {mode_description(params)} · {reference}{html.escape(exclusion)}{tip}</p><img class='custom-static' src='assets/{plot.name}' alt='Configured custom region metaplot'><p><a href='assets/{bedasset.name}'>BED</a> · <a href='../qc/custom_regions/{sample}.profile.tsv'>Profile data</a> · <a href='assets/{plot.with_suffix('.pdf').name}'>PDF</a></p>"
     options=''.join(f"<option value='{html.escape(s)}'>{html.escape(x['name'])}</option>" for s,x in payload['scopes'].items())
+    mode_options=''.join(f"<option value='{value}'{' selected' if value==requested_mode else ''}>{label}</option>" for value,label in [('auto','Auto'),('reference_point','Reference point'),('region','Region (scaled)')])
     js=Path(__file__).with_name('custom_regions.js').read_text()
     return f"""<section class='report-section' id='custom-regions'><div class='section-heading'><span class='eyebrow'>TARGET CONTEXT</span><h2>Custom region metaplot</h2></div>{initial}
-<p class='muted'>Choose a BED file for {reference}. The profile is calculated locally in this browser.</p><div class='custom-controls'><label>Region BED <input type='file' id='custom-bed' accept='.bed,.tsv,.txt'></label><label>Library <select id='custom-scope'>{options}</select></label><label><input type='checkbox' id='custom-assembly'> I confirm this BED uses {reference} coordinates</label><button id='custom-run' type='button'>Draw metaplot</button></div>
-<p id='custom-message' role='status' aria-live='polite'></p><div id='custom-output'></div><div id='custom-downloads'></div><details><summary>Normalization and region handling</summary><p>BED uses zero-based, half-open coordinates. BED6 minus strands are reversed; BED3/4 and dot strands use genomic orientation. Bodies scale to 100 bins with 50 bins across each 5 kb flank. Exact aligned-base coverage (CIGAR M/= /X only; D/N excluded) is divided by each bin's available genomic width, then CPM uses all eligible primary nuclear alignments in the selected scope. Regions are equally weighted. Duplicate intervals are removed; non-primary and absent-contig regions are skipped and counted. Flanks are clipped to chromosome boundaries; bins entirely beyond the chromosome are missing. SEM is across regions. Assembly identity must be confirmed; chromosome names alone cannot verify it. No data are uploaded to a server.</p></details>
+<p class='muted'>Choose a BED file for {reference}. The profile is calculated locally in this browser.</p><div class='custom-controls'><label class='custom-field'><span class='custom-field-title'>Region BED</span><span class='custom-file-picker'><input type='file' id='custom-bed' accept='.bed,.tsv,.txt'><span class='custom-file-button' aria-hidden='true'>Choose BED</span><span class='custom-file-name' id='custom-bed-name' aria-hidden='true'>No BED selected</span></span></label><label class='custom-field'><span class='custom-field-title'>Library</span><span class='custom-select-shell'><select id='custom-scope'>{options}</select></span></label><label class='custom-field'><span class='custom-field-title'>Plot mode</span><span class='custom-select-shell'><select id='custom-mode'>{mode_options}</select></span></label><div class='custom-actions'><label class='custom-confirm'><input type='checkbox' id='custom-assembly'><span> I confirm this BED uses {reference} coordinates</span></label><button id='custom-run' type='button'>Draw metaplot</button></div></div>
+<p id='custom-message' role='status' aria-live='polite'></p><div id='custom-output'></div><div id='custom-downloads'></div><details><summary>Normalization and region handling</summary><p>BED uses zero-based, half-open coordinates. BED6 minus strands are reversed; BED3/4 and dot strands use genomic orientation. Auto uses reference point mode when all retained intervals are 1 bp; otherwise it uses region mode, including mixed-width BED files. You can override this with Plot mode. Reference point mode centers each interval at its midpoint (start + end)/2 and shows ±5 kb in 100 bins without scaling a body. Region mode scales bodies to 100 bins with 50 bins across each 5 kb flank. Exact aligned-base coverage (CIGAR M/= /X only; D/N excluded) is divided by each bin's available genomic width, then CPM uses all eligible primary nuclear alignments in the selected scope. Regions are equally weighted. Duplicate intervals are removed; non-primary and absent-contig regions are skipped and counted. Flanks are clipped to chromosome boundaries; bins entirely beyond the chromosome are missing. SEM is across regions. Assembly identity must be confirmed; chromosome names alone cannot verify it. No data are uploaded to a server.</p></details>
 <script id='custom-payload' type='application/json'>{json.dumps(payload,separators=(',',':')).replace('<',chr(92)+'u003c')}</script><script>{js}</script></section>"""

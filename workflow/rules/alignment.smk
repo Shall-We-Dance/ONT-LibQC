@@ -38,7 +38,7 @@ rule align:
           fi
         else
           {params.minimap2} -ax sr -k 9 -w 5 -N 3 --secondary=yes -t {threads} \
-            {input.reference} {params.minimap_query} 2> {log}
+            {params.index} {params.minimap_query} 2> {log}
         fi | {params.samtools} sort -@ {threads} -o {output.bam} -
         {params.samtools} index -@ {threads} {output.bam}
         """

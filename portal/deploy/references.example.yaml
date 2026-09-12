@@ -1,0 +1,26 @@
+# Run only as the operator. Users never supply reference URLs or server paths.
+# Local paths are relative to this file; HTTPS URLs are also accepted.
+references:
+  hg38:
+    label: Human · hg38 / GRCh38
+    assembly: hg38
+    fasta: sources/hg38.fa.gz
+    annotation: sources/hg38.ncbiRefSeq.gtf.gz
+    primary_chromosomes: [chr1, chr2, chr3, chr4, chr5, chr6, chr7, chr8, chr9, chr10, chr11, chr12, chr13, chr14, chr15, chr16, chr17, chr18, chr19, chr20, chr21, chr22, chrX]
+    # Optional host-competitive panels. Supply the exact sequences you intend to screen.
+    # screens:
+    #   spike_in:
+    #     targets:
+    #       - {id: ecoli, label: E_coli, fasta: sources/ecoli.fa, role: spikein_candidate}
+    #       - {id: fly, label: D_melanogaster, fasta: sources/dm6.fa, host_reference: dm6}
+    #     decoys: [sources/bacterial_decoys.fa]
+    #   mycoplasma:
+    #     targets:
+    #       - {id: mollicutes, label: Mollicutes, fasta: sources/mollicutes.fa}
+    #     decoys: [sources/bacterial_decoys.fa]
+  dm6:
+    label: Fruit fly · dm6
+    assembly: dm6
+    fasta: sources/dm6.fa.gz
+    annotation: sources/dm6.ncbiRefSeq.gtf.gz
+    primary_chromosomes: [chr2L, chr2R, chr3L, chr3R, chr4, chrX]

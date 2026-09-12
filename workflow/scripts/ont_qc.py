@@ -21,6 +21,7 @@ from qc_definitions import profile as metric_profile, configured_params, metric_
 from qc_plot_metrics import normalized_collision_stats, collision_metric_fields, svg_size_trace, size_trace_data
 from spikein_auto import scoped_summary as auto_spikein_summary
 from qc_reference_guide import context as reference_context, reference_notes_html
+from report_brand import brand_bar, copy_mark, favicon
 
 
 def rc(seq):
@@ -2179,6 +2180,7 @@ def cmd_report(args):
     with open(args.config) as handle: cfg=yaml.safe_load(handle)
     samples=list(cfg["samples"]); ranges=merged_reference_ranges(cfg); out=Path(args.out)
     (out/"reports"/"assets").mkdir(parents=True,exist_ok=True); (out/"plots"/"summary").mkdir(parents=True,exist_ok=True); (out/"summary").mkdir(parents=True,exist_ok=True)
+    copy_mark(out/"reports"/"assets")
     metrics=[]
     report_tools=cfg.get("tools", {})
     report_params=configured_params(cfg)
@@ -2330,7 +2332,8 @@ def cmd_report(args):
         else:definition_label+=f" · {settings['dedup_tolerance_bp']} bp deduplication"
         from custom_regions import report_html as custom_region_report
         custom_html=custom_region_report(out,sample,reference_key,report_chrom_sizes,report_primary,scope_records,scopes,cfg['samples'][sample],Path(__file__).resolve().parents[2],report_mapq) if metric['assay']=='chromatin' else ""
-        report=f"""<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>{sample} · ONT library QC</title><style>{REPORT_CSS}</style></head><body>
+        report=f"""<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>{sample} · ONT-LibQC</title>{favicon("assets/ont-libqc-mark.svg")}<style>{REPORT_CSS}</style></head><body>
+{brand_bar("assets/ont-libqc-mark.svg")}
 <header class='report-hero'><span class='eyebrow'>ONT LIBRARY QUALITY CONTROL</span><h1>{sample}</h1><p>Shallow sequencing · whole-molecule library assessment</p><div class='hero-meta'><span>{html.escape(metric['assay'])}</span><span>{html.escape(reference_key)}</span><span>{metric['raw_reads']:,} raw molecules</span><span>{html.escape(definition_label)}</span></div></header>
 <nav class='report-nav'><a href='#sequencing'>Sequencing</a><a href='#library-shape'>NGS library QC</a><a href='#assay-qc'>Assay metrics</a>{"<a href='#custom-regions'>Custom regions</a>" if custom_html else "<a href='#ligation'>Ligation</a><a href='#mnase'>MNase</a>"}{"<a href='#spike-screen'>Candidate screen</a>" if metric.get('spike_in_mode')=='auto' or json.loads((out/'qc/spike_in'/f'{sample}.json').read_text()).get('mode')=='auto' else ''}<a href='../summary/index.html'>All samples ↗</a></nav>
 <div class='traffic-grid'>{top}</div>
@@ -2376,7 +2379,7 @@ def cmd_report(args):
                 handle.write("\t".join(fmt(row.get(k)) for k in scoped_columns) + "\n")
     summary_plot=out/"plots"/"summary"/"all_samples_qc.svg"; summary_plot.write_text(summary_overview_svg(metrics,ranges))
     rows=''.join(f"<tr><td><a href='../reports/{m['sample']}.html'>{html.escape(m['sample'])}</a></td><td>{html.escape(m['assay'])}</td><td>{html.escape(str(m.get('reference_assembly','')))}</td><td>{m['raw_reads']:,}</td><td>{display_value('mean_read_q',m.get('mean_read_q'),ranges)}</td><td>{display_value('complete_read_rate',m.get('complete_read_rate'),ranges)}</td><td>{display_value('raw_n50_bp',m.get('raw_n50_bp'),ranges)}</td><td>{display_value('insert_median_bp',m.get('insert_median_bp'),ranges)}</td><td>{display_value('primary_mapping_rate',m.get('primary_mapping_rate'),ranges)}</td><td>{display_value('adapter_dimer_rate',m.get('adapter_dimer_rate'),ranges)}</td></tr>" for m in metrics)
-    index=f"""<!doctype html><html><head><meta charset='utf-8'><title>ONT library QC</title><style>{REPORT_CSS}</style></head><body><h1>ONT full-molecule QC summary</h1><div class='note'>This quick overview is intentionally limited to ONT sequencing QC and NGS library type/shape QC. Chromatin- and Micro-C-specific metrics are organized in the third QC section of each sample report.</div><img class='summary-plot' src='../plots/summary/all_samples_qc.svg' alt='All samples technical QC summary'><table><tr><th>Sample</th><th>Assay</th><th>Assembly</th><th>Raw reads</th><th>Mean Q</th><th>Complete</th><th>Raw N50</th><th>Insert median</th><th>Mapping</th><th>Adapter dimer</th></tr>{rows}</table><p><a href='qc_metrics.tsv'>Download total-library TSV</a> · <a href='sublibrary_qc_metrics.tsv'>Download sublibrary TSV</a></p>{REPORT_TOOLTIP_SCRIPT}</body></html>"""
+    index=f"""<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Library reports · ONT-LibQC</title>{favicon('../reports/assets/ont-libqc-mark.svg')}<style>{REPORT_CSS}</style></head><body>{brand_bar('../reports/assets/ont-libqc-mark.svg', 'Library reports')}<header class='report-hero'><span class='eyebrow'>LIBRARY QUALITY CONTROL</span><h1>Library reports</h1><p>Shallow sequencing · whole-molecule library assessment</p></header><div class='note'>This quick overview is intentionally limited to ONT sequencing QC and NGS library type/shape QC. Chromatin- and Micro-C-specific metrics are organized in the third QC section of each sample report.</div><img class='summary-plot' src='../plots/summary/all_samples_qc.svg' alt='All samples technical QC summary'><table><tr><th>Sample</th><th>Assay</th><th>Assembly</th><th>Raw reads</th><th>Mean Q</th><th>Complete</th><th>Raw N50</th><th>Insert median</th><th>Mapping</th><th>Adapter dimer</th></tr>{rows}</table><p><a href='qc_metrics.tsv'>Download total-library TSV</a> · <a href='sublibrary_qc_metrics.tsv'>Download sublibrary TSV</a></p>{REPORT_TOOLTIP_SCRIPT}</body></html>"""
     (out/"summary"/"index.html").write_text(index)
     json_dump({"created_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                "config": cfg, "python_version": sys.version,

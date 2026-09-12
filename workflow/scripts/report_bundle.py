@@ -12,6 +12,8 @@ import tempfile
 import uuid
 from urllib.parse import unquote, urlsplit
 
+from report_brand import copy_mark, downloads_page
+
 MARKER = '.ont-qc-work.json'
 WORK_FOLDERS = {'bam', 'prepared', 'pairs', 'fragments', 'tracks', 'reference',
                 'qc', 'plots', 'reports', 'summary', 'logs'}
@@ -208,13 +210,14 @@ def build(work, report, config_path):
             done.add(source)
         write_json(stage / 'data/resolved_config.json', cleaned(config))
         shutil.copy2(Path(__file__).with_name('metric_definitions.json'), stage / 'data/metric_definitions.json')
+        copy_mark(stage / "assets")
         # List every retained table/JSON/download, including evidence behind plots.
         downloads = sorted(p for p in stage.rglob('*') if p.is_file() and p.suffix not in {'.html', '.svg', '.png'})
         items = ''.join(f'<li><a href="{html.escape(str(p.relative_to(stage)), quote=True)}">{html.escape(str(p.relative_to(stage)))}</a></li>' for p in downloads)
-        (stage / 'downloads.html').write_text('<!doctype html><html lang="en"><meta charset="utf-8"><title>Report data</title><body><h1>Report data and provenance</h1><p><a href="index.html">All samples</a></p><ul>' + items + '</ul></body></html>')
+        (stage / 'downloads.html').write_text(downloads_page(items))
         index = stage / 'index.html'
         index.write_text(index.read_text().replace('</body>', '<p><a href="downloads.html">All report data and provenance</a></p></body>'))
-        (stage / 'README.md').write_text('# ONT library QC report\n\nOpen `index.html` directly in a browser. Copy this entire folder to share it.\n\n- `samples/`: all sample reports, including sublibraries and local BED upload.\n- `assets/`: figures and figure source tables.\n- `data/`: report metrics, downloadable evidence and provenance.\n- `downloads.html`: complete download directory.\n\nNo BAM, SAM, FASTQ, coverage track or matrix is needed to view or interact with the report.\n')
+        (stage / 'README.md').write_text('<p><img src="assets/ont-libqc-mark.svg" width="40" height="40" alt="ONT-LibQC"></p>\n\n# ONT-LibQC report\n\nOpen `index.html` directly in a browser. Copy this entire folder to share it.\n\n- `samples/`: all sample reports, including sublibraries and local BED upload.\n- `assets/`: figures and figure source tables.\n- `data/`: report metrics, downloadable evidence and provenance.\n- `downloads.html`: complete download directory.\n\nNo BAM, SAM, FASTQ, coverage track or matrix is needed to view or interact with the report.\n')
         audit = validate(stage)
         if audit['sample_reports'] != len(samples): raise ValueError('Sample report count mismatch')
         marker = work / MARKER
