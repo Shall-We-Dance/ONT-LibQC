@@ -2,6 +2,7 @@
 import collections,html,json,math,re
 from pathlib import Path
 import numpy as np
+from custom_regions_ui import render_section
 
 PARAMS=dict(mode='auto',upstream_bp=5000,downstream_bp=5000,flank_bins=50,body_bins=100,reference_bins=100)
 
@@ -119,17 +120,18 @@ def report_html(out,sample,reference,sizes,primary,scope_records,scopes,sample_c
     eligible={s:[r for r in rs.values() if r['chrom'] in primary and mapq<=r['mapq']<255] for s,rs in scope_records.items()}
     payload=dict(sample=sample,reference=reference,sizes=sizes,primary=list(primary),parameters=PARAMS,
                  scopes={s:{'name':next(x.get('scope_name',s) for x in scopes if x['scope_id']==s),'records':[[r['chrom'],r['start'],r['end'],aligned_blocks(r)] for r in rs]} for s,rs in eligible.items()})
-    initial='';configured=sample_cfg.get('custom_regions');requested_mode='auto'
+    initial='';configured=sample_cfg.get('custom_regions');requested_mode='auto';bed_name=None
     if configured:
         if isinstance(configured,str):configured=dict(bed=configured,assembly=reference)
         if configured.get('assembly')!=reference:raise ValueError(f'{sample}: custom BED assembly mismatch')
         source=Path(configured['bed']);source=source if source.is_absolute() else Path(config_root)/source
+        bed_name=configured.get('bed_name') or (source.name if str(source)!='/job/regions.bed' else None)
         bedtext=source.read_text();regions,info=parse_bed(bedtext,sizes,primary)
         requested_mode=configured.get('mode','auto')
         params=resolve_parameters(regions,dict(mode=requested_mode))
         profiles={payload['scopes'][s]['name']:compute_profile(rs,regions,sizes,params) for s,rs in eligible.items()}
         folder=out/'qc/custom_regions';folder.mkdir(exist_ok=True)
-        result=dict(sample=sample,assembly=reference,label=configured.get('label',source.stem),bed=str(source.resolve()),region_origin=configured.get('region_origin',{}),parameters=params,**info,profiles=profiles)
+        result=dict(sample=sample,assembly=reference,label=configured.get('label',source.stem),bed=str(source.resolve()),bed_name=bed_name,region_origin=configured.get('region_origin',{}),parameters=params,**info,profiles=profiles)
         (folder/f'{sample}.json').write_text(json.dumps(result,indent=2)+'\n')
         bedasset=out/'reports/assets'/f'{sample}.custom_regions.bed';bedasset.write_text(bedtext)
         plot=out/'reports/assets'/f'{sample}.custom_regions.svg';static_plot(profiles,sample+' · '+result['label'],plot,params)
@@ -142,10 +144,4 @@ def report_html(out,sample,reference,sizes,primary,scope_records,scopes,sample_c
         note=result['region_origin'].get('interpretation','')
         tip=f" <span class='metric-tip info-icon' tabindex='0' data-tip='{html.escape(note,quote=True)}'>?</span>" if note else ''
         initial=f"<p class='muted'>{html.escape(result['label'])} · {info['retained_regions']:,} regions · {mode_description(params)} · {reference}{html.escape(exclusion)}{tip}</p><img class='custom-static' src='assets/{plot.name}' alt='Configured custom region metaplot'><p><a href='assets/{bedasset.name}'>BED</a> · <a href='../qc/custom_regions/{sample}.profile.tsv'>Profile data</a> · <a href='assets/{plot.with_suffix('.pdf').name}'>PDF</a></p>"
-    options=''.join(f"<option value='{html.escape(s)}'>{html.escape(x['name'])}</option>" for s,x in payload['scopes'].items())
-    mode_options=''.join(f"<option value='{value}'{' selected' if value==requested_mode else ''}>{label}</option>" for value,label in [('auto','Auto'),('reference_point','Reference point'),('region','Region (scaled)')])
-    js=Path(__file__).with_name('custom_regions.js').read_text()
-    return f"""<section class='report-section' id='custom-regions'><div class='section-heading'><span class='eyebrow'>TARGET CONTEXT</span><h2>Custom region metaplot</h2></div>{initial}
-<p class='muted'>Choose a BED file for {reference}. The profile is calculated locally in this browser.</p><div class='custom-controls'><label class='custom-field'><span class='custom-field-title'>Region BED</span><span class='custom-file-picker'><input type='file' id='custom-bed' accept='.bed,.tsv,.txt'><span class='custom-file-button' aria-hidden='true'>Choose BED</span><span class='custom-file-name' id='custom-bed-name' aria-hidden='true'>No BED selected</span></span></label><label class='custom-field'><span class='custom-field-title'>Library</span><span class='custom-select-shell'><select id='custom-scope'>{options}</select></span></label><label class='custom-field'><span class='custom-field-title'>Plot mode</span><span class='custom-select-shell'><select id='custom-mode'>{mode_options}</select></span></label><div class='custom-actions'><label class='custom-confirm'><input type='checkbox' id='custom-assembly'><span> I confirm this BED uses {reference} coordinates</span></label><button id='custom-run' type='button'>Draw metaplot</button></div></div>
-<p id='custom-message' role='status' aria-live='polite'></p><div id='custom-output'></div><div id='custom-downloads'></div><details><summary>Normalization and region handling</summary><p>BED uses zero-based, half-open coordinates. BED6 minus strands are reversed; BED3/4 and dot strands use genomic orientation. Auto uses reference point mode when all retained intervals are 1 bp; otherwise it uses region mode, including mixed-width BED files. You can override this with Plot mode. Reference point mode centers each interval at its midpoint (start + end)/2 and shows ±5 kb in 100 bins without scaling a body. Region mode scales bodies to 100 bins with 50 bins across each 5 kb flank. Exact aligned-base coverage (CIGAR M/= /X only; D/N excluded) is divided by each bin's available genomic width, then CPM uses all eligible primary nuclear alignments in the selected scope. Regions are equally weighted. Duplicate intervals are removed; non-primary and absent-contig regions are skipped and counted. Flanks are clipped to chromosome boundaries; bins entirely beyond the chromosome are missing. SEM is across regions. Assembly identity must be confirmed; chromosome names alone cannot verify it. No data are uploaded to a server.</p></details>
-<script id='custom-payload' type='application/json'>{json.dumps(payload,separators=(',',':')).replace('<',chr(92)+'u003c')}</script><script>{js}</script></section>"""
+    return render_section(payload,initial,requested_mode,bed_name)

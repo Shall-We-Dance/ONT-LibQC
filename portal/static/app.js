@@ -199,6 +199,7 @@ function optionsFor(e) {
   return { sample: e.sample.value, assay: e.assay.value, reference: e.ref.value, mapper: e.mapper.value,
     spike_in: e.spike.input.checked, mycoplasma: e.myco.input.checked, declared_spike_in: e.declared.input.checked,
     custom_regions: e.bedCheck.input.checked, regions_label: e.bedLabel.value, index_pairs: pairs,
+    regions_filename: e.bedCheck.input.checked ? e.bed.files[0].name : null,
     regions_mode: e.bedMode.value, regions_assembly: e.bedCheck.input.checked && e.bedConfirm.checked ? e.bedAssembly : null,
     primary_chromosomes: e.chromosomes.value.trim() ? e.chromosomes.value.trim().split(/[,\s]+/) : null,
     params: Object.fromEntries(Object.entries(e.params).filter(([, i]) => i.value !== '').map(([k, i]) => [k, Number(i.value)])), qc_reference_ranges,
@@ -324,7 +325,7 @@ async function init() {
     const single = location.pathname.match(/^\/jobs\/([0-9a-f]{32})$/);
     if (single && /^[0-9a-f]{64}$/.test(location.hash.slice(1))) tasks = [{ id: single[1], token: location.hash.slice(1) }];
     else if (location.hash.startsWith('#jobs=')) tasks = location.hash.slice(6).split(',').slice(0, 64).map(t => t.split(':')).filter(([id, token]) => /^[0-9a-f]{32}$/.test(id) && /^[0-9a-f]{64}$/.test(token)).map(([id, token]) => ({ id, token }));
-    if (single && !tasks.length) { $('submission-view').hidden = true; showError('This task needs its complete private link, including the part after #.', 'global-error'); }
+    if (single && !tasks.length) { $('submission-view').hidden = true; showError(new URLSearchParams(location.search).has('report') ? 'Open the complete private task link from your email or saved links to access this report. The report URL alone does not include its access key.' : 'This task needs its complete private link, including the part after #.', 'global-error'); }
     if (tasks.length) { renderTasks(); await refreshTasks(); }
     updateCount();
   } catch (e) { showError('Cannot connect to the analysis service. ' + e.message, 'global-error'); $('submit-button').disabled = true; }

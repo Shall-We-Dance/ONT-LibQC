@@ -76,7 +76,7 @@ def job_config(options,catalog,jobdir,cores):
         else: spike['combined_bowtie2_index']=mounts.path(spec['combined_bowtie2_index'],prefix=True)
     sample={'fastq':['/job/input.fastq.gz'],'type':options.assay,'reference':options.reference,'index_pairs':[p.model_dump() for p in options.index_pairs]}
     if options.mapper!='auto':sample['mapper']=options.mapper
-    if options.custom_regions:sample['custom_regions']={'bed':'/job/regions.bed','assembly':reference['assembly'],'label':options.regions_label,'mode':options.regions_mode}
+    if options.custom_regions:sample['custom_regions']={'bed':'/job/regions.bed','assembly':reference['assembly'],'label':options.regions_label,'mode':options.regions_mode,**({'bed_name':options.regions_filename} if options.regions_filename else {})}
     ranges=copy.deepcopy(RANGES)
     for k,v in options.qc_reference_ranges.items():
         ranges[k]=None if v is None else dict(v,**({'type':'percent'} if k not in {'raw_reads','mean_read_q'} else {}))

@@ -9,13 +9,14 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.concurrency import run_in_threadpool
 from .settings import Settings
 from .report_files import REPORT_FILE_SUFFIXES
+from .report_entry import online_report_links
 from .schema import Submission, BatchSubmission, SAFE_NAME, schema_payload
 from .security import RequestGate, RequestSecurity, client_address
-from .store import Store, ACTIVE, token_for, client_key, report_grant, valid_report_grant
+from .store import Store, ACTIVE, token_for, client_key, report_grant, valid_report_grant, report_session_token
 
 JOB_ID = re.compile(r'^[0-9a-f]{32}$')
 APP_CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
-REPORT_CSP = "sandbox allow-scripts allow-downloads; default-src 'none'; script-src 'unsafe-inline' 'self'; style-src 'unsafe-inline' 'self'; img-src 'self' data: blob:; object-src 'self'; font-src data:; connect-src 'none'; frame-ancestors 'none'; form-action 'none'; base-uri 'none'"
+REPORT_CSP = "sandbox allow-scripts allow-downloads allow-popups; default-src 'none'; script-src 'unsafe-inline' 'self'; style-src 'unsafe-inline' 'self'; img-src 'self' data: blob:; object-src 'self'; font-src data:; connect-src 'none'; frame-ancestors 'none'; form-action 'none'; base-uri 'none'"
 
 
 def create_app(settings=None):
@@ -30,15 +31,26 @@ def create_app(settings=None):
     def owned(request,job_id,report=False):
         if not JOB_ID.fullmatch(job_id): raise HTTPException(404,'Task not found')
         auth=request.headers.get('authorization','')
-        token=auth[7:] if auth.startswith('Bearer ') else request.cookies.get('ont_report_'+job_id,'') if report else ''
+        token=auth[7:] if auth.startswith('Bearer ') else ''
         authenticated=bool(re.fullmatch(r'[0-9a-f]{64}',token) and hmac.compare_digest(token,token_for(s.secret,job_id)))
         if report and not authenticated:
-            authenticated=valid_report_grant(s.secret,job_id,request.query_params.get('view',''))
+            cookie=request.cookies.get('ont_report_'+job_id,'')
+            authenticated=bool(re.fullmatch(r'[0-9a-f]{64}',cookie) and (
+                hmac.compare_digest(cookie,report_session_token(s.secret,job_id)) or
+                hmac.compare_digest(cookie,token_for(s.secret,job_id))))  # Existing browser sessions.
+            if not authenticated:
+                authenticated=valid_report_grant(s.secret,job_id,request.query_params.get('view',''))
         if not authenticated:
             raise HTTPException(404,'Task not found or the private link is invalid')
         row=store.get(job_id)
         if not row: raise HTTPException(404,'Task not found')
         return row
+
+    def report_cookie(response, row):
+        response.set_cookie('ont_report_'+row['id'],report_session_token(s.secret,row['id']),
+                            httponly=True,secure=s.secure_cookies,samesite='lax',
+                            path=f"/reports/{row['id']}/",max_age=max(0,int(row['expires']-time.time())))
+        return response
 
     def public_job(row):
         opts=json.loads(row['options']) if row['options'] else {}
@@ -176,10 +188,7 @@ def create_app(settings=None):
     @api.post('/api/jobs/{job_id}/session')
     async def session(request:Request,job_id:str):
         row=owned(request,job_id)
-        response=JSONResponse({'status':row['status']})
-        response.set_cookie('ont_report_'+job_id,token_for(s.secret,job_id),httponly=True,secure=s.secure_cookies,
-                            samesite='strict',path=f'/reports/{job_id}/',max_age=min(3600,max(0,int(row['expires']-time.time()))))
-        return response
+        return report_cookie(JSONResponse({'status':row['status']}),row)
 
     @api.post('/api/jobs/{job_id}/cancel')
     async def cancel(request:Request,job_id:str):
@@ -218,21 +227,29 @@ def create_app(settings=None):
                 query=dict(parse_qsl(parts.query));query['view']=grant
                 target=urlunsplit(('', '', parts.path, urlencode(query), parts.fragment))
                 return attr+'='+quote+html.escape(target,quote=True)+quote
-            body=re.sub(r"\b(href|src)\s*=\s*(['\"])(.*?)\2",local_link,path.read_text(),flags=re.I)
+            body=re.sub(r"\b(href|src)\s*=\s*(['\"])(.*?)\2",local_link,online_report_links(path.read_text(),file),flags=re.I)
             return HTMLResponse(body)
         return FileResponse(path,media_type=media)
 
     @api.get('/reports/{job_id}/{file:path}')
     async def report(request:Request,job_id:str,file:str):
-        row=owned(request,job_id,report=True)
+        try:
+            row=owned(request,job_id,report=True)
+        except HTTPException as error:
+            document=request.headers.get('sec-fetch-dest')=='document' or 'text/html' in request.headers.get('accept','')
+            if error.status_code==404 and JOB_ID.fullmatch(job_id) and document:
+                return RedirectResponse(f'/jobs/{job_id}?report=1',status_code=303)
+            raise
         if row['expires']<time.time(): raise HTTPException(410,'This report has expired')
         if row['status']!='succeeded': raise HTTPException(404,'The report is not available')
-        grant=request.query_params.get('view','')
-        if not valid_report_grant(s.secret,job_id,grant):grant=report_grant(s.secret,job_id,min(int(time.time())+3590,int(row['expires'])))
+        # Renew resource grants on every authorized document navigation, including
+        # navigation from an older report page. The cookie carries read-only access.
+        grant=report_grant(s.secret,job_id,min(int(time.time())+3590,int(row['expires'])))
         if file=='index.html':
             sample=json.loads(row['options']).get('sample','')
-            if re.fullmatch(SAFE_NAME,sample):return RedirectResponse(f'/reports/{job_id}/samples/{sample}.html?view={grant}',status_code=307)
-        return safe_report(s.state/'reports'/job_id,file,grant)
+            if re.fullmatch(SAFE_NAME,sample):return report_cookie(RedirectResponse(f'/reports/{job_id}/samples/{sample}.html?view={grant}',status_code=307),row)
+        response=safe_report(s.state/'reports'/job_id,file,grant)
+        return report_cookie(response,row) if file.endswith('.html') else response
 
     @api.get('/example/{file:path}')
     async def example(file:str): return safe_report(s.examples,file or 'index.html')

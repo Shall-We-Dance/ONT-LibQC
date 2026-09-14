@@ -59,20 +59,25 @@ return {parseBed,compute,resolveParameters};
 if(typeof module!=='undefined')module.exports=CustomRegions;
 if(typeof document!=='undefined')(() => {
 const payload=JSON.parse(document.getElementById('custom-payload').textContent),message=document.getElementById('custom-message'),output=document.getElementById('custom-output'),downloads=document.getElementById('custom-downloads');let urls=[];
+const localResult=document.getElementById('custom-local'),currentSource=document.getElementById('custom-current-source');
+function clearResult(){output.replaceChildren();downloads.replaceChildren();urls.forEach(URL.revokeObjectURL);urls=[];if(localResult)localResult.hidden=true;if(currentSource)currentSource.textContent='';}
 const bedInput=document.getElementById('custom-bed'),bedName=document.getElementById('custom-bed-name');
 bedInput.addEventListener('change',()=>{
   if(!bedName)return;
   document.getElementById('custom-assembly').checked=false;
-  const name=bedInput.files[0]?.name||'No BED selected';
+  clearResult();
+  message.textContent=bedInput.files[0] ? 'Confirm coordinates and click Draw metaplot to analyze the selected BED.' : '';
+  const name=bedInput.files[0]?.name||'No new BED selected';
   bedName.textContent=name;
   bedInput.closest('.custom-file-picker').title=name;
 });
 const escape=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 document.getElementById('custom-run').addEventListener('click',async()=>{
-  output.replaceChildren();downloads.replaceChildren();urls.forEach(URL.revokeObjectURL);urls=[];
+  clearResult();
   try {
     if(!document.getElementById('custom-assembly').checked)throw Error(`Confirm that the BED uses ${payload.reference} coordinates`);
     const file=document.getElementById('custom-bed').files[0];if(!file)throw Error('Choose a BED file first');if(file.size>10*1024*1024)throw Error('Use a BED file smaller than 10 MB');
+    if(localResult)localResult.hidden=false;if(currentSource)currentSource.textContent='BED: '+file.name;
     message.textContent='Calculating…';await new Promise(resolve=>setTimeout(resolve,0));
     const bed=CustomRegions.parseBed(await file.text(),payload.sizes,payload.primary),scope=payload.scopes[document.getElementById('custom-scope').value],params=CustomRegions.resolveParameters(bed.rows,{...payload.parameters,mode:document.getElementById('custom-mode').value}),p=CustomRegions.compute(scope.records,bed.rows,payload.sizes,params);
     const point=params.mode==='reference_point',modeLabel=point?'Reference point (interval midpoint)':'Region (scaled body)';

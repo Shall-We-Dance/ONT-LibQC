@@ -15,6 +15,7 @@ rule reports:
         definitions="workflow/scripts/metric_definitions.json",
         definition_script="workflow/scripts/qc_definitions.py",
         custom_script="workflow/scripts/custom_regions.py",
+        custom_ui="workflow/scripts/custom_regions_ui.py",
         custom_browser="workflow/scripts/custom_regions.js",
         modern_css="workflow/scripts/report_modern.css",
         branding="workflow/scripts/report_brand.py",

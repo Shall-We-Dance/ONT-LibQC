@@ -50,6 +50,8 @@ alignment:
 
 # Mode: auto (all retained intervals 1 bp → reference_point, otherwise region); manual: reference_point or region.
 # Optional samples.<sample>.custom_regions: {bed: target_regions.bed, assembly: dm6, label: Target domains, mode: auto}
+# mode: auto selects reference_point for 1-bp intervals, otherwise region (scaled).
+# The report retains the BED basename; optional bed_name overrides its display name.
 samples:
   inputA:
     fastq:

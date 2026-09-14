@@ -70,6 +70,7 @@ class Options(StrictModel):
     mycoplasma: bool = False
     custom_regions: bool = False
     regions_label: str = Field(default='Uploaded regions',pattern=r'^[A-Za-z0-9 _().-]{1,80}$')
+    regions_filename: str | None = Field(default=None, max_length=180, pattern=r'^[^/\\\x00-\x1f\x7f]{1,180}$')
     regions_mode: Literal['auto','reference_point','region'] = 'auto'
     regions_assembly: str | None = Field(default=None,pattern=r'^[A-Za-z0-9_-]{1,32}$')
     index_pairs: list[IndexPair] = Field(default_factory=list,max_length=96)
