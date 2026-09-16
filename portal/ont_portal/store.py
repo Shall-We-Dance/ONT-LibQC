@@ -52,6 +52,11 @@ class Store:
             CREATE INDEX IF NOT EXISTS admission_subject_created ON admission_events(subject, created);
             CREATE TABLE IF NOT EXISTS service (key TEXT PRIMARY KEY, value TEXT NOT NULL);
             ''')
+        # Serialize the additive migration across web, worker and mail processes.
+        with self.connect(immediate=True) as c:
+            if 'batch_id' not in {r['name'] for r in c.execute('PRAGMA table_info(jobs)')}:
+                c.execute('ALTER TABLE jobs ADD COLUMN batch_id TEXT')
+            c.execute('CREATE INDEX IF NOT EXISTS jobs_batch ON jobs(batch_id)')
         self.db.chmod(0o600)
 
     @contextmanager

@@ -123,7 +123,7 @@ class Worker:
     def memory_for(self, options):
         required=memory_bytes(self.memory)
         mapper=options.mapper if options.mapper!='auto' else ('bwa-mem2' if options.assay=='microc' else 'bowtie2')
-        if mapper=='bwa-mem2':
+        if mapper=='bwa-mem2' or options.assay=='microc':
             prefix=self.catalog['references'][options.reference]['bwa_mem2_index']
             index_size=sum(Path(prefix+suffix).stat().st_size for suffix in ('.bwt.2bit.64','.0123','.pac'))
             required=max(required,math.ceil((index_size+3*1024**3)/1024**3)*1024**3)

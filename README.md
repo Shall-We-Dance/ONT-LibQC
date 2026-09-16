@@ -20,7 +20,7 @@ Download or clone the repository, then open `example_report/index.html` in your 
 | Sample | Library | Reference | Explore |
 | --- | --- | --- | --- |
 | [HL240](example_report/samples/HL240.html) | Chromatin | hg38 | Library profiles, gene coverage and local BED regions |
-| [HL120](example_report/samples/HL120.html) | Micro-C | dm6 | Contacts, ligation structure and MNase size evidence |
+| [HL120](example_report/samples/HL120.html) | Micro-C | dm6 | Pairtools UU/UR/RU fractions, contacts, ligation structure and MNase size evidence |
 
 Explore library size profiles, gene coverage, local BED uploads, contact metrics, ligation structure and MNase size evidence. Figures and downloadable report data for both samples are included.
 
@@ -52,6 +52,8 @@ Run commands from the directory containing `Snakefile`. The default target is `a
 - `params` / `qc_reference_ranges`: analysis settings and local screening cutoffs; see [metric definitions](workflow/scripts/metric_definitions.json).
 - `tools`: optional executable overrides; otherwise commands are found on `PATH`.
 
+Micro-C reports include Pairtools categories (UU, UR/RU, DD, WW and Other) after duplicate marking. This uses overlapping ends of at most 150 bp, fastp, BWA-MEM2 and Pairtools, alongside the native contact and full-insert analyses. All parsed pairs remain in the denominator; fastp exclusions are reported separately. Promoter/gene/distal pies are limited to chromatin libraries.
+
 ## Output
 
 Open `report/index.html` after a local workflow run. Copy the entire `report/` folder to share it. Online analyses provide the same portable files in a complete report ZIP and open the individual sample directly. BED uploads and plot exports run locally in the browser; export any additional browser-generated plots separately from the saved report bundle.
@@ -61,8 +63,10 @@ Open `report/index.html` after a local workflow run. Copy the entire `report/` f
 | `report/index.html` | All-sample overview |
 | `report/samples/` | Sample reports and sublibrary results |
 | `report/assets/` | Figures and figure source tables |
-| `report/data/` | QC metrics, adapter/index tables, screens, ligation and MNase evidence |
+| `report/data/` | QC metrics, adapter/index tables, screens, Pairtools categories, ligation and MNase evidence |
 | `report/downloads.html` | All downloadable report data |
+
+Micro-C Pairtools exports are in `report/data/pairtools/`: per-sample JSON settings/counts, `.summary.tsv` fractions, and `.units.tsv.gz` pair types after marking linked to parent reads. DD is a depth-dependent processing category, not an estimate of PCR duplication or library complexity. The category definitions follow [Pairtools parsing](https://pairtools.readthedocs.io/en/latest/parsing.html).
 
 All calculation intermediates go to `output_dir` (default `.work`). After the report is generated and its links are checked, the workflow removes BAM/BAI, SAM, extracted FASTQ, coverage tracks, matrices and the working directory. Failed runs retain working files for resumption. Original FASTQ and supplied references are preserved.
 

@@ -1,12 +1,10 @@
-"""Private, bounded SMTP notifications after report publication.
-
-The public container never receives SMTP credentials. A frontend-only deployment
-runs this module from a small host timer, independently of the compute bridge.
-"""
+"""Private SMTP notifications, one durable delivery per completed submission."""
 import argparse, fcntl, json, logging, os, smtplib, ssl, time
+from email import policy
+from email.parser import BytesParser
 from pathlib import Path
 import yaml
-from .store import Store
+from .store import Store, TERMINAL
 from .mail_template import build_message
 
 LOG=logging.getLogger('ont-libqc-mail')
@@ -22,7 +20,6 @@ def send(smtp,message):
         if mode=='starttls':client.starttls(context=context)
         if smtp.get('username'):client.login(smtp['username'],smtp['password'])
         client.send_message(message)
-        # A disconnect during QUIT cannot invalidate an accepted DATA response.
     finally:client.close()
 
 
@@ -38,30 +35,47 @@ def notify(config,limit=5):
         secret=json.loads(Path(config['secrets_file']).read_text())['signing_key']
         with store.connect() as c:
             c.execute('CREATE TABLE IF NOT EXISTS notification_attempts (job_id TEXT PRIMARY KEY, first_attempt REAL NOT NULL)')
-            c.execute('DELETE FROM notification_attempts WHERE job_id NOT IN (SELECT id FROM jobs WHERE status != ?)',('expired',))
-            rows=[dict(r) for r in c.execute("SELECT * FROM jobs WHERE status IN ('succeeded','failed') AND expires>? AND mail_status IN ('pending','retry','sending') AND mail_attempts<5 AND mail_updated<? ORDER BY created LIMIT ?",(time.time(),time.time()-300,max(1,min(5,limit))))]
-        for row in rows:
-            jid=row['id']
-            if row['status']=='succeeded' and not (state/'reports'/jid/'report.zip').is_file():continue
+            c.execute('CREATE TABLE IF NOT EXISTS notification_messages (job_id TEXT PRIMARY KEY, payload BLOB NOT NULL)')
+            # Frozen MIME makes retries identical even if a task expires meanwhile.
+            c.execute("DELETE FROM notification_attempts WHERE job_id NOT IN (SELECT COALESCE(batch_id,id) FROM jobs WHERE status != 'expired')")
+            c.execute('DELETE FROM notification_messages WHERE job_id NOT IN (SELECT job_id FROM notification_attempts)')
+            candidates=[dict(r) for r in c.execute("SELECT * FROM jobs WHERE status IN ('succeeded','failed','cancelled') AND expires>? AND mail_status IN ('pending','retry','sending') AND mail_attempts<5 AND mail_updated<? ORDER BY created",(time.time(),time.time()-300))]
+        seen=set();attempted=0
+        for row in candidates:
+            key=row['batch_id'] or row['id']
+            if key in seen:continue
+            seen.add(key)
             with store.connect(immediate=True) as c:
+                rows=[dict(r) for r in c.execute('SELECT * FROM jobs WHERE batch_id=? ORDER BY created,id',(row['batch_id'],))] if row['batch_id'] else [dict(c.execute('SELECT * FROM jobs WHERE id=?',(row['id'],)).fetchone())]
+                if any(r['status'] not in TERMINAL for r in rows):continue
+                live=[r for r in rows if r['mail_status']!='expired']
+                if not live or any(r['mail_status'] not in {'pending','retry','sending'} or r['mail_attempts']>=5 or r['mail_updated']>=time.time()-300 for r in live):continue
+                if any(r['status']=='succeeded' and r['expires']>time.time() and not (state/'reports'/r['id']/'report.zip').is_file() for r in rows):continue
+                if len({r['email'] for r in live})!=1:continue
+                # A batch keeps the same retry record even if its earliest task expires.
+                row=live[0];jid=key;ids=[r['id'] for r in live]
+                placeholders=','.join('?' for _ in ids)
                 c.execute('INSERT OR IGNORE INTO notification_attempts VALUES (?,?)',(jid,time.time()))
                 first=c.execute('SELECT first_attempt FROM notification_attempts WHERE job_id=?',(jid,)).fetchone()[0]
-                # Resend keeps deduplication keys for 24 hours. Never replay an
-                # ambiguous old delivery after that window (e.g. a long outage).
                 if time.time()-first>23*3600:
-                    c.execute("UPDATE jobs SET mail_status='failed' WHERE id=?",(jid,));continue
-                changed=c.execute("UPDATE jobs SET mail_status='sending',mail_attempts=mail_attempts+1,mail_updated=? WHERE id=? AND status=? AND expires>? AND mail_status IN ('pending','retry','sending')",(time.time(),jid,row['status'],time.time())).rowcount
-                if not changed:continue
+                    c.execute(f"UPDATE jobs SET mail_status='failed' WHERE id IN ({placeholders})",ids);continue
+                saved=c.execute('SELECT payload FROM notification_messages WHERE job_id=?',(jid,)).fetchone()
+                if saved:message=BytesParser(policy=policy.default).parsebytes(saved[0])
+                else:
+                    message=build_message(config,smtp,row,secret,rows=rows if row['batch_id'] else None)
+                    c.execute('INSERT INTO notification_messages VALUES (?,?)',(jid,message.as_bytes()))
+                c.execute(f"UPDATE jobs SET mail_status='sending',mail_attempts=mail_attempts+1,mail_updated=? WHERE id IN ({placeholders})",(time.time(),*ids))
             try:
-                message=build_message(config,smtp,row,secret)
                 send(smtp,message);status='sent'
             except Exception as exc:
                 permanent=isinstance(exc,smtplib.SMTPRecipientsRefused) or (isinstance(exc,smtplib.SMTPResponseException) and 500<=exc.smtp_code<600)
                 status='failed' if permanent or row['mail_attempts']+1>=5 else 'retry'
-                # Never log provider responses, recipients, links or credentials.
                 LOG.warning('Notification %s for task %s (%s)',status,jid,type(exc).__name__)
             with store.connect() as c:
-                c.execute("UPDATE jobs SET mail_status=?,mail_updated=? WHERE id=? AND mail_status='sending'",(status,time.time(),jid))
+                c.execute(f"UPDATE jobs SET mail_status=?,mail_updated=? WHERE id IN ({placeholders}) AND mail_status='sending'",(status,time.time(),*ids))
+                if status in {'sent','failed'}:c.execute('DELETE FROM notification_messages WHERE job_id=?',(jid,))
+            attempted+=1
+            if attempted>=max(1,min(5,limit)):break
         with store.connect() as c:
             c.execute("UPDATE jobs SET mail_status='failed' WHERE mail_status='sending' AND mail_attempts>=5 AND mail_updated<?",(time.time()-300,))
 

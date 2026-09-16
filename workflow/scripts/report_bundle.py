@@ -176,7 +176,10 @@ def build(work, report, config_path):
                       work / 'qc/spike_in' / f'{sample}.json']
             for category, pattern in [('gene_profile', f'{sample}*.profile.tsv'),
                                       ('custom_regions', f'{sample}.json'),
-                                      ('ligation', f'{sample}.json')]:
+                                      ('ligation', f'{sample}.json'),
+                                      ('pairtools', f'{sample}.json'),
+                                      ('pairtools', f'{sample}.summary.tsv'),
+                                      ('pairtools', f'{sample}.units.tsv.gz')]:
                 queue.extend((work / 'qc' / category).glob(pattern))
             snapshot = work / 'qc/spike_in/database_manifests' / f'{sample}.json'
             if snapshot.is_file(): queue.append(snapshot)

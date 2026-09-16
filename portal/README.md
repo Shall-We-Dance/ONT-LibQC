@@ -4,9 +4,11 @@
 
 # ONT-LibQC web portal
 
-A self-hosted upload and reporting interface for this Snakemake workflow. Each FASTQ has an independent configuration, private task link, and downloadable report. The results page links directly to each sample report; online report bundles contain no all-sample summary page or overview figure. The included HL240 chromatin and HL120 Micro-C examples are available without submitting a job.
+A self-hosted upload and reporting interface for this Snakemake workflow. Each FASTQ has an independent configuration, private task link, and downloadable report. The results page links directly to each sample report; online report bundles contain no all-sample summary page or overview figure. The included HL240 chromatin and HL120 Micro-C examples are available without submitting a job. Micro-C reports include Pairtools UU, UR/RU, DD, WW and Other fractions with downloadable counts and per-unit evidence; promoter/gene/distal pies are shown only for chromatin libraries.
 
 Users can upload `.fastq`, `.fq`, `.fastq.gz` or `.fq.gz`, enter an email address, and choose the assay, prepared reference, mapper, optional screens, expected index pairs, primary chromosomes, BED regions, analysis parameters and report cutoffs. POD5 and FAST5 require basecalling before upload. Server paths, executable names, reference URLs and resource limits are controlled by the operator.
+
+Each newly uploaded file starts with **Choose reference genome…** and **Choose library assay…**. Both fields are highlighted until explicitly selected and are required before submission. No reference or assay is preselected. With multiple files, choose both fields on any file and click **Apply to all** to copy that reference and assay to the other libraries in the current upload selection. Individual files can still be adjusted afterward. Sample names and other settings are not copied; changing a reference resets BED coordinate confirmation and updates reference-dependent screens, and changing an assay updates the compatible analysis controls.
 
 For each newly uploaded file, Mycoplasma and spike-in / foreign-sequence screens are selected by default when the chosen reference has a prepared panel. Users can turn either screen off; their choices are retained when switching references. Unavailable screens remain disabled. The separate declaration that a spike-in was intentionally added is not selected automatically.
 
@@ -30,7 +32,7 @@ docker build -f portal/deploy/Dockerfile.runner -t ont-qc-runner:1 .
 docker build -f portal/deploy/Dockerfile.web -t ont-qc-web:1 .
 ```
 
-Choose a runtime directory writable by the service account; `/srv/ont-qc` is an example. Keep it outside the source tree. Building the runner installs the pipeline's aligners, Snakemake, plotting tools, R and karyoploteR.
+Choose a runtime directory writable by the service account; `/srv/ont-qc` is an example. Keep it outside the source tree. Building the runner installs the pipeline's aligners, fastp, Pairtools, Snakemake, plotting tools, R and karyoploteR. Rebuild the runner image when upgrading a deployment that predates the Pairtools analysis, then update `runner_image` in the compute worker settings and restart the idle worker.
 
 Prepare or adopt references as described below, then initialize the deployment:
 
@@ -236,11 +238,13 @@ On the frontend host, install the lightweight notification timer with the deploy
 python portal/scripts/mail.py --runtime /srv/ont-libqc/runtime
 ```
 
+Each submission receives **one summary email after all of its files reach a terminal state** (completed, failed, cancelled or expired), and successful reports are published. The email lists every file and its status, assay, reference, availability date and private task link, with one **View all results** button reopening the entire submission. Separate submissions remain separate even when they use the same email address. New batches are persisted when tasks are reserved, so fast completions cannot trigger premature individual messages. Existing tasks without batch metadata retain their original individual notification behavior; already sent messages are not sent again.
+
 The timer runs every 30 seconds with a 96 MB memory ceiling. In a split deployment, c8 sends notifications only after the completed report is installed locally; the compute bridge keeps email disabled for imported tasks. Notifications contain the private task link, not sequencing files. Existing jobs created with email disabled are not sent retroactively.
 
 Temporary failures retry after five minutes, at most five attempts. A process lock prevents competing senders, and Resend idempotency keys prevent duplicates within its 24-hour window. Ambiguous deliveries older than 23 hours stop retrying; generic SMTP cannot guarantee duplicate suppression after a connection failure. Permanently rejected deliveries stop immediately. A provider accepting mail does not guarantee inbox delivery. Inspect `mail_status` in the private task database and `journalctl --user -u ont-libqc-mail.service` for failures; logs omit recipients, links and credentials.
 
-The message includes a plain-text alternative and a styled HTML body with the logo embedded as a small inline PNG. It does not fetch remote images or attach sequencing data. Its button opens the private task page, where the report can be viewed or downloaded. The template escapes sample labels and uses stable MIME boundaries for retries.
+The message includes a plain-text alternative and a styled HTML body with the logo embedded as a small inline PNG. A compact result count and the primary report button appear above the library list. Each library has a clearly separated sample name, filename, status, assay/reference, report link and availability date; long filenames wrap within the email on narrow screens. It does not fetch remote images or attach sequencing data. Its button opens the private task page, where the report can be viewed or downloaded. The template escapes sample labels and uses stable MIME boundaries for retries. Batch retries share one attempt counter and idempotency key; the private MIME payload is frozen in the task database during retries and removed after delivery or expiration.
 
 A logo inside the message is separate from the sender avatar shown by a mailbox app. Resend cannot set that avatar through SMTP. For Apple Mail, the domain/organization must complete [Apple Branded Mail verification](https://resend.com/blog/apple-branded-mail). Gmail branding requires [BIMI and a supported mark certificate](https://knowledge.workspace.google.com/admin/security/set-up-bimi). Public assets are available at `/static/brand-logo.png` and `/static/mail-logo.svg` for those provider setups; publishing an asset alone does not activate a verified inbox logo. A DMARC record does not activate a verified inbox logo; complete the separate BIMI or mailbox-provider branding requirements before claiming that verification.
 

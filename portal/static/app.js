@@ -26,7 +26,17 @@ async function api(path, method = 'GET', body, token) {
   return data;
 }
 function control(label, input) { const id = 'field-' + crypto.randomUUID(); input.id = id; return node('div', { class: 'field' }, node('label', { for: id }, label), input); }
-function select(values, value) { return node('select', { value }, values.map(([id, label]) => node('option', { value: id }, label))); }
+function select(values, value) { const input = node('select', {}, values.map(([id, label]) => node('option', { value: id }, label))); input.value = value; return input; }
+function requiredChoice(label, input) {
+  input.required = true;
+  const field = control(label, input);
+  field.querySelector('label').append(node('span', { class: 'required-marker' }, 'Required'));
+  field.classList.add('required-choice');
+  const hint = node('p', { class: 'visually-hidden', id: input.id + '-hint' }, 'Please choose for this file.');
+  input.setAttribute('aria-describedby', hint.id);
+  const update = () => { field.classList.toggle('needs-choice', !input.value); hint.textContent = input.value ? 'Selected for this file.' : 'Please choose for this file.'; };
+  input.addEventListener('change', update); update(); field.append(hint); return field;
+}
 function check(label, description = '') {
   const input = node('input', { type: 'checkbox' });
   return { input, wrapper: node('label', { class: 'check' }, input, node('span', {}, label, description ? node('em', {}, description) : null)) };
@@ -38,7 +48,7 @@ function screenCheck(label, description) {
   return field;
 }
 function referenceChange(entry) {
-  const r = catalog.references.find(x => x.id === entry.ref.value);
+  const r = catalog.references.find(x => x.id === entry.ref.value) || { assembly: 'the selected reference', primary_chromosomes: [] };
   entry.bedAssembly = r.assembly || r.id;
   entry.bedConfirmText.textContent = 'I confirm this BED uses ' + entry.bedAssembly + ' coordinates';
   entry.bedHint.textContent = 'Choose a BED file for ' + entry.bedAssembly + '. Up to 4 MiB. The metaplot will be included in your report.';
@@ -52,8 +62,9 @@ function referenceChange(entry) {
   updateAssay(entry);
 }
 function updateAssay(entry) {
-  const assay = entry.assay.value, r = catalog.references.find(x => x.id === entry.ref.value);
-  entry.mapper.replaceChildren(node('option', { value: 'auto' }, assay === 'microc' ? 'Default · BWA-MEM2' : 'Default · Bowtie2'),
+  const assay = entry.assay.value, r = catalog.references.find(x => x.id === entry.ref.value) || { mappers: [] };
+  entry.mapper.disabled = !assay || !entry.ref.value;
+  entry.mapper.replaceChildren(node('option', { value: 'auto' }, !assay ? 'Choose a library assay first' : assay === 'microc' ? 'Default · BWA-MEM2' : 'Default · Bowtie2'),
     ...r.mappers.filter(x => assay !== 'microc' || x !== 'bowtie2').map(x => node('option', { value: x }, x)));
   entry.bedCheck.input.disabled = assay !== 'chromatin';
   if (assay !== 'chromatin') entry.bedCheck.input.checked = false;
@@ -99,9 +110,9 @@ function addFiles(incoming) {
     if (file.size > catalog.max_upload_bytes) { errors.push('“' + file.name + '” was not added: maximum ' + bytes(catalog.max_upload_bytes) + ' per file. For larger files, download the pipeline from GitHub and run it locally.'); continue; }
     const entry = { file, id: crypto.randomUUID() };
     entry.sample = node('input', { value: file.name.replace(/\.(fastq|fq)(\.gz)?$/i, '').replace(/[^A-Za-z0-9_-]/g, '_').replace(/^[^A-Za-z]/, 'S_').slice(0, 48), required: true, pattern: '[A-Za-z][A-Za-z0-9_-]{0,47}', maxlength: '48' });
-    entry.assay = select([['chromatin', 'Chromatin · CUT&RUN / CUT&Tag / ChIP / ATAC, etc.'], ['microc', 'Micro-C']], 'chromatin');
+    entry.assay = select([['', 'Choose library assay…'], ['chromatin', 'Chromatin · CUT&RUN / CUT&Tag / ChIP / ATAC, etc.'], ['microc', 'Micro-C']], '');
     const available = catalog.references.filter(r => r.ready);
-    entry.ref = select(available.map(r => [r.id, r.label]), available[0].id);
+    entry.ref = select([['', 'Choose reference genome…'], ...available.map(r => [r.id, r.label])], '');
     entry.mapper = select([['auto', 'Default · Bowtie2']], 'auto');
     entry.myco = screenCheck('Mycoplasma screen', 'An opportunistic screen; negative results do not exclude contamination.');
     entry.spike = screenCheck('Spike-in / foreign-sequence screen', 'Use the host-competitive reference panel available for this assembly.');
@@ -171,22 +182,58 @@ function addFiles(incoming) {
     }
     const header = node('div', { class: 'file-header' }, node('div', {}, node('strong', {}, file.name), node('br'), node('small', {}, bytes(file.size))),
       node('button', { type: 'button', class: 'remove', 'aria-label': 'Remove ' + file.name, onclick: () => { files = files.filter(f => f.id !== entry.id); entry.card.remove(); updateCount(); } }, '×'));
+    entry.applyNote = node('span', { class: 'apply-note', role: 'status', 'aria-live': 'polite' });
+    entry.applyButton = node('button', { type: 'button', class: 'secondary apply-all', onclick: () => applyToAll(entry), 'aria-label': 'Apply reference genome and library assay from ' + file.name + ' to all libraries' }, 'Apply to all');
+    entry.applyRow = node('div', { class: 'apply-row', hidden: true }, entry.applyNote, entry.applyButton);
     entry.card = node('article', { class: 'file-card' }, header, node('div', { class: 'file-body' },
-      node('div', { class: 'fields' }, control('Sample name', entry.sample), control('Reference genome', entry.ref), node('div', { class: 'full' }, control('Library assay', entry.assay))),
-      node('div', { class: 'check-list' }, entry.myco.wrapper, entry.spike.wrapper, entry.declared.wrapper, entry.bedCheck.wrapper), entry.bedBox, advanced, ranges));
+      node('div', { class: 'fields' }, control('Sample name', entry.sample), requiredChoice('Reference genome', entry.ref), node('div', { class: 'full' }, requiredChoice('Library assay', entry.assay))),
+      entry.applyRow, node('div', { class: 'check-list' }, entry.myco.wrapper, entry.spike.wrapper, entry.declared.wrapper, entry.bedCheck.wrapper), entry.bedBox, advanced, ranges));
     entry.ref.addEventListener('change', () => referenceChange(entry)); entry.assay.addEventListener('change', () => updateAssay(entry));
+    for (const input of [entry.ref, entry.assay]) input.addEventListener('change', () => {
+      for (const file of files) file.applyFeedback = '';
+      updateApplyControls();
+    });
     referenceChange(entry); files.push(entry); $('file-list').append(entry.card);
   }
   showUploadErrors(errors);
   updateCount();
 }
+function updateApplyControls() {
+  for (const entry of files) {
+    entry.applyRow.hidden = files.length < 2;
+    entry.applyButton.disabled = submitting || !entry.ref.value || !entry.assay.value;
+    entry.applyNote.textContent = !entry.ref.value || !entry.assay.value
+      ? 'Choose both fields to apply to all libraries.'
+      : entry.applyFeedback || 'Apply this reference and assay to all libraries.';
+  }
+}
+function applyToAll(source) {
+  if (submitting || !source.ref.value || !source.assay.value) return;
+  for (const entry of files) {
+    entry.applyFeedback = '';
+    if (entry === source) continue;
+    if (entry.ref.value !== source.ref.value) {
+      entry.ref.value = source.ref.value;
+      entry.ref.dispatchEvent(new Event('change'));
+    }
+    if (entry.assay.value !== source.assay.value) {
+      entry.assay.value = source.assay.value;
+      entry.assay.dispatchEvent(new Event('change'));
+    }
+  }
+  const count = files.length - 1;
+  source.applyFeedback = 'Applied to ' + count + ' other ' + (count === 1 ? 'library.' : 'libraries.');
+  updateApplyControls();
+}
 function updateCount() {
+  updateApplyControls();
   $('file-count').textContent = files.length + (files.length === 1 ? ' file' : ' files');
   $('empty-hint').hidden = files.length > 0;
   $('submit-button').disabled = !files.length || submitting || !catalog?.worker_online;
   $('submit-note').textContent = files.length ? files.length + ' independent ' + (files.length === 1 ? 'analysis' : 'analyses') : 'Select a file to begin';
 }
 function optionsFor(e) {
+  if (!e.ref.value || !e.assay.value) throw new Error('Choose a reference genome and library assay for ' + e.file.name + '.');
   const pairs = e.pairs.value.trim() ? e.pairs.value.trim().split(/\n+/).map(line => {
     const columns = line.trim().split(/\s+/);
     if (columns.length !== 3) throw new Error('Index pairs need exactly three columns: name i5 i7.');
@@ -319,7 +366,7 @@ async function init() {
     $('pipeline-link').href = catalog.pipeline_url;
     $('large-file-note').textContent = 'Larger than ' + bytes(catalog.max_upload_bytes) + '? Run the pipeline locally. Gzip files must also expand to at most ' + bytes(catalog.max_expanded_bytes) + '. Online analyses are limited to ' + catalog.max_reads.toLocaleString() + ' reads per file.';
     $('retention').textContent = catalog.retention_days + ' days';
-    $('email-note').textContent = catalog.mail_enabled ? 'We’ll email your private report link when the analysis finishes.' : 'Email delivery is not enabled on this server. Save your private task links to collect the reports here.';
+    $('email-note').textContent = catalog.mail_enabled ? 'We’ll send one summary email with all your results when every file in this submission has finished.' : 'Email delivery is not enabled on this server. Save your private task links to collect the reports here.';
     $('privacy-delivery-note').textContent = catalog.mail_enabled ? 'Your private link will also arrive by email. Keep it safe and share it only with people you trust.' : 'Save your task links before leaving. Without email delivery, lost links cannot be recovered here.';
     $('code-field').hidden = !catalog.submission_key_required; $('submission-code').required = catalog.submission_key_required;
     const single = location.pathname.match(/^\/jobs\/([0-9a-f]{32})$/);

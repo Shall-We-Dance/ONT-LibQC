@@ -1,0 +1,128 @@
+{
+  "schema_version": 2,
+  "sample": "HL120",
+  "settings": {
+    "end_length_bp": 150,
+    "minimum_insert_bp": 50,
+    "overlap_allowed": true,
+    "fastp_detect_adapter_for_pe": true,
+    "aligner": "bwa-mem2 mem -SP",
+    "min_mapq": 1,
+    "walks_policy": "mask",
+    "max_inter_align_gap": 20,
+    "max_molecule_size": 2000,
+    "duplicate_tolerance_bp": 1,
+    "duplicate_method": "max",
+    "duplicate_backend": "scipy",
+    "duplicate_scope": "sample",
+    "denominator": "all parsed pairs, including unmapped and masked walks"
+  },
+  "scopes": [
+    {
+      "scope_id": "total",
+      "scope_name": "Total library",
+      "input_units": 4747,
+      "short_inserts_excluded": 2,
+      "parsed_pairs": 4734,
+      "fastp_excluded_units": 13,
+      "after": {
+        "counts": {
+          "UU": 1956,
+          "UR/RU": 1084,
+          "DD": 33,
+          "WW": 673,
+          "Other": 988
+        },
+        "fractions": {
+          "UU": 0.4131812420785805,
+          "UR/RU": 0.2289818335445712,
+          "DD": 0.00697084917617237,
+          "WW": 0.14216307562315167,
+          "Other": 0.20870299957752428
+        },
+        "pair_types": {
+          "DD": 33,
+          "MM": 291,
+          "MR": 106,
+          "MU": 218,
+          "NN": 1,
+          "NR": 370,
+          "NU": 2,
+          "RU": 547,
+          "UR": 537,
+          "UU": 1956,
+          "WW": 673
+        },
+        "uu_to_ur_ru": 1.8044280442804428
+      }
+    },
+    {
+      "scope_id": "lib01",
+      "scope_name": "lib01",
+      "input_units": 4676,
+      "short_inserts_excluded": 2,
+      "parsed_pairs": 4663,
+      "fastp_excluded_units": 13,
+      "after": {
+        "counts": {
+          "UU": 1923,
+          "UR/RU": 1068,
+          "DD": 31,
+          "WW": 665,
+          "Other": 976
+        },
+        "fractions": {
+          "UU": 0.41239545357066265,
+          "UR/RU": 0.22903710057902638,
+          "DD": 0.006648080634784474,
+          "WW": 0.14261205232682822,
+          "Other": 0.20930731288869825
+        },
+        "pair_types": {
+          "DD": 31,
+          "MM": 288,
+          "MR": 106,
+          "MU": 215,
+          "NN": 1,
+          "NR": 364,
+          "NU": 2,
+          "RU": 538,
+          "UR": 530,
+          "UU": 1923,
+          "WW": 665
+        },
+        "uu_to_ur_ru": 1.800561797752809
+      }
+    }
+  ],
+  "fastp_summary": {
+    "fastp_version": "1.3.2",
+    "sequencing": "paired end (150 cycles + 150 cycles)",
+    "before_filtering": {
+      "total_reads": 9494,
+      "total_bases": 1418128,
+      "q20_bases": 1317941,
+      "q30_bases": 1205898,
+      "q20_rate": 0.929353,
+      "q30_rate": 0.850345,
+      "read1_mean_length": 149,
+      "read2_mean_length": 149,
+      "gc_content": 0.470458
+    },
+    "after_filtering": {
+      "total_reads": 9468,
+      "total_bases": 1413310,
+      "q20_bases": 1314572,
+      "q30_bases": 1203341,
+      "q20_rate": 0.930137,
+      "q30_rate": 0.851435,
+      "read1_mean_length": 149,
+      "read2_mean_length": 149,
+      "gc_content": 0.470503
+    }
+  },
+  "versions": {
+    "pairtools": "pairtools, version 1.1.3",
+    "fastp": "fastp 1.3.2"
+  }
+}

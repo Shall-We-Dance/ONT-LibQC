@@ -76,3 +76,18 @@ footer .footer-contact>span{font-weight:600;color:var(--ink)}
 footer .footer-contact a{display:inline-flex;align-items:center;gap:4px;min-height:28px;color:var(--muted);font-size:inherit;text-decoration:none;white-space:nowrap}
 footer .footer-contact a:hover{color:var(--blue);text-decoration:underline}
 footer .footer-contact a:focus-visible{outline:2px solid var(--blue);outline-offset:3px;border-radius:2px}
+
+/* Required choices share the same geometry as ordinary form fields. */
+.required-choice>label{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.required-marker{font-size:11px;font-weight:500;line-height:1;color:var(--muted);white-space:nowrap}
+.required-choice.needs-choice .required-marker{color:var(--blue)}
+.required-choice.needs-choice select{border-color:#80b4b5;background-color:#f5faf9}
+.required-choice select:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+
+/* Share only the reference and assay across the current upload selection. */
+.apply-row{display:flex;align-items:center;justify-content:space-between;gap:10px 16px;margin-top:12px}
+.apply-note{color:var(--muted);font-size:12px;line-height:1.5;min-width:0}
+.apply-all{flex-shrink:0;padding:7px 12px;font-size:12px;color:var(--blue);border-color:#b8d4d5;background:#fff}
+.apply-all:hover:not(:disabled){background:#f5faf9;border-color:var(--blue)}
+.apply-all:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+@media(max-width:470px){.apply-row{align-items:flex-start;flex-wrap:wrap}.apply-all{margin-left:auto}}

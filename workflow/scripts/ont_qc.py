@@ -2107,7 +2107,7 @@ def profile_scope_html(label, raw_name, insert_name, region_name, karyotype_name
     primary = card(assets['weighted'], 'ONT full-library profile (length-weighted)', 'length-weighted-profile')
     counts = card(assets['count'], 'ONT full-library profile (count-based)', 'full-library-count-card')
     counts += card(raw_name, 'Raw molecule size (count-based)') + card(insert_name, 'Insert size (count-based)')
-    analysis = card(region_name, 'Genomic regions')
+    analysis = card(region_name, 'Genomic regions') if region_name else ''
     if gene_name:
         analysis += card(gene_name, 'CPM-normalized TSS to TES profile')
     downloads = ' · '.join(f"<a href='assets/{html.escape(assets[key], quote=True)}'>{title}</a>" for key, title in
@@ -2118,8 +2118,8 @@ def profile_scope_html(label, raw_name, insert_name, region_name, karyotype_name
             f"<p class='muted size-profile-downloads'>{downloads}</p>"
             "<details class='count-based-details'><summary>Count-based profiles · full library, raw reads and inserts</summary>"
             "<p>Each recovered unit contributes one count to the full-library and insert profiles; each raw read contributes one count to the raw profile. Each curve has its own peak set to 100.</p>"
-            f"<div class='plots size-plots count-size-plots'>{counts}</div></details>"
-            f"<div class='plots analysis-plots'>{analysis}</div>"
+            f"<div class='plots size-plots count-size-plots'>{counts}</div></details>" +
+            (f"<div class='plots analysis-plots'>{analysis}</div>" if analysis else '') +
             "<details class='chromosome-detail'><summary>Chromosome coverage · auxiliary diagnostic</summary>"
             "<p>Inspect broad coverage imbalance and isolated concentration. Gene density and shallow coverage alone cannot establish target-specific enrichment or copy-number changes.</p>"
             f"<img src='assets/{html.escape(karyotype_name, quote=True)}' alt='Mapped reads by chromosome karyotype'></details></section>")
@@ -2218,9 +2218,11 @@ def cmd_report(args):
         report_primary, _=resolve_chromosome_sets(report_chrom_sizes, primary_arg, mito_arg)
         report_annotation=report_reference.get("annotation", "")
         annotation_key=(report_annotation, tuple(report_chrom_sizes.items()), tuple(report_primary), promoter_window)
-        if annotation_key not in annotation_cache:
-            annotation_cache[annotation_key]=load_gene_annotation(report_annotation, report_chrom_sizes, promoter_window)
-        report_promoters, report_genes=annotation_cache[annotation_key]
+        report_promoters, report_genes = {}, {}
+        if metric["assay"] == "chromatin":
+            if annotation_key not in annotation_cache:
+                annotation_cache[annotation_key]=load_gene_annotation(report_annotation, report_chrom_sizes, promoter_window)
+            report_promoters, report_genes=annotation_cache[annotation_key]
         report_assignments={}
         scope_allowed={}
         if metric.get("sub_libraries"):
@@ -2232,11 +2234,12 @@ def cmd_report(args):
         for sub_scope in metric.get("sub_libraries", []):
             allowed=scope_allowed.get(sub_scope["scope_id"], set())
             scope_records[sub_scope["scope_id"]]={qname: rec for qname, rec in report_records.items() if base_unit_id(qname) in allowed}
-        region_metrics=annotation_region_counts(report_records, report_promoters, report_genes, report_primary, report_mapq, promoter_window)
+        region_metrics=annotation_region_counts(report_records, report_promoters, report_genes, report_primary, report_mapq, promoter_window) if metric["assay"] == "chromatin" else {}
         sub_region_metrics={}
         for sub_scope in metric.get("sub_libraries", []):
             scoped_records=scope_records[sub_scope["scope_id"]]
-            sub_region_metrics[sub_scope["scope_id"]]=annotation_region_counts(scoped_records, report_promoters, report_genes, report_primary, report_mapq, promoter_window)
+            if metric["assay"] == "chromatin":
+                sub_region_metrics[sub_scope["scope_id"]]=annotation_region_counts(scoped_records, report_promoters, report_genes, report_primary, report_mapq, promoter_window)
         gene_profile_assets={}
         if metric["assay"] == "chromatin":
             gene_profile_source=out/"plots"/"gene_profile"/f"{sample}.TSS_TES.svg"
@@ -2277,8 +2280,11 @@ def cmd_report(args):
             insert_asset.write_text(svg_size_trace(profile["insert_lengths"],f"{label}: adapter-bounded insert size",trace_max,trace_bandwidth))
             full_library_assets=write_library_size_assets(out/"reports"/"assets", f"{sample}.{scope_id}", label,
                 scope_profiles.get(scope_id, {}).get("unit_rows", []), adapter_summary, trace_max, trace_bandwidth)
-            region_metric=region_metrics if scope_id == "total" else sub_region_metrics.get(scope_id, annotation_region_counts({}, report_promoters, report_genes, report_primary, report_mapq, promoter_window))
-            region_asset.write_text(svg_region_pie(region_metric,f"{label}: genomic regions"))
+            if metric["assay"] == "chromatin":
+                region_metric=region_metrics if scope_id == "total" else sub_region_metrics[scope_id]
+                region_asset.write_text(svg_region_pie(region_metric,f"{label}: genomic regions"))
+            else:
+                region_asset.unlink(missing_ok=True)
             if not getattr(args, "reuse_plot_assets", False) or not karyotype_asset.exists():
                 write_karyoploter(
                     scope_records.get(scope_id, {}), report_chrom_sizes, report_primary, report_mapq,
@@ -2287,10 +2293,15 @@ def cmd_report(args):
                     metric.get("reference_assembly", "custom genome"),
                     gene_window_bp=int(report_params.get("karyotype_gene_window_bp", 250000)))
             profile_sections.append(profile_scope_html(label, raw_asset.name, insert_asset.name,
-                                                       region_asset.name, karyotype_asset.name,
+                                                       region_asset.name if metric["assay"] == "chromatin" else None, karyotype_asset.name,
                                                        gene_profile_assets[scope_id].name if scope_id in gene_profile_assets else None,
                                                        full_library_assets=full_library_assets))
         profiles_html=''.join(profile_sections)
+        pairtools_html = ""
+        if metric["assay"] == "microc":
+            from microc_pairtools import report_html as pairtools_report
+            pairtools_result = json.loads((out/"qc/pairtools"/f"{sample}.json").read_text())
+            pairtools_html = pairtools_report(pairtools_result, out/"reports/assets", scopes)
         funnel_assets=[]
         if metric["assay"]=="microc":
             for scope in scopes:
@@ -2323,9 +2334,10 @@ def cmd_report(args):
         library_table=scoped_table_html(scopes,[key for key in library_keys if key not in library_key_metrics],ranges)
         type_specific_table=scoped_table_html(scopes,type_specific_keys,ranges)
         funnel_html=''.join(f"<img src='assets/{x}' alt='Micro-C contact QC plot'>" for x in funnel_assets)
+        funnel_details = ''
         if metric['assay']=='microc':
             detail_keys=["short_unmapped_units","both_legs_mapped","both_legs_mapping_rate","mapq_pass_pairs","mapq_pass_pair_rate","same_fragment_pairs","same_fragment_filter_pass_pairs","same_fragment_filter_pass_rate","contact_deduplication_retention","cis_contacts","trans_contacts","long_range_cis_contacts","long_range_within_cis_fraction","cis_lt1kb","cis_1_10kb","cis_10_100kb","cis_ge100kb"]
-            funnel_html += "<details class='metric-group'><summary>Contact counts and filtering details</summary>"+scoped_table_html(scopes,detail_keys,{})+"</details>"
+            funnel_details = "<details class='metric-group'><summary>Contact counts and filtering details</summary>"+scoped_table_html(scopes,detail_keys,{})+"</details>"
         settings=metric.get('metric_settings',metric_profile())
         definition_label=f"{settings['metric_profile']} · MAPQ ≥{settings['mapq']}"
         if metric['assay']=='chromatin':definition_label+=f" · {settings['collision_qc_bin_size']/1000:g} kb bins"
@@ -2335,7 +2347,7 @@ def cmd_report(args):
         report=f"""<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>{sample} · ONT-LibQC</title>{favicon("assets/ont-libqc-mark.svg")}<style>{REPORT_CSS}</style></head><body>
 {brand_bar("assets/ont-libqc-mark.svg")}
 <header class='report-hero'><span class='eyebrow'>ONT LIBRARY QUALITY CONTROL</span><h1>{sample}</h1><p>Shallow sequencing · whole-molecule library assessment</p><div class='hero-meta'><span>{html.escape(metric['assay'])}</span><span>{html.escape(reference_key)}</span><span>{metric['raw_reads']:,} raw molecules</span><span>{html.escape(definition_label)}</span></div></header>
-<nav class='report-nav'><a href='#sequencing'>Sequencing</a><a href='#library-shape'>NGS library QC</a><a href='#assay-qc'>Assay metrics</a>{"<a href='#custom-regions'>Custom regions</a>" if custom_html else "<a href='#ligation'>Ligation</a><a href='#mnase'>MNase</a>"}{"<a href='#spike-screen'>Candidate screen</a>" if metric.get('spike_in_mode')=='auto' or json.loads((out/'qc/spike_in'/f'{sample}.json').read_text()).get('mode')=='auto' else ''}<a href='../summary/index.html'>All samples ↗</a></nav>
+<nav class='report-nav'><a href='#sequencing'>Sequencing</a><a href='#library-shape'>NGS library QC</a><a href='#assay-qc'>Assay metrics</a>{"<a href='#custom-regions'>Custom regions</a>" if custom_html else ""}{"<a href='#pairtools'>Pairtools</a><a href='#ligation'>Ligation</a><a href='#mnase'>MNase</a>" if pairtools_html else ""}{"<a href='#spike-screen'>Candidate screen</a>" if metric.get('spike_in_mode')=='auto' or json.loads((out/'qc/spike_in'/f'{sample}.json').read_text()).get('mode')=='auto' else ''}<a href='../summary/index.html'>All samples ↗</a></nav>
 <div class='traffic-grid'>{top}</div>
 <section class='report-section' id='sequencing'><span class='eyebrow'>01 · SEQUENCING</span><h2>ONT Sequencing QC</h2>{ont_table}</section>
 <section class='report-section' id='library-shape'><span class='eyebrow'>02 · NGS LIBRARY QC</span><h2>NGS Library Type / Shape QC</h2>{identity_panel_html(metric,pairing,pairs)}
@@ -2345,9 +2357,10 @@ def cmd_report(args):
 {reference_notes_html()}
 <details><summary>Size and adapter interpretation</summary><p>The 120–170 bp raw-size window is supportive only. Dimer-like units have a ≤{fmt(metric.get('adapter_dimer_max_bp'))}-bp central gap. Unreconstructed template matches remain candidates; resolved 11–50 bp inserts are retained. Full-library sizes include expected outer adapters and inferred physical indexes, including units with undetected outer handles. The main profile weights each recovered unit by its modeled full-library length; count-based profiles are expandable. Curves are conditional on sequencing and adapter recovery and do not measure TapeStation fluorescence or NGS molarity.</p></details>
 <div class='library-profiles' id='profiles'><h3>Library profiles · size &amp; genomic distribution</h3>{profiles_html}</div></section>
-<section class='report-section' id='assay-qc'><span class='eyebrow'>03 · ASSAY EVIDENCE</span><h2>{type_specific_title}</h2>{type_specific_table}<details><summary>Assay interpretation</summary><p>{html.escape(metric.get('classification_note',''))}</p></details>{"<h3>Micro-C valid-contact funnel</h3><div class='plots'>"+funnel_html+"</div>" if funnel_html else ""}</section>
+<section class='report-section' id='assay-qc'><span class='eyebrow'>03 · ASSAY EVIDENCE</span><h2>{type_specific_title}</h2>{type_specific_table}<details><summary>Assay interpretation</summary><p>{html.escape(metric.get('classification_note',''))}</p></details>{"<h3>Micro-C valid-contact funnel</h3><div class='plots'>"+funnel_html+"</div>"+funnel_details if funnel_html else ""}</section>
+{pairtools_html}
 {custom_html}{extension_report_html(out, sample, scopes, metric)}
-<footer class='report-footer'><details><summary>Methods &amp; interpretation</summary><p>Reference values distinguish local screening settings, biological context and statistical expectations. Gene profiles show mean coverage and SEM across annotated genes; SEM is not biological replicate uncertainty. CPM uses MAPQ-pass configured primary nuclear alignments in each scope. Region fractions and chromosome density use mapped alignments (Micro-C: endpoint legs). PCR-duplicate rate is omitted at this shallow depth; Micro-C contact deduplication remains an internal validity filter.</p></details><p><a href='../summary/index.html'>All samples</a> · <a href='../qc/adapters/{sample}.reads.tsv.gz'>Adapter table</a> · <a href='../qc/adapters/{sample}.index_assignments.tsv.gz'>Index assignments</a></p></footer>{REPORT_TOOLTIP_SCRIPT}</body></html>"""
+<footer class='report-footer'><details><summary>Methods &amp; interpretation</summary><p>Reference values distinguish local screening settings, biological context and statistical expectations. Gene profiles show mean coverage and SEM across annotated genes; SEM is not biological replicate uncertainty. CPM uses MAPQ-pass configured primary nuclear alignments in each scope. Chromatin region fractions and chromosome density use mapped alignments; Micro-C chromosome density uses endpoint legs. Pairtools reports sample-level coordinate duplicate marks as DD; shallow sequencing does not estimate PCR duplication or library complexity. Native Micro-C contact deduplication remains an internal validity filter.</p></details><p><a href='../summary/index.html'>All samples</a> · <a href='../qc/adapters/{sample}.reads.tsv.gz'>Adapter table</a> · <a href='../qc/adapters/{sample}.index_assignments.tsv.gz'>Index assignments</a></p></footer>{REPORT_TOOLTIP_SCRIPT}</body></html>"""
         (out/"reports"/f"{sample}.html").write_text(report)
     columns=["sample","assay","reference_assembly","mean_read_q","outer_complete_unit_rate","index_assignment_rate","index_ambiguous_fraction","index_unassigned_fraction","cis_ratio_ci95_low","cis_ratio_ci95_high","raw_reads","sequencing_yield_call","complete_read_rate","adapter_dimer_rate","adapter_dimer_call","index_architecture","primary_mapping_rate","spike_in_reads","spike_in_fraction","collision_bin_size","collision_oe","collision_fragments","collision_observed_pairs","collision_null_expected_pairs","usable_fragment_rate","both_legs_mapping_rate","mapq_pass_pairs","same_fragment_filter_pass_pairs","unique_valid_contacts","valid_contact_rate","cis_ratio","long_range_cis_min_bp","long_range_cis_contacts","long_range_cis_fraction","contact_evidence_status","metric_profile","metric_definition_version"]
     for m in metrics:

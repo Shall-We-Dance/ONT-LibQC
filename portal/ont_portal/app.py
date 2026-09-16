@@ -92,7 +92,7 @@ def create_app(settings=None):
         subjects=[client,client_key(s.secret,'email:'+email.casefold())]
         now=time.time()
         requested=sum(entry.size+(4*1024**2 if entry.options.custom_regions else 0) for entry in submissions)
-        folders=[]; result=[]
+        folders=[]; result=[]; batch_id=uuid.uuid4().hex
         try:
             # Reserve the whole batch in one transaction. Concurrent submissions cannot
             # pass the same capacity check or leave a partly accepted batch behind.
@@ -115,8 +115,8 @@ def create_app(settings=None):
                 for entry in submissions:
                     jid=uuid.uuid4().hex
                     folder=s.state/'uploads'/jid; folder.mkdir(mode=0o700); folders.append(folder)
-                    c.execute('INSERT INTO jobs (id,created,updated,status,email,filename,expected_bytes,options,client,expires,mail_status) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-                        (jid,now+len(result)/1_000_000,now,'created',entry.email,entry.filename,entry.size,entry.options.model_dump_json(),client,now+s.retention_days*86400,'pending' if s.mail_enabled else 'disabled'))
+                    c.execute('INSERT INTO jobs (id,created,updated,status,email,filename,expected_bytes,options,client,expires,mail_status,batch_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+                        (jid,now+len(result)/1_000_000,now,'created',entry.email,entry.filename,entry.size,entry.options.model_dump_json(),client,now+s.retention_days*86400,'pending' if s.mail_enabled else 'disabled',batch_id))
                     result.append({'id':jid,'token':token_for(s.secret,jid),'status':'created'})
                 for subject in subjects:
                     c.execute('INSERT INTO admission_events VALUES (?,?,?)',(subject,now,amount))
