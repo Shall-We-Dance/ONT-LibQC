@@ -59,6 +59,10 @@ def create_app(settings=None):
         return {k:row[k] for k in ('id','status','created','updated','filename','expected_bytes','received_bytes','error','progress','mail_status','expires','bed_ready')} | {
             'sample':opts.get('sample','Expired task'),'assay':opts.get('assay'),'reference':opts.get('reference'),
             'queue_ahead':ahead if row['status']=='queued' else 0,'options':opts,
+            # Manual deletion uses expires=0; cleanup preserves this marker and
+            # natural expiry timestamps even after private task details are erased.
+            'deletion_reason':('manual' if row['expires']==0 else 'retention') if row['status']=='expired' else None,
+            'deletion_requested':row['status']!='expired' and row['expires']==0,
             'report_url':f"/reports/{row['id']}/samples/{opts['sample']}.html" if row['status']=='succeeded' and re.fullmatch(SAFE_NAME,opts.get('sample','')) else None,
             'download_url':f"/reports/{row['id']}/report.zip" if row['status']=='succeeded' else None,
         }
@@ -202,7 +206,9 @@ def create_app(settings=None):
     async def delete(request:Request,job_id:str):
         row=owned(request,job_id)
         if row['status'] in ACTIVE: raise HTTPException(409,'Cancel the active task before deleting its files')
-        store.update(job_id,expires=0)
+        # Repeated deletion must not relabel an already expired report as manual.
+        if row['status']=='expired':return {'status':'expired'}
+        if row['expires']>time.time():store.update(job_id,expires=0)
         return {'status':'deletion_requested'}
 
     def safe_report(root,file,grant=None):

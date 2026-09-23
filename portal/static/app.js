@@ -1,6 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 let catalog, files = [], tasks = [], submitting = false, refreshing = false, retryRequestsAt = 0;
+const taskViews = new WeakMap();
 const bytes = n => (n / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 2 }) + ' MB';
 function node(tag, attrs = {}, ...children) {
   const n = document.createElement(tag);
@@ -13,6 +14,24 @@ function node(tag, attrs = {}, ...children) {
   return n;
 }
 function showError(message, target = 'form-error') { $(target).textContent = message; $(target).hidden = !message; }
+// Do not infer file type from a .bed suffix: directories may have that suffix too.
+async function checkedBedFile(input, maxBytes = 10 * 1024 ** 2) {
+  const file = input.files?.[0];
+  if ([...(input.webkitEntries || [])].some(entry => entry.isDirectory) || ['inode/directory', 'application/x-directory'].includes(file?.type)) {
+    throw Error('Choose a BED file inside the folder, not the folder itself.');
+  }
+  if (!file) throw Error('Choose a BED file first.');
+  if (file.size > maxBytes) throw Error('Use a BED file of at most ' + maxBytes / 1024 ** 2 + ' MiB.');
+  // Dialog selections often have no filesystem entry. A read probe rejects
+  // directory-like or unreadable selections before parsing or upload.
+  try { await file.slice(0, 1).arrayBuffer(); }
+  catch { throw Error('Cannot read this selection. Open the folder and choose a readable BED file inside it.'); }
+  if (!file.size) throw Error('The BED file is empty. Choose a file containing regions.');
+  return file;
+}
+function bedDropIsDirectory(event) {
+  return [...(event.dataTransfer?.items || [])].some(item => (item.getAsEntry?.() || item.webkitGetAsEntry?.())?.isDirectory);
+}
 async function api(path, method = 'GET', body, token) {
   const headers = { 'X-Portal-Request': '1' };
   if (token) headers.Authorization = 'Bearer ' + token;
@@ -118,7 +137,7 @@ function addFiles(incoming) {
     entry.spike = screenCheck('Spike-in / foreign-sequence screen', 'Use the host-competitive reference panel available for this assembly.');
     entry.declared = check('A spike-in was intentionally added');
     entry.bedCheck = check('Include custom BED regions', 'Optional. Chromatin reports also support BED uploads in the browser.');
-    entry.bed = node('input', { type: 'file', accept: '.bed,.tsv,.txt' });
+    entry.bed = node('input', { type: 'file' }); // Keep .bed folders navigable in Safari.
     entry.bedLabel = node('input', { value: 'Uploaded regions', maxlength: '80', pattern: '[A-Za-z0-9 _().-]{1,80}' });
     entry.bedMode = select([['auto', 'Auto'], ['reference_point', 'Reference point'], ['region', 'Region (scaled)']], 'auto');
     entry.bedConfirm = node('input', { type: 'checkbox' });
@@ -133,12 +152,30 @@ function addFiles(incoming) {
         customField('Region label', entry.bedLabel),
         customField('Plot mode', node('span', { class: 'custom-select-shell' }, entry.bedMode)),
         node('div', { class: 'custom-actions' }, node('label', { class: 'custom-confirm' }, entry.bedConfirm, entry.bedConfirmText))));
-    entry.bed.addEventListener('change', () => {
-      const name = entry.bed.files[0]?.name || 'No BED selected';
-      entry.bedName.textContent = name; bedPicker.title = name;
-      entry.bedConfirm.checked = false;
+    entry.bedError = node('p', { class: 'error', role: 'alert', hidden: true }); entry.bedBox.append(entry.bedError);
+    const bedSelection = async () => {
+      const version = entry.bedVersion = (entry.bedVersion || 0) + 1;
+      const file = entry.bed.files[0], name = file?.name || 'No BED selected';
+      entry.bedName.textContent = name; bedPicker.title = name; entry.bedConfirm.checked = false;
+      entry.bedError.hidden = true; entry.bedError.textContent = '';
+      entry.bedChecking = Boolean(file); updateCount();
+      if (!file) return;
+      try { await checkedBedFile(entry.bed, 4 * 1024 ** 2); }
+      catch (e) {
+        if (version === entry.bedVersion) {
+          entry.bed.value = ''; entry.bedName.textContent = 'No BED selected'; bedPicker.title = '';
+          entry.bedError.textContent = e.message; entry.bedError.hidden = false;
+        }
+      } finally { if (version === entry.bedVersion) { entry.bedChecking = false; updateCount(); } }
+    };
+    entry.bed.addEventListener('change', bedSelection);
+    entry.bed.addEventListener('drop', event => {
+      if (!bedDropIsDirectory(event)) return;
+      event.preventDefault(); entry.bedVersion = (entry.bedVersion || 0) + 1; entry.bed.value = ''; entry.bedChecking = false;
+      entry.bedName.textContent = 'No BED selected'; bedPicker.title = ''; entry.bedConfirm.checked = false;
+      entry.bedError.textContent = 'Choose a BED file inside the folder, not the folder itself.'; entry.bedError.hidden = false; updateCount();
     });
-    entry.bedCheck.input.addEventListener('change', () => updateCustomRegions(entry));
+    entry.bedCheck.input.addEventListener('change', () => { updateCustomRegions(entry); updateCount(); });
     entry.pairs = node('textarea', { rows: '3', placeholder: 'libA ACGTACGT TGCATGCA\nlibB GATCTAGC CTAGATCG' });
     entry.chromosomes = node('input', { placeholder: '' });
     const advanced = node('details', {}, node('summary', {}, 'Advanced settings'));
@@ -229,7 +266,7 @@ function updateCount() {
   updateApplyControls();
   $('file-count').textContent = files.length + (files.length === 1 ? ' file' : ' files');
   $('empty-hint').hidden = files.length > 0;
-  $('submit-button').disabled = !files.length || submitting || !catalog?.worker_online;
+  $('submit-button').disabled = !files.length || submitting || !catalog?.worker_online || files.some(e => e.bedCheck.input.checked && e.bedChecking);
   $('submit-note').textContent = files.length ? files.length + ' independent ' + (files.length === 1 ? 'analysis' : 'analyses') : 'Select a file to begin';
 }
 function optionsFor(e) {
@@ -280,50 +317,134 @@ async function binaryUpload(task, file, endpoint, onprogress) {
   }
 }
 const labels = { created: 'Waiting for upload', uploading: 'Uploading', uploaded: 'Upload complete', queued: 'Queued', running: 'Analyzing', succeeded: 'Report ready', failed: 'Analysis failed', cancelling: 'Cancelling', cancelled: 'Cancelled', expired: 'Expired' };
+function taskProgress(task) {
+  const job = task.job || { status: 'created' };
+  const percent = Math.round(Math.min(100, Math.max(0, (task.uploading ? task.uploadProgress * 100 : job.progress) || 0)));
+  const deletionPending = job.status !== 'expired' && Boolean(task.deletionRequested || job.deletion_requested);
+  const message = deletionPending ? 'Your report is being permanently deleted and is no longer available.' : task.waitingForUpload ? 'Waiting to upload…' : task.uploading ? 'Uploading · ' + percent + '%' : job.status === 'queued' ? (job.queue_ahead ? job.queue_ahead + (job.queue_ahead === 1 ? ' analysis' : ' analyses') + ' ahead of you' : 'Waiting for the analysis worker') : job.status === 'running' ? 'Processing reads and building your report…' : job.status === 'succeeded' ? 'Your interactive report and downloads are ready.' : labels[job.status];
+  return { percent, message };
+}
 function taskView(task) {
   const job = task.job || { status: 'created', sample: task.name || 'Loading task…' };
+  const expired = job.status === 'expired';
+  const deleted = expired && job.deletion_reason === 'manual';
+  const deletionPending = !expired && Boolean(task.deletionRequested || job.deletion_requested);
   const card = node('article', { class: 'task-card' });
-  const title = node('div', { class: 'task-title' }, node('h2', {}, job.sample || 'Analysis'), node('span', { class: 'status ' + job.status }, labels[job.status] || job.status));
+  const title = node('div', { class: 'task-title' }, node('h2', {}, expired ? (deleted ? 'Report deleted' : 'Report expired') : job.sample || 'Analysis'), node('span', { class: 'status ' + (deleted ? 'deleted' : job.status) }, deletionPending ? 'Deletion requested' : deleted ? 'Deleted' : labels[job.status] || job.status));
   card.append(title, node('p', { class: 'task-meta' }, [job.filename, job.assay === 'microc' ? 'Micro-C' : job.assay === 'chromatin' ? 'Chromatin' : '', job.reference].filter(Boolean).join(' · ')));
-  const percent = task.uploading ? Math.round(task.uploadProgress * 100) : job.progress || 0;
+  const { percent, message } = taskProgress(task);
   const bar = node('span'); bar.style.width = percent + '%';
-  const message = task.waitingForUpload ? 'Waiting to upload…' : task.uploading ? 'Uploading · ' + percent + '%' : job.status === 'queued' ? (job.queue_ahead ? job.queue_ahead + (job.queue_ahead === 1 ? ' analysis' : ' analyses') + ' ahead of you' : 'Waiting for the analysis worker') : job.status === 'running' ? 'Processing reads and building your report…' : job.status === 'succeeded' ? 'Your interactive report and downloads are ready.' : labels[job.status];
-  card.append(node('div', { class: 'progress', role: 'progressbar', 'aria-label': 'Analysis progress', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(percent) }, bar), node('p', { class: 'progress-label' }, message));
+  if (expired) {
+    const retention = catalog?.retention_days;
+    const reason = deleted
+      ? 'This report was manually deleted. It can no longer be viewed or downloaded.'
+      : 'This report was automatically deleted when its retention period ended.' + (retention ? ' Reports are kept for ' + retention + (retention === 1 ? ' day.' : ' days.') : '');
+    card.append(node('div', { class: 'report-unavailable', role: 'status' }, node('p', {}, reason), node('p', {}, 'This cannot be undone. Submit the FASTQ again to generate a new report.')));
+  } else {
+    if (!deletionPending) card.append(node('div', { class: 'progress', role: 'progressbar', 'aria-label': 'Analysis progress', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(percent) }, bar));
+    card.append(node('p', { class: 'progress-label' }, message));
+  }
   if (task.failure || task.fetchError || job.error) card.append(node('div', { class: 'error' }, task.failure || task.fetchError || job.error));
   const actions = node('div', { class: 'task-actions' });
-  if (job.status === 'succeeded') {
+  if (job.status === 'succeeded' && !deletionPending) {
     actions.append(node('a', { class: 'primary button', href: job.report_url, target: '_blank', rel: 'noopener' }, 'Open ' + (job.sample || 'sample') + ' report ↗'), node('a', { class: 'secondary button', href: job.download_url }, 'Download report ZIP'));
     card.append(node('p', { class: 'field-note' }, 'Available until ' + new Date(job.expires * 1000).toLocaleString()));
   }
   actions.append(node('button', { type: 'button', class: 'secondary', onclick: async event => { try { await navigator.clipboard.writeText(privateLink(task)); event.target.textContent = 'Link copied'; } catch { saveText('ont-libqc-private-link.txt', privateLink(task)); } } }, 'Copy private link'));
   if (['created', 'uploaded', 'queued', 'running'].includes(job.status) && !task.uploading) actions.append(node('button', { type: 'button', class: 'secondary', onclick: async () => { try { await api('/api/jobs/' + task.id + '/cancel', 'POST', {}, task.token); await refreshTask(task); } catch (e) { task.failure = e.message; renderTasks(); } } }, 'Cancel analysis'));
-  if (['succeeded', 'failed', 'cancelled'].includes(job.status)) actions.append(node('button', { type: 'button', class: 'secondary', onclick: async event => { if (!task.confirmDelete) { task.confirmDelete = true; event.target.textContent = 'Confirm permanent deletion'; return; } try { await api('/api/jobs/' + task.id, 'DELETE', undefined, task.token); task.deletionRequested = true; event.target.textContent = 'Deletion requested'; event.target.disabled = true; } catch (e) { task.failure = e.message; renderTasks(); } } }, task.deletionRequested ? 'Deletion requested' : task.confirmDelete ? 'Confirm permanent deletion' : 'Delete report now'));
+  if (['succeeded', 'failed', 'cancelled'].includes(job.status)) {
+    const warning = node('p', { class: 'deletion-warning', id: 'delete-warning-' + task.id, role: 'status', hidden: true }, 'Permanently deletes this report and its files. This cannot be undone.');
+    const deleteButton = node('button', { type: 'button', class: 'secondary delete-report', onclick: async () => {
+      if (task.deleting || task.deletionRequested || job.deletion_requested) return;
+      if (!task.confirmDelete) { task.confirmDelete = true; updateDeleteButton(); return; }
+      task.deleting = true; task.failure = null; updateDeleteButton();
+      try {
+        await api('/api/jobs/' + task.id, 'DELETE', undefined, task.token);
+        task.deletionRequested = true; task.confirmDelete = false;
+      } catch (e) { task.failure = e.message; }
+      finally { task.deleting = false; renderTasks(); }
+    } });
+    function updateDeleteButton() {
+      const requested = Boolean(task.deletionRequested || job.deletion_requested);
+      const confirming = Boolean(task.confirmDelete && !requested);
+      deleteButton.classList.toggle('danger-confirm', confirming);
+      deleteButton.textContent = task.deleting ? 'Requesting deletion…' : requested ? 'Deletion requested' : confirming ? 'Confirm permanent deletion' : 'Delete report now';
+      deleteButton.disabled = Boolean(task.deleting || requested);
+      warning.hidden = !confirming;
+      if (confirming) deleteButton.setAttribute('aria-describedby', warning.id);
+      else deleteButton.removeAttribute('aria-describedby');
+    }
+    updateDeleteButton(); actions.append(deleteButton, warning);
+  }
   card.append(actions);
   if (job.options && job.status !== 'expired') { const detail = node('details', {}, node('summary', {}, 'Submitted settings'), node('pre', { class: 'field-note' }, JSON.stringify(job.options, null, 2))); detail.open = Boolean(task.detailsOpen); detail.addEventListener('toggle', () => { task.detailsOpen = detail.open; }); card.append(detail); }
   return card;
 }
+// Keep existing elements connected so polling does not restart motion or lose focus.
+function syncChildren(parent, children) {
+  const keep = new Set(children);
+  for (const child of [...parent.children]) if (!keep.has(child)) child.remove();
+  children.forEach((child, index) => {
+    if (parent.children[index] !== child) parent.insertBefore(child, parent.children[index] || null);
+  });
+}
+function updateTaskView(task) {
+  // Progress and timestamps change often; update the bar without rebuilding controls.
+  const { progress, updated, ...job } = task.job || {};
+  const key = JSON.stringify([job, task.name, task.uploading, task.waitingForUpload, task.failure, task.fetchError, task.confirmDelete, task.deleting, task.deletionRequested, catalog?.retention_days]);
+  let view = taskViews.get(task);
+  if (!view || view.key !== key) {
+    const card = taskView(task);
+    if (view) {
+      const previousProgress = view.card.querySelector('.progress');
+      const nextProgress = card.querySelector('.progress');
+      syncChildren(view.card, [...card.children].map(child => child === nextProgress && previousProgress ? previousProgress : child));
+      view.key = key;
+    } else {
+      view = { card, key }; taskViews.set(task, view);
+    }
+  }
+  const { percent, message } = taskProgress(task);
+  const track = view.card.querySelector('.progress');
+  const phase = task.uploading ? 'upload' : 'analysis';
+  if (track) {
+    // Upload and analysis have separate scales; reset immediately between them.
+    track.firstElementChild.style.transitionDuration = view.phase === phase ? '' : '0s';
+    track.firstElementChild.style.width = percent + '%';
+    track.setAttribute('aria-valuenow', String(percent));
+  }
+  const label = view.card.querySelector('.progress-label');
+  if (label && label.textContent !== message) label.textContent = message;
+  view.phase = phase;
+  return view.card;
+}
 function renderTasks() {
   const single = tasks.length === 1;
-  const ready = tasks.length > 0 && tasks.every(t => t.job?.status === 'succeeded');
-  const needsAttention = tasks.some(t => ['failed', 'cancelled', 'expired'].includes(t.job?.status));
-  $('tasks-title').textContent = ready
+  const ready = tasks.length > 0 && tasks.every(t => t.job?.status === 'succeeded' && !t.deletionRequested && !t.job.deletion_requested);
+  const unavailable = tasks.length > 0 && tasks.every(t => t.job?.status === 'expired');
+  const needsAttention = tasks.some(t => t.deletionRequested || t.job?.deletion_requested || ['failed', 'cancelled', 'expired'].includes(t.job?.status));
+  $('tasks-title').textContent = unavailable
+    ? (single ? 'Your report is no longer available.' : 'These reports are no longer available.')
+    : ready
     ? (single ? 'Your report is ready.' : 'Your reports are ready.')
     : needsAttention || !tasks.length
       ? (single ? 'Your analysis status.' : 'Your submission status.')
       : (single ? 'Your report is on its way.' : 'Your reports are on their way.');
   $('tasks-eyebrow').textContent = single ? 'YOUR ANALYSIS' : 'YOUR ANALYSES';
-  $('tasks-description').textContent = single
+  $('tasks-description').textContent = unavailable
+    ? 'The reason for removal is shown below. Submit the FASTQ again to generate ' + (single ? 'a new report.' : 'new reports.')
+    : single
     ? 'Track your analysis below. Save your private task link to return later.'
     : 'Track each analysis below. Save your private task links to return later.';
   $('save-links').textContent = single ? 'Save private link' : 'Save private links';
   $('submission-view').hidden = true; $('tasks-view').hidden = false;
-  $('task-list').replaceChildren(...tasks.map(taskView));
+  syncChildren($('task-list'), tasks.map(updateTaskView));
 }
 async function refreshTask(task) {
   if (task.uploading) return;
   try {
     task.job = await api('/api/jobs/' + task.id, 'GET', undefined, task.token); task.fetchError = null;
-    if (task.job.status === 'succeeded' && (!task.session || Date.now() - task.session > 1200000)) {
+    if (task.job.status === 'succeeded' && !task.job.deletion_requested && (!task.session || Date.now() - task.session > 1200000)) {
       await api('/api/jobs/' + task.id + '/session', 'POST', {}, task.token); task.session = Date.now();
     }
   } catch (e) { task.fetchError = e.message; }
@@ -335,7 +456,7 @@ async function refreshTasks() {
   try {
     for (const task of tasks) {
       if (Date.now() < retryRequestsAt) break;
-      if (!task.job || !['succeeded', 'expired', 'cancelled', 'failed'].includes(task.job.status) || task.fetchError || (task.job.status === 'succeeded' && (!task.session || Date.now() - task.session > 1200000))) await refreshTask(task);
+      if (!task.job || !['succeeded', 'expired', 'cancelled', 'failed'].includes(task.job.status) || task.fetchError || (task.job?.status !== 'expired' && (task.deletionRequested || task.job?.deletion_requested || task.job?.expires <= Date.now() / 1000)) || (task.job.status === 'succeeded' && (!task.session || Date.now() - task.session > 1200000))) await refreshTask(task);
     }
   } finally { refreshing = false; renderTasks(); }
 }
@@ -346,10 +467,13 @@ $('submission-form').addEventListener('submit', async event => {
   showError(''); let entries;
   try {
     if (files.length > catalog.max_files) throw new Error('Choose up to ' + catalog.max_files + ' files.');
-    entries = files.map(e => ({ entry: e, options: optionsFor(e) }));
+    entries = files.map(e => ({ entry: e, options: optionsFor(e), bedFile: e.bed.files[0] }));
   } catch (e) { showError(e.message); return; }
   submitting = true; updateCount();
   try {
+    for (const { entry, options, bedFile } of entries) {
+      if (options.custom_regions && await checkedBedFile(entry.bed, 4 * 1024 ** 2) !== bedFile) throw new Error('The BED selection changed. Review the file and submit again.');
+    }
     const batch = await api('/api/batches', 'POST', { files: entries.map(({ entry, options }) => ({
       email: $('email').value, filename: entry.file.name, size: entry.file.size, options,
       consent: $('consent').checked, submission_key: $('submission-code').value, website: $('website').value
@@ -358,12 +482,12 @@ $('submission-form').addEventListener('submit', async event => {
       uploadProgress: 0, job: { ...job, ...entries[i].options, filename: entries[i].entry.file.name } }));
     saveLocation(); renderTasks();
     for (let i = 0; i < entries.length; i++) {
-      const { entry, options } = entries[i], task = tasks[i];
+      const { entry, options, bedFile } = entries[i], task = tasks[i];
       if (['cancelled', 'cancelling', 'expired'].includes(task.job.status)) continue;
       try {
         task.uploading = true; renderTasks();
         await binaryUpload(task, entry.file, 'upload', progress => { task.uploadProgress = progress; renderTasks(); });
-        if (options.custom_regions) await binaryUpload(task, entry.bed.files[0], 'regions', () => {});
+        if (options.custom_regions) await binaryUpload(task, bedFile, 'regions', () => {});
         task.job = await api('/api/jobs/' + task.id + '/submit', 'POST', {}, task.token);
         task.uploading = false; renderTasks();
       } catch (e) {

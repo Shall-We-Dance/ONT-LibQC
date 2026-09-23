@@ -1,5 +1,23 @@
 /* The same exact base-coverage integration as custom_regions.py; no network calls. */
 const CustomRegions = (() => {
+// Do not infer file type from a .bed suffix: directories may have that suffix too.
+async function checkedBedFile(input, maxBytes = 10 * 1024 ** 2) {
+  const file = input.files?.[0];
+  if ([...(input.webkitEntries || [])].some(entry => entry.isDirectory) || ['inode/directory', 'application/x-directory'].includes(file?.type)) {
+    throw Error('Choose a BED file inside the folder, not the folder itself.');
+  }
+  if (!file) throw Error('Choose a BED file first.');
+  if (file.size > maxBytes) throw Error('Use a BED file of at most ' + maxBytes / 1024 ** 2 + ' MiB.');
+  // Dialog selections often have no filesystem entry. A read probe rejects
+  // directory-like or unreadable selections before parsing or upload.
+  try { await file.slice(0, 1).arrayBuffer(); }
+  catch { throw Error('Cannot read this selection. Open the folder and choose a readable BED file inside it.'); }
+  if (!file.size) throw Error('The BED file is empty. Choose a file containing regions.');
+  return file;
+}
+function bedDropIsDirectory(event) {
+  return [...(event.dataTransfer?.items || [])].some(item => (item.getAsEntry?.() || item.webkitGetAsEntry?.())?.isDirectory);
+}
 function parseBed(text, sizes, primary) {
   const rows=[],seen=new Set(),keep=new Set(primary);let skipped=0,duplicates=0,unknown=[];
   for (const [i,line] of text.split(/\r?\n/).entries()) {
@@ -12,7 +30,7 @@ function parseBed(text, sizes, primary) {
     const strand=v.length>=6?v[5]:'.';if(!['+','-','.'].includes(strand)) throw Error(`BED line ${i+1}: invalid strand`);
     if(!keep.has(v[0])) {skipped++;continue;}
     const key=JSON.stringify([v[0],s,e,strand]);if(seen.has(key)){duplicates++;continue;}seen.add(key);
-    rows.push({chrom:v[0],start:s,end:e,strand});if(rows.length>50000) throw Error('Use at most 50,000 regions per browser profile');
+    rows.push({chrom:v[0],start:s,end:e,strand});if(rows.length>100000) throw Error('Use at most 100,000 regions per browser profile');
   }
   if(!rows.length) throw Error('No regions on configured primary chromosomes');
   return {rows,skipped,duplicates,unknown};
@@ -54,32 +72,48 @@ function compute(records,rows,sizes,p){
   }
   return {mean:counts.map((n,i)=>n&&records.length?sum[i]/n:null),sem:counts.map((n,i)=>n>1&&records.length?Math.sqrt(Math.max(0,square[i]-sum[i]*sum[i]/n)/(n*(n-1))):null),regions_per_bin:counts,eligible_alignments:records.length};
 }
-return {parseBed,compute,resolveParameters};
+return {parseBed,compute,resolveParameters,checkedBedFile,bedDropIsDirectory};
 })();
 if(typeof module!=='undefined')module.exports=CustomRegions;
 if(typeof document!=='undefined')(() => {
 const payload=JSON.parse(document.getElementById('custom-payload').textContent),message=document.getElementById('custom-message'),output=document.getElementById('custom-output'),downloads=document.getElementById('custom-downloads');let urls=[];
 const localResult=document.getElementById('custom-local'),currentSource=document.getElementById('custom-current-source');
 function clearResult(){output.replaceChildren();downloads.replaceChildren();urls.forEach(URL.revokeObjectURL);urls=[];if(localResult)localResult.hidden=true;if(currentSource)currentSource.textContent='';}
-const bedInput=document.getElementById('custom-bed'),bedName=document.getElementById('custom-bed-name');
-bedInput.addEventListener('change',()=>{
-  if(!bedName)return;
+const bedInput=document.getElementById('custom-bed'),bedName=document.getElementById('custom-bed-name'),runButton=document.getElementById('custom-run');
+let selectionVersion=0;
+// Let Safari navigate folders normally; validate the selected file afterward.
+bedInput.removeAttribute('accept');
+function showBedName(){const name=bedInput.files[0]?.name||'No new BED selected';if(bedName)bedName.textContent=name;bedInput.closest('.custom-file-picker').title=name;}
+bedInput.addEventListener('change',async()=>{
+  const version=++selectionVersion;
   document.getElementById('custom-assembly').checked=false;
-  clearResult();
-  message.textContent=bedInput.files[0] ? 'Confirm coordinates and click Draw metaplot to analyze the selected BED.' : '';
-  const name=bedInput.files[0]?.name||'No new BED selected';
-  bedName.textContent=name;
-  bedInput.closest('.custom-file-picker').title=name;
+  clearResult();showBedName();
+  if(!bedInput.files.length){message.textContent='';runButton.disabled=false;return;}
+  message.textContent='Checking BED file…';runButton.disabled=true;
+  try{
+    await CustomRegions.checkedBedFile(bedInput);
+    if(version===selectionVersion)message.textContent='Confirm coordinates and click Draw metaplot to analyze the selected BED.';
+  }catch(e){
+    if(version===selectionVersion){bedInput.value='';showBedName();message.textContent=e.message;}
+  }finally{if(version===selectionVersion)runButton.disabled=false;}
+});
+bedInput.addEventListener('drop',event=>{
+  if(!CustomRegions.bedDropIsDirectory(event))return;
+  event.preventDefault();++selectionVersion;bedInput.value='';showBedName();
+  document.getElementById('custom-assembly').checked=false;clearResult();runButton.disabled=false;
+  message.textContent='Choose a BED file inside the folder, not the folder itself.';
 });
 const escape=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-document.getElementById('custom-run').addEventListener('click',async()=>{
+runButton.addEventListener('click',async()=>{
+  const version=++selectionVersion;runButton.disabled=true;
   clearResult();
   try {
     if(!document.getElementById('custom-assembly').checked)throw Error(`Confirm that the BED uses ${payload.reference} coordinates`);
-    const file=document.getElementById('custom-bed').files[0];if(!file)throw Error('Choose a BED file first');if(file.size>10*1024*1024)throw Error('Use a BED file smaller than 10 MB');
+    const file=await CustomRegions.checkedBedFile(bedInput);if(version!==selectionVersion)return;
     if(localResult)localResult.hidden=false;if(currentSource)currentSource.textContent='BED: '+file.name;
     message.textContent='Calculating…';await new Promise(resolve=>setTimeout(resolve,0));
-    const bed=CustomRegions.parseBed(await file.text(),payload.sizes,payload.primary),scope=payload.scopes[document.getElementById('custom-scope').value],params=CustomRegions.resolveParameters(bed.rows,{...payload.parameters,mode:document.getElementById('custom-mode').value}),p=CustomRegions.compute(scope.records,bed.rows,payload.sizes,params);
+    const text=await file.text();if(version!==selectionVersion)return;
+    const bed=CustomRegions.parseBed(text,payload.sizes,payload.primary),scope=payload.scopes[document.getElementById('custom-scope').value],params=CustomRegions.resolveParameters(bed.rows,{...payload.parameters,mode:document.getElementById('custom-mode').value}),p=CustomRegions.compute(scope.records,bed.rows,payload.sizes,params);
     const point=params.mode==='reference_point',modeLabel=point?'Reference point (interval midpoint)':'Region (scaled body)';
     message.textContent=`${params.requested_mode==='auto'?'Auto → ':''}${modeLabel} · ${bed.rows.length} regions · ${p.eligible_alignments.toLocaleString()} eligible alignments · ${bed.skipped} non-primary rows skipped · ${bed.duplicates} duplicates removed · ${bed.unknown.length} regions on absent contigs excluded${bed.unknown.length ? ": "+[...new Set(bed.unknown.map(x=>x.chrom))].join(", ") : ""}`;
     if(!p.eligible_alignments){message.textContent+=' · No eligible nuclear alignments; profile unavailable.';return;}
@@ -99,6 +133,7 @@ document.getElementById('custom-run').addEventListener('click',async()=>{
     for(const [label,content,mime,ext] of [['Download SVG',svg,'image/svg+xml','svg'],['Download data',tsv,'text/tab-separated-values','tsv'],['Download provenance',JSON.stringify({sample:payload.sample,scope:scope.name,assembly:payload.reference,bed_name:file.name,parameters:params,retained_regions:bed.rows.length,excluded_unknown_contigs:bed.unknown,skipped_nonprimary:bed.skipped,duplicate_intervals_removed:bed.duplicates,eligible_alignments:p.eligible_alignments,normalization:'exact mean base coverage; CPM by scope primary nuclear alignments; equally weighted regions'},null,2),'application/json','json']]){
       const a=document.createElement('a'),url=URL.createObjectURL(new Blob([content],{type:mime}));urls.push(url);a.href=url;a.download=payload.sample+'.'+scope.name+'.custom_regions.'+ext;a.textContent=label;downloads.appendChild(a);
     }
-  }catch(e){message.textContent=e.message;}
+  }catch(e){if(version===selectionVersion)message.textContent=e.message;}
+  finally{if(version===selectionVersion)runButton.disabled=false;}
 });
 })();

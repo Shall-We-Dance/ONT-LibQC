@@ -91,3 +91,41 @@ footer .footer-contact a:focus-visible{outline:2px solid var(--blue);outline-off
 .apply-all:hover:not(:disabled){background:#f5faf9;border-color:var(--blue)}
 .apply-all:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 @media(max-width:470px){.apply-row{align-items:flex-start;flex-wrap:wrap}.apply-all{margin-left:auto}}
+
+/* Make the second deletion step clearly distinct from ordinary actions. */
+.task-actions .danger-confirm{background:var(--danger);border-color:var(--danger);color:#fff}
+.task-actions .danger-confirm:hover:not(:disabled){background:#8e2525;border-color:#8e2525}
+.task-actions .danger-confirm:active:not(:disabled){background:#752222;border-color:#752222}
+.task-actions .danger-confirm:focus-visible{outline:2px solid var(--danger);outline-offset:3px}
+.deletion-warning{flex-basis:100%;margin:2px 0 0;color:var(--danger);font-size:12px;line-height:1.5}
+
+.status.deleted,.status.expired{background:#f0f3f5;color:#5d717a}
+.report-unavailable{margin-top:20px;padding:15px 17px;border:1px solid var(--line);border-radius:8px;background:#f6f9fa;color:var(--ink);font-size:14px;line-height:1.6}
+.report-unavailable p+p{margin-top:8px;color:var(--muted);font-size:13px}
+
+
+/* Brief feedback for deliberate actions; progress follows actual reported values. */
+:root{--motion-fast:140ms;--motion-ui:180ms;--motion-enter:220ms;--motion-progress:600ms;--motion-ease:cubic-bezier(.22,1,.36,1)}
+button,.button,.lab-button{transition:background-color var(--motion-ui) ease,border-color var(--motion-ui) ease,color var(--motion-ui) ease,box-shadow var(--motion-ui) ease,opacity var(--motion-ui) ease,transform var(--motion-fast) ease}
+button:not(:disabled):active,.button:active,.lab-button:active{transform:translateY(1px)}
+button:disabled{transform:none;box-shadow:none}
+input,select,textarea,.dropzone,.custom-file-picker{transition:background-color var(--motion-ui) ease,border-color var(--motion-ui) ease,box-shadow var(--motion-ui) ease}
+nav a,.text-link,.required-marker{transition:color var(--motion-ui) ease}
+.dropzone:focus-within{border-color:var(--blue);background:#f0f8f8}
+@media(hover:hover) and (pointer:fine){
+ .primary:hover:not(:disabled){background:#0e6569;border-color:#0e6569;box-shadow:0 2px 6px #123a451a}
+ .secondary:not(.danger-confirm):hover:not(:disabled){background:#f5f9fa;border-color:#aac4cd}
+ .remove:hover:not(:disabled){background:#e9f0f3;color:var(--ink)}
+ .dropzone:hover{border-color:var(--blue);background:#f0f8f8}
+}
+.progress>span{border-radius:inherit;transition:width var(--motion-progress) var(--motion-ease)}
+#submission-view,#tasks-view{animation:page-in var(--motion-enter) ease-out}
+.file-card,.task-card{animation:card-in var(--motion-enter) var(--motion-ease)}
+.bed-input:not([hidden]),.deletion-warning:not([hidden]),.report-unavailable{animation:page-in var(--motion-ui) ease-out}
+@keyframes page-in{from{opacity:0}to{opacity:1}}
+@keyframes card-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){
+ :root{--motion-fast:0s;--motion-ui:0s;--motion-enter:0s;--motion-progress:0s}
+ #submission-view,#tasks-view,.file-card,.task-card,.bed-input,.deletion-warning,.report-unavailable{animation:none}
+ button:not(:disabled):active,.button:active,.lab-button:active{transform:none}
+}

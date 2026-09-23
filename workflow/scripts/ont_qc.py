@@ -2117,7 +2117,7 @@ def profile_scope_html(label, raw_name, insert_name, region_name, karyotype_name
             f"<div class='plots size-plots primary-size-plots'>{primary}</div>"
             f"<p class='muted size-profile-downloads'>{downloads}</p>"
             "<details class='count-based-details'><summary>Count-based profiles · full library, raw reads and inserts</summary>"
-            "<p>Each recovered unit contributes one count to the full-library and insert profiles; each raw read contributes one count to the raw profile. Each curve has its own peak set to 100.</p>"
+            "<p><strong>Full library:</strong> one count per reconstructed unit, using insert + expected complete adapters/indexes (including undetected outer adapters). <strong>Raw ONT molecule:</strong> one count per FASTQ read, using its observed length. A read containing several library units can therefore contribute several full-library counts but only one raw-read count. Insert profiles count recovered inserts. Each curve has its own peak set to 100.</p>"
             f"<div class='plots size-plots count-size-plots'>{counts}</div></details>" +
             (f"<div class='plots analysis-plots'>{analysis}</div>" if analysis else '') +
             "<details class='chromosome-detail'><summary>Chromosome coverage · auxiliary diagnostic</summary>"

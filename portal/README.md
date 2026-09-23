@@ -12,7 +12,7 @@ Each newly uploaded file starts with **Choose reference genome…** and **Choose
 
 For each newly uploaded file, Mycoplasma and spike-in / foreign-sequence screens are selected by default when the chosen reference has a prepared panel. Users can turn either screen off; their choices are retained when switching references. Unavailable screens remain disabled. The separate declaration that a spike-in was intentionally added is not selected automatically.
 
-Reports distinguish the BED submitted with the original analysis from additional BED files analyzed in the browser. New submissions preserve the original BED filename; older reports that did not retain it say so. Both the submission form and report provide **Plot mode** (`Auto`, `Reference point` or `Region (scaled)`) and require confirmation that the BED uses the selected reference coordinates. Choosing another BED clears the previous browser result and resets coordinate confirmation; click **Draw metaplot** to analyze it. The submitted plot remains available for comparison.
+Reports distinguish the BED submitted with the original analysis from additional BED files analyzed in the browser. Browser profiles support up to 100,000 retained regions and a 10 MiB BED file. BED pickers leave folder navigation unrestricted and reject directories or unreadable selections before processing. New submissions preserve the original BED filename; older reports that did not retain it say so. Both the submission form and report provide **Plot mode** (`Auto`, `Reference point` or `Region (scaled)`) and require confirmation that the BED uses the selected reference coordinates. Choosing another BED clears the previous browser result and resets coordinate confirmation; click **Draw metaplot** to analyze it. The submitted plot remains available for comparison.
 
 The online report footer and Report data page provide **Download complete report (ZIP)**, containing the saved HTML report, figures, tables and settings. Extract it and open `report/index.html`; keep the folder together. Additional browser-generated metaplots are saved with their own result controls and are not added to the server’s saved ZIP.
 
@@ -218,13 +218,15 @@ Security design references: [OWASP denial of service](https://cheatsheetseries.o
 
 ## Progress updates
 
+The portal uses brief button and field transitions and a subtle entrance for newly displayed cards. Progress bars interpolate between actual upload or analysis values; upload and analysis have separate progress scales. Background polling preserves existing cards and progress elements. System **Reduce Motion** preferences disable these animations, and the interface has no looping decorative effects.
+
 The browser reports FASTQ upload progress from the number of bytes sent. Once queued, analysis progress comes from the number of completed Snakemake steps. The worker samples that log approximately every 3 seconds and saves status and progress in its local SQLite database. Steps have different runtimes, so the percentage does not estimate elapsed or remaining time and can pause during a long step.
 
 In a split deployment, the compute host's SSH bridge synchronizes status to the frontend database on each cycle, with a 5-second pause between cycles. File transfers and connection retries can extend that interval. The browser queries its authenticated task endpoint approximately every 10 seconds, or 30 seconds while its tab is hidden, with jitter and rate-limit backoff. Status survives browser refreshes and SSH interruptions. A running computation continues during a connection outage; the displayed state catches up after reconnection. A report is marked complete on the frontend only after its full bundle has arrived and passed publication checks.
 
 ## Email notification
 
-Email is collected with a submission but **no email is sent unless SMTP is explicitly enabled**. Without SMTP, users must retain their private task links; the UI states this. This service has no email-based recovery endpoint.
+Email is collected with a submission but **no email is sent unless SMTP is explicitly enabled**. Without SMTP, users must retain their private task links; the UI states this. This service has no email-based recovery endpoint. On a private task page, permanent deletion requires a second click on a red confirmation button with an irreversible-action notice. After cleanup, the page distinguishes manual deletion from automatic retention expiry and explains that a new FASTQ submission is needed to generate another report. Deleted and expired reports cannot be opened or downloaded.
 
 Edit `runtime/smtp.yaml` on the server, set the host, port, sender and credentials, choose `starttls` (usually 587) or `ssl` (usually 465), and set `enabled: true`. Plaintext SMTP and disabled TLS certificate validation are not supported. Keep this file mode `0600` and out of Git. Set `mail_enabled: true` in `runtime/web.yaml` and in `runtime/frontend.yaml` (split deployment) or `runtime/worker.yaml` (single host), then recreate the web container.
 
