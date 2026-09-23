@@ -287,7 +287,7 @@ function taskView(task) {
   card.append(title, node('p', { class: 'task-meta' }, [job.filename, job.assay === 'microc' ? 'Micro-C' : job.assay === 'chromatin' ? 'Chromatin' : '', job.reference].filter(Boolean).join(' · ')));
   const percent = task.uploading ? Math.round(task.uploadProgress * 100) : job.progress || 0;
   const bar = node('span'); bar.style.width = percent + '%';
-  const message = task.waitingForUpload ? 'Waiting to upload…' : task.uploading ? 'Uploading · ' + percent + '%' : job.status === 'queued' ? (job.queue_ahead ? job.queue_ahead + ' analysis ahead of you' : 'Waiting for the analysis worker') : job.status === 'running' ? 'Processing reads and building your report…' : job.status === 'succeeded' ? 'Your interactive report and downloads are ready.' : labels[job.status];
+  const message = task.waitingForUpload ? 'Waiting to upload…' : task.uploading ? 'Uploading · ' + percent + '%' : job.status === 'queued' ? (job.queue_ahead ? job.queue_ahead + (job.queue_ahead === 1 ? ' analysis' : ' analyses') + ' ahead of you' : 'Waiting for the analysis worker') : job.status === 'running' ? 'Processing reads and building your report…' : job.status === 'succeeded' ? 'Your interactive report and downloads are ready.' : labels[job.status];
   card.append(node('div', { class: 'progress', role: 'progressbar', 'aria-label': 'Analysis progress', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(percent) }, bar), node('p', { class: 'progress-label' }, message));
   if (task.failure || task.fetchError || job.error) card.append(node('div', { class: 'error' }, task.failure || task.fetchError || job.error));
   const actions = node('div', { class: 'task-actions' });
@@ -302,7 +302,23 @@ function taskView(task) {
   if (job.options && job.status !== 'expired') { const detail = node('details', {}, node('summary', {}, 'Submitted settings'), node('pre', { class: 'field-note' }, JSON.stringify(job.options, null, 2))); detail.open = Boolean(task.detailsOpen); detail.addEventListener('toggle', () => { task.detailsOpen = detail.open; }); card.append(detail); }
   return card;
 }
-function renderTasks() { $('tasks-title').textContent = tasks.every(t => t.job?.status === 'succeeded') ? 'Your reports are ready.' : tasks.some(t => ['failed', 'cancelled', 'expired'].includes(t.job?.status)) ? 'Your analysis status.' : 'Your reports are on their way.'; $('submission-view').hidden = true; $('tasks-view').hidden = false; $('task-list').replaceChildren(...tasks.map(taskView)); }
+function renderTasks() {
+  const single = tasks.length === 1;
+  const ready = tasks.length > 0 && tasks.every(t => t.job?.status === 'succeeded');
+  const needsAttention = tasks.some(t => ['failed', 'cancelled', 'expired'].includes(t.job?.status));
+  $('tasks-title').textContent = ready
+    ? (single ? 'Your report is ready.' : 'Your reports are ready.')
+    : needsAttention || !tasks.length
+      ? (single ? 'Your analysis status.' : 'Your submission status.')
+      : (single ? 'Your report is on its way.' : 'Your reports are on their way.');
+  $('tasks-eyebrow').textContent = single ? 'YOUR ANALYSIS' : 'YOUR ANALYSES';
+  $('tasks-description').textContent = single
+    ? 'Track your analysis below. Save your private task link to return later.'
+    : 'Track each analysis below. Save your private task links to return later.';
+  $('save-links').textContent = single ? 'Save private link' : 'Save private links';
+  $('submission-view').hidden = true; $('tasks-view').hidden = false;
+  $('task-list').replaceChildren(...tasks.map(taskView));
+}
 async function refreshTask(task) {
   if (task.uploading) return;
   try {
@@ -324,7 +340,7 @@ async function refreshTasks() {
   } finally { refreshing = false; renderTasks(); }
 }
 function saveText(name, text) { const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' })); const a = node('a', { href: url, download: name }); document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
-$('save-links').addEventListener('click', () => saveText('ont-libqc-private-links.txt', tasks.map(t => (t.job?.sample || t.name || t.id) + '\n' + privateLink(t)).join('\n\n')));
+$('save-links').addEventListener('click', () => saveText(tasks.length === 1 ? 'ont-libqc-private-link.txt' : 'ont-libqc-private-links.txt', tasks.map(t => (t.job?.sample || t.name || t.id) + '\n' + privateLink(t)).join('\n\n')));
 $('submission-form').addEventListener('submit', async event => {
   event.preventDefault(); if (submitting || !files.length) return;
   showError(''); let entries;

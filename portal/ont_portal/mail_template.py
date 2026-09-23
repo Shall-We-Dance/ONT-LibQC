@@ -12,6 +12,7 @@ from .store import token_for
 def build_message(config,smtp,row,secret,rows=None):
     origin=config['public_url'].rstrip('/');jid=row['id']
     items=rows if rows is not None else [row]
+    multiple=len(items)>1
     ready=all(item['status']=='succeeded' for item in items)
     link=origin+'/jobs/'+jid+'#'+token_for(secret,jid)
     title='Your report is ready.' if ready else 'Your analysis needs attention.'
@@ -19,7 +20,8 @@ def build_message(config,smtp,row,secret,rows=None):
     action='View your report' if ready else 'View your task'
     if rows is not None:
         jid='batch-'+row['batch_id']
-        link=origin+'/#jobs='+','.join(r['id']+':'+token_for(secret,r['id']) for r in rows)
+    if multiple:
+        link=origin+'/#jobs='+','.join(r['id']+':'+token_for(secret,r['id']) for r in items)
         title='Your reports are ready.' if ready else 'Your submission has finished.'
         intro='All results are collected below. Open them together to review and compare your libraries.'
         action='View all results'
@@ -28,7 +30,8 @@ def build_message(config,smtp,row,secret,rows=None):
     counts={status:sum(item['status']==status for item in items) for status in labels}
     overview=' · '.join(f'{count} '+{'succeeded':'ready','failed':'failed','cancelled':'cancelled','expired':'expired'}[status] for status,count in counts.items() if count)
     summary=f'{len(items)} '+('library' if len(items)==1 else 'libraries')+' · '+overview
-    details=[];cards=[]
+    details=[];cards=[];single_expiry=''
+    privacy='These links are private. Share them only with people you trust.' if multiple else 'This link is private. Share it only with people you trust.'
     for index,item in enumerate(items,1):
         opts=json.loads(item['options'] or '{}')
         label=str(opts.get('sample') or item['filename'] or 'Expired task')
@@ -41,18 +44,35 @@ def build_message(config,smtp,row,secret,rows=None):
         bg,fg=colors.get(item['status'],('#f0f3f5','#5d717a'))
         item_action='View report & downloads' if item['status']=='succeeded' else 'View task details'
         expiry=('Expired on ' if item['status']=='expired' else 'Available until ')+until
-        details.append(f'{label} — {status}\n{filename}\n{meta}\n{expiry}\n{item_link}')
-        cards.append(f'''<tr><td style="padding:20px 0;border-top:1px solid #dce5e9;">
-<p style="margin:0 0 8px;font-size:11px;line-height:18px;color:#5d717a;letter-spacing:1px;">LIBRARY {index:02d}</p>
-<p style="margin:0 0 8px;font-size:16px;font-weight:700;line-height:24px;color:#152f39;overflow-wrap:anywhere;word-break:break-all;">{escape(label)}</p>
-<p style="margin:0 0 10px;font-size:12px;line-height:19px;color:#5d717a;overflow-wrap:anywhere;word-break:break-all;">{escape(filename)}</p>
-<p style="margin:0 0 12px;font-size:13px;line-height:22px;color:#5d717a;">
-<span style="display:inline-block;padding:1px 8px;border-radius:4px;background-color:{bg};color:{fg};font-size:12px;font-weight:600;">{escape(status)}</span> &nbsp; {escape(meta)}</p>
+        details.append(f'{label} - {status}\n{filename}\n{meta}\n{expiry}\n{item_link}')
+        single_expiry=expiry
+        badge=f'<span style="display:inline-block;padding:2px 9px;border-radius:4px;background-color:{bg};color:{fg};font-size:12px;font-weight:600;line-height:18px;">{escape(status)}</span>'
+        name_html=f'<p style="margin:0 0 6px;font-size:17px;font-weight:700;line-height:25px;color:#152f39;overflow-wrap:anywhere;word-break:break-word;">{escape(label)}</p>'
+        file_html=f'<p style="margin:0 0 14px;font-size:12px;line-height:19px;color:#5d717a;overflow-wrap:anywhere;word-break:break-all;">{escape(filename)}</p>' if filename else ''
+        if multiple:
+            cards.append(f'''<tr><td style="padding:20px 0;border-top:1px solid #dce5e9;">
+<p style="margin:0 0 8px;font-size:11px;line-height:17px;color:#5d717a;letter-spacing:1px;">LIBRARY {index:02d}</p>
+{name_html}{file_html}
+<p style="margin:0 0 12px;font-size:13px;line-height:24px;color:#5d717a;">{badge} &nbsp; {escape(meta)}</p>
 <p style="margin:0 0 8px;font-size:14px;font-weight:600;line-height:22px;"><a href="{escape(item_link,quote=True)}" style="color:#117478;text-decoration:underline;">{escape(item_action)} &nbsp;→</a></p>
 <p style="margin:0;font-size:12px;line-height:19px;color:#5d717a;">{escape(expiry)}</p>
 </td></tr>''')
-    text=f'{title}\n\n{summary}\n{intro}\n\n{action}:\n{link}\n\n'+'\n\n'.join(details)+'\n\nThese private links grant access to your tasks. Share them only with people you trust.\n\nONT-LibQC\nJongmin Kim Lab\n'
+        else:
+            cards.append(f'''<tr><td style="padding:18px;background-color:#f6f9fa;border:1px solid #dce5e9;border-radius:8px;">
+<p style="margin:0 0 10px;font-size:11px;line-height:17px;color:#5d717a;letter-spacing:1px;">YOUR LIBRARY</p>
+{name_html}{file_html}
+<p style="margin:0 0 16px;">{badge}</p>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="table-layout:fixed;border-top:1px solid #dce5e9;"><tr>
+<td width="50%" valign="top" style="padding:12px 10px 0 0;"><p style="margin:0 0 3px;font-size:11px;line-height:17px;color:#5d717a;">Library assay</p><p style="margin:0;font-size:14px;line-height:21px;color:#152f39;overflow-wrap:anywhere;word-break:break-word;">{escape(assay or 'Not available')}</p></td>
+<td width="50%" valign="top" style="padding:12px 0 0 10px;"><p style="margin:0 0 3px;font-size:11px;line-height:17px;color:#5d717a;">Reference genome</p><p style="margin:0;font-size:14px;line-height:21px;color:#152f39;overflow-wrap:anywhere;word-break:break-word;">{escape(str(opts.get('reference') or 'Not available'))}</p></td>
+</tr></table>
+</td></tr>''')
+    text=f'{title}\n\n{summary}\n{intro}\n\n{action}:\n{link}\n\n'+'\n\n'.join(details)+'\n\n'+privacy+'\n\nONT-LibQC\nJongmin Kim Lab\n'
     href=escape(link,quote=True)
+    action_html=f'''<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:20px 0;"><tr><td align="center" bgcolor="#117478" style="border-radius:6px;mso-padding-alt:12px 20px;"><a href="{href}" style="display:inline-block;padding:12px 20px;border:1px solid #117478;border-radius:6px;color:#ffffff;background-color:#117478;text-decoration:none;font-size:14px;font-weight:700;line-height:20px;">{escape(action)} &nbsp;→</a></td></tr></table>'''
+    libraries_html='<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="table-layout:fixed;">'+''.join(cards)+'</table>'
+    content_html=action_html+libraries_html if multiple else libraries_html+action_html+f'<p style="margin:0 0 16px;font-size:12px;line-height:19px;color:#5d717a;">{escape(single_expiry)}</p>'
+    eyebrow=summary if multiple else ('ANALYSIS COMPLETE' if ready else 'ANALYSIS UPDATE')
     html=f'''<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>{escape(title)}</title></head>
 <body style="margin:0;padding:0;background-color:#f2f6f8;color:#152f39;font-family:Arial,Helvetica,sans-serif;-webkit-text-size-adjust:100%;">
@@ -64,14 +84,13 @@ def build_message(config,smtp,row,secret,rows=None):
 <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr><td width="36" style="vertical-align:middle;"><img src="cid:ontlibqc-logo" width="32" height="32" alt="" style="display:block;width:32px;height:32px;border:0;"></td><td style="vertical-align:middle;padding-left:8px;color:#f6fffd;font-size:21px;font-weight:700;line-height:28px;">ONT-LibQC</td></tr></table>
 </td></tr>
 <tr><td style="padding:28px 24px 8px;">
-<p style="margin:0 0 10px;color:#117478;font-size:12px;font-weight:600;line-height:20px;">{escape(summary)}</p>
+<p style="margin:0 0 10px;color:#117478;font-size:11px;font-weight:600;line-height:18px;letter-spacing:0.5px;">{escape(eyebrow)}</p>
 <h1 style="margin:0 0 12px;color:#152f39;font-size:26px;font-weight:700;line-height:33px;letter-spacing:-0.5px;">{escape(title)}</h1>
 <p style="margin:0 0 20px;color:#5d717a;font-size:14px;line-height:23px;">{escape(intro)}</p>
-<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 26px;"><tr><td align="center" bgcolor="#117478" style="border-radius:6px;mso-padding-alt:12px 18px;"><a href="{href}" style="display:inline-block;padding:12px 18px;border:1px solid #117478;border-radius:6px;color:#ffffff;background-color:#117478;text-decoration:none;font-size:14px;font-weight:700;line-height:20px;">{escape(action)} &nbsp;→</a></td></tr></table>
-<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="table-layout:fixed;">{''.join(cards)}</table>
+{content_html}
 </td></tr>
 <tr><td style="padding:18px 24px 22px;border-top:1px solid #dce5e9;background-color:#f8fafb;">
-<p style="margin:0 0 8px;color:#5d717a;font-size:12px;line-height:19px;">These links are private. Share them only with people you trust.</p>
+<p style="margin:0 0 8px;color:#5d717a;font-size:12px;line-height:19px;">{escape(privacy)}</p>
 <p style="margin:0;color:#5d717a;font-size:12px;line-height:19px;">Button not opening? <a href="{href}" style="color:#117478;text-decoration:underline;">{escape(action)}</a></p>
 </td></tr></table>
 <!--[if mso]></td></tr></table><![endif]-->
@@ -79,7 +98,7 @@ def build_message(config,smtp,row,secret,rows=None):
 </td></tr></table></body></html>'''
     message=EmailMessage()
     message['Subject']='Your ONT-LibQC report is ready' if ready else 'Your ONT-LibQC analysis needs attention'
-    if rows is not None:message.replace_header('Subject',f'Your ONT-LibQC results: {len(rows)} files - '+('reports ready' if ready else 'submission finished'))
+    if multiple:message.replace_header('Subject',f'Your ONT-LibQC results: {len(items)} files - '+('reports ready' if ready else 'submission finished'))
     message['From']=smtp['from_address'];message['To']=row['email']
     message['Date']=formatdate(row['created'],usegmt=True)
     message['Message-ID']='<ont-libqc-'+jid+'-'+('complete' if rows is not None else row['status'])+'@'+urlsplit(origin).hostname+'>'
