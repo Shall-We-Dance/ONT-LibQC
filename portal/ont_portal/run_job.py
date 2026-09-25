@@ -20,9 +20,10 @@ def normalize_fastq(source,dest,compressed,max_bytes,max_reads):
                 if any(not line.endswith(b'\n') or len(line)>max_line for line in lines) or len(head)>4096:
                     raise InputError(f'Invalid or excessively long FASTQ record at read {count}. Use four-line FASTQ.')
                 h,seq,plus,qual=[line.rstrip(b'\r\n') for line in lines]
-                rid=h[1:].split(b' ',1)[0]
+                # Dorado FASTQ metadata can follow the read name after a tab.
+                rid=re.split(rb'[ \t]',h[1:],maxsplit=1)[0]
                 if not h.startswith(b'@') or not re.fullmatch(rb'[A-Za-z0-9_.:=+-]{1,255}',rid):
-                    raise InputError(f'Invalid FASTQ identifier at read {count}. Use ordinary ONT read identifiers.')
+                    raise InputError(f'Invalid FASTQ identifier at read {count}. Read names must be 1-255 letters, numbers, or . _ : = + -, followed by optional space- or tab-separated metadata.')
                 if rid in seen: raise InputError(f'Duplicate read identifier at read {count}.')
                 seen.add(rid)
                 if not plus.startswith(b'+') or not re.fullmatch(rb'[ACGTRYSWKMBDHVNacgtryswkmbdhvn]+',seq) or len(seq)!=len(qual) or any(q<33 or q>126 for q in qual):

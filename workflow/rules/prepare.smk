@@ -2,6 +2,7 @@ rule prepare_library_units:
     input:
         fastqs=fastqs,
         script="workflow/scripts/ont_qc.py",
+        structure_script="workflow/scripts/library_structure.py",
     output:
         inserts=temp(f"{OUT}/prepared/{{sample}}.inserts.fastq.gz"),
         legs=temp(f"{OUT}/prepared/{{sample}}.legs.fastq.gz"),
@@ -31,6 +32,7 @@ rule prepare_library_units:
         index_variant_max_edit=int(PARAMS.get("index_variant_max_edit", 2)),
         index_variant_dominance_ratio=float(PARAMS.get("index_variant_dominance_ratio", 5.0)),
         expected_pairs=expected_index_pairs,
+        structure=library_structure_config,
     conda:
         "../envs/ont-qc.yaml"
     shell:
@@ -55,6 +57,7 @@ rule prepare_library_units:
           --index-variant-max-edit {params.index_variant_max_edit} \
           --index-variant-dominance-ratio {params.index_variant_dominance_ratio} \
           --expected-index-pairs '{params.expected_pairs}' \
+          --library-structure {params.structure:q} \
           > {log} 2>&1
         """
 

@@ -11,6 +11,8 @@ rule resolved_report_config:
 rule reports:
     input:
         script="workflow/scripts/ont_qc.py",
+        structure_model="workflow/scripts/library_structure.py",
+        structure_diagram="workflow/scripts/report_library_structure.py",
         extension_script="workflow/scripts/spikein_auto.py",
         definitions="workflow/scripts/metric_definitions.json",
         definition_script="workflow/scripts/qc_definitions.py",

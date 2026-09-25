@@ -219,12 +219,13 @@ function addFiles(incoming) {
     }
     const header = node('div', { class: 'file-header' }, node('div', {}, node('strong', {}, file.name), node('br'), node('small', {}, bytes(file.size))),
       node('button', { type: 'button', class: 'remove', 'aria-label': 'Remove ' + file.name, onclick: () => { files = files.filter(f => f.id !== entry.id); entry.card.remove(); updateCount(); } }, '×'));
+    entry.structure = LibraryStructure.create(catalog.library_structure, value => applyStructureToAll(entry, value));
     entry.applyNote = node('span', { class: 'apply-note', role: 'status', 'aria-live': 'polite' });
     entry.applyButton = node('button', { type: 'button', class: 'secondary apply-all', onclick: () => applyToAll(entry), 'aria-label': 'Apply reference genome and library assay from ' + file.name + ' to all libraries' }, 'Apply to all');
     entry.applyRow = node('div', { class: 'apply-row', hidden: true }, entry.applyNote, entry.applyButton);
     entry.card = node('article', { class: 'file-card' }, header, node('div', { class: 'file-body' },
       node('div', { class: 'fields' }, control('Sample name', entry.sample), requiredChoice('Reference genome', entry.ref), node('div', { class: 'full' }, requiredChoice('Library assay', entry.assay))),
-      entry.applyRow, node('div', { class: 'check-list' }, entry.myco.wrapper, entry.spike.wrapper, entry.declared.wrapper, entry.bedCheck.wrapper), entry.bedBox, advanced, ranges));
+      entry.applyRow, entry.structure.root, node('div', { class: 'check-list' }, entry.myco.wrapper, entry.spike.wrapper, entry.declared.wrapper, entry.bedCheck.wrapper), entry.bedBox, advanced, ranges));
     entry.ref.addEventListener('change', () => referenceChange(entry)); entry.assay.addEventListener('change', () => updateAssay(entry));
     for (const input of [entry.ref, entry.assay]) input.addEventListener('change', () => {
       for (const file of files) file.applyFeedback = '';
@@ -238,11 +239,18 @@ function addFiles(incoming) {
 function updateApplyControls() {
   for (const entry of files) {
     entry.applyRow.hidden = files.length < 2;
+    entry.structure.applyButton.hidden = files.length < 2;
+    entry.structure.applyButton.disabled = submitting;
     entry.applyButton.disabled = submitting || !entry.ref.value || !entry.assay.value;
     entry.applyNote.textContent = !entry.ref.value || !entry.assay.value
       ? 'Choose both fields to apply to all libraries.'
       : entry.applyFeedback || 'Apply this reference and assay to all libraries.';
   }
+}
+function applyStructureToAll(source, value) {
+  if (submitting) return;
+  for (const entry of files) if (entry !== source) entry.structure.setValue(value);
+  source.structure.feedback('Structure applied to ' + (files.length - 1) + ' other ' + (files.length === 2 ? 'library.' : 'libraries.'));
 }
 function applyToAll(source) {
   if (submitting || !source.ref.value || !source.assay.value) return;
@@ -283,6 +291,7 @@ function optionsFor(e) {
   return { sample: e.sample.value, assay: e.assay.value, reference: e.ref.value, mapper: e.mapper.value,
     spike_in: e.spike.input.checked, mycoplasma: e.myco.input.checked, declared_spike_in: e.declared.input.checked,
     custom_regions: e.bedCheck.input.checked, regions_label: e.bedLabel.value, index_pairs: pairs,
+    library_structure: e.structure.value(),
     regions_filename: e.bedCheck.input.checked ? e.bed.files[0].name : null,
     regions_mode: e.bedMode.value, regions_assembly: e.bedCheck.input.checked && e.bedConfirm.checked ? e.bedAssembly : null,
     primary_chromosomes: e.chromosomes.value.trim() ? e.chromosomes.value.trim().split(/[,\s]+/) : null,

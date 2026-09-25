@@ -1,0 +1,62 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  python:
+    name: Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.11', '3.13']
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: |
+            portal/requirements.txt
+            tests/requirements.txt
+      - run: python -m pip install -r tests/requirements.txt
+      - name: Pipeline and report regression tests
+        run: python -m unittest discover -s tests -v
+      - name: Portal regression tests
+        run: python -m unittest discover -s tests/portal -v
+        env:
+          PYTHONPATH: portal
+      - name: JavaScript syntax
+        run: |
+          node --check portal/static/app.js
+          node --check portal/static/library-structure.js
+  browser:
+    name: Browser ${{ matrix.browser }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install -r tests/browser-requirements.txt
+      - run: python -m playwright install --with-deps ${{ matrix.browser }}
+      - name: Desktop and mobile library editor
+        run: python tests/browser.py ${{ matrix.browser }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: failure()
+        with:
+          name: browser-${{ matrix.browser }}
+          path: test-results/
+          if-no-files-found: ignore

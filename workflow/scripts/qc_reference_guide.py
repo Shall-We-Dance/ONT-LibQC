@@ -2,8 +2,6 @@
 import html
 
 SOURCES={
-    'illumina_dimers':('Illumina: adapter dimers','https://knowledge.illumina.com/library-preparation/general/library-preparation-general-troubleshooting-list/000001911'),
-    'illumina_handles':('Illumina: library quantification','https://knowledge.illumina.com/library-preparation/general/library-preparation-general-reference_material-list/000003750'),
     'cutrun':('Skene & Henikoff, 2017','https://elifesciences.org/articles/21856'),
     'microc':('Mapping Mammalian 3D Genome Interactions with Micro-C-XL','https://www.jove.com/t/64579/mapping-mammalian-3d-genome-interactions-with-micro-c-xl'),
 }
@@ -14,14 +12,14 @@ GUIDE={
  'raw_median_bp':('Library-dependent','Structure context','Raw ONT molecule length includes recovered library and adapter structure. Concatemers and incomplete molecules change this distribution; it is not the NGS insert length.'),
  'raw_n50_bp':('Library-dependent','Structure context','N50 measures the raw molecule-size distribution. A larger value is not inherently better for a finished short-read library.'),
  'insert_median_bp':('Target / protocol-specific','Biological context','CUT&RUN can recover both short protein-associated fragments and nucleosome-sized fragments. The expected mixture depends on target and protocol; no universal median-size interval is assigned.'),
- 'outer_complete_unit_rate':('Both P5 and P7 expected','Library design','Illumina clustering requires both outer handles. ONT read truncation, errors and incomplete sequence recovery can reduce observed handle detection, so 100% is a design expectation rather than a calibrated ONT pass threshold.'),
+ 'outer_complete_unit_rate':('Both P5 and P7 expected','Library design','The expected P5/P7 library architecture includes both outer handles. ONT read truncation, errors and incomplete sequence recovery can reduce observed handle detection, so 100% is a design expectation rather than a calibrated ONT pass threshold.'),
  'index_assignment_rate':('Prefer high assignment','Library identity','High all-unit assignment is desirable, but no validated universal percentage is available for inferred ONT indexes. Assess against the known index sheet and examine ambiguous/unassigned units.'),
  'index_ambiguous_fraction':('Prefer 0%','Library identity','Ambiguous assignments should be minimized. Nearby indexes, ONT errors and missing sequence can increase the fraction; no new color threshold is implied.'),
  'index_unassigned_fraction':('Prefer 0%','Library identity','Unassigned units reduce confidence in sublibrary attribution. The achievable rate depends on index structure and sequence recovery; no new color threshold is implied.'),
  'scope_unit_fraction':('Expected pooling ratio','Experimental design','Compare with the intended library mixture when known. Equal shares are not assumed; barcode assignment and ONT recovery may distort proportions.'),
  'concatemer_rate':('Preparation-dependent','Structure context','Multiple adapter-bounded units within one ONT molecule are not the same as multiple Micro-C genomic fragments ligated within one unit. No universal desirable concatemer fraction is established.'),
  'units_per_complete_read':('≥1 by definition','Metric definition','At least one unit defines a reconstructed read. Values above one describe ONT molecules containing multiple units, not a biological success threshold.'),
- 'adapter_dimer_call':('≥20 units; see burden','Local screening rule','The configured raw-molecule dimer-burden thresholds and a minimum of 20 reconstructed units determine the call. This is an ONT screening rule, not a calibrated Illumina loading certificate.'),
+ 'adapter_dimer_call':('≥20 units; see burden','Local screening rule','The configured raw-molecule dimer-burden thresholds and a minimum of 20 reconstructed units determine the call. This is an ONT screening rule, not a calibrated NGS loading assessment.'),
  'adapter_dimer_unit_rate':('Prefer 0%','Library purity objective','This denominator is reconstructed units. The configured adapter-dimer call instead uses raw molecules containing at least one reconstructed dimer-like unit; these percentages are not interchangeable.'),
  'raw_structure_dimer_rate':('Prefer 0%','Library purity objective','Minimize evidence of zero-insert library structures. Raw size alone does not establish an adapter dimer, and unresolved template candidates are not included in confirmed burden.'),
  'sequencing_yield_call':('Local yield screen','Local screening rule','Uses minimum raw-read and reconstructed-unit requirements from the effective pipeline configuration. It is not a biological success/failure label.'),
@@ -74,6 +72,6 @@ def reference_notes_html():
     link=lambda k:f"<a href='{SOURCES[k][1]}' target='_blank' rel='noopener'>{html.escape(SOURCES[k][0])}</a>"
     return ("<details class='reference-notes'><summary>Reference intervals: basis and sources</summary>"
             "<p>Hover a reference value for its basis. Numeric colored ranges are local screening settings unless stated otherwise. Biological expectations, statistical baselines and design objectives provide context and do not introduce new pass/fail thresholds.</p>"
-            "<p><strong>Adapter dimers.</strong> Illumina recommends ≤0.5% for patterned flow cells and ≤5% for non-patterned flow cells, assessed relative to the full library by trace/electropherogram analysis. These percentages are not calibrated equivalents of ONT raw-molecule dimer burden. "+link('illumina_dimers')+".</p>"
-            "<p><strong>Library handles.</strong> Both P5 and P7 are required for cluster formation; observed ONT handle recovery also depends on sequencing and reconstruction. "+link('illumina_handles')+".</p>"
+            "<p><strong>Adapter dimers.</strong> ONT raw-molecule dimer burden is a count-based screening measurement. It is not interchangeable with electrophoresis mass fraction or platform-specific loading limits. The configured thresholds are local screening settings.</p>"
+            "<p><strong>Library handles.</strong> The expected library architecture includes both P5 and P7. Observed ONT handle recovery also depends on sequencing and reconstruction.</p>"
             "<p><strong>Fragment sizes.</strong> CUT&amp;RUN has target-dependent short and nucleosomal components. Micro-C MNase titration evaluates approximately 150-bp nucleosomal DNA and longer products before ligation. Neither provides a universal acceptable insert median or a calibrated threshold for the inferred fragments in this report. "+link('cutrun')+"; "+link('microc')+".</p></details>")
