@@ -9,7 +9,7 @@
   <a href="portal/README.md">Host the web portal</a>
 </p>
 
-ONT-LibQC is a Snakemake workflow for quality control of completed Illumina chromatin and Micro-C libraries using shallow ONT sequencing. It reconstructs adapter-bounded library units, identifies physical index pairs, and produces an interactive HTML report.
+ONT-LibQC is a Snakemake workflow for quality control of completed NGS chromatin and Micro-C libraries using shallow ONT sequencing. It reconstructs adapter-bounded library units, identifies physical index pairs, and produces an interactive HTML report. The web portal offers an Auto/Customize library diagram with fixed-length UMI positions; the same `library_structure` settings are available in the sample configuration. See [library structure and UMI handling](portal/README.md#library-structure-and-fixed-length-umis).
 
 ## Example report
 

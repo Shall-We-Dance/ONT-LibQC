@@ -3,6 +3,7 @@ import math, re
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from email_validator import validate_email, EmailNotValidError
+from .structure import LibraryStructure, structure_catalog
 
 # label, default, minimum, maximum, numeric kind, UI group
 PARAMS = {
@@ -73,6 +74,7 @@ class Options(StrictModel):
     regions_filename: str | None = Field(default=None, max_length=180, pattern=r'^[^/\\\x00-\x1f\x7f]{1,180}$')
     regions_mode: Literal['auto','reference_point','region'] = 'auto'
     regions_assembly: str | None = Field(default=None,pattern=r'^[A-Za-z0-9_-]{1,32}$')
+    library_structure: LibraryStructure = Field(default_factory=LibraryStructure)
     index_pairs: list[IndexPair] = Field(default_factory=list,max_length=96)
     params: dict[str,float|int] = Field(default_factory=dict)
     qc_reference_ranges: dict[str,dict[str,float]|None] = Field(default_factory=dict)
@@ -136,6 +138,11 @@ class Options(StrictModel):
                 raise ValueError('Choose chromosomes from the selected reference')
         names=[p.name for p in self.index_pairs]; pairs=[(p.i5,p.i7) for p in self.index_pairs]
         if len(set(names))!=len(names) or len(set(pairs))!=len(pairs): raise ValueError('Index pair names and pairs must be unique')
+        for pair in self.index_pairs:
+            for index in ('i5', 'i7'):
+                length = getattr(self.library_structure, index + '_length')
+                if length is not None and len(getattr(pair, index)) != length:
+                    raise ValueError(f'{index} in expected index pairs must match its configured length')
         return self
 
 class Submission(StrictModel):
@@ -168,4 +175,4 @@ class BatchSubmission(StrictModel):
 
 def schema_payload():
     return {'params':[{ 'key':k,'label':v[0],'default':v[1],'min':v[2],'max':v[3],'kind':v[4],'group':v[5]} for k,v in PARAMS.items()],
-            'ranges':RANGES,'metric_profile':'ont_native'}
+            'ranges':RANGES,'metric_profile':'ont_native','library_structure':structure_catalog()}

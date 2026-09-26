@@ -67,6 +67,22 @@ samples:
     # index_pairs:
     #   - {name: libA, i5: ACGTACGT, i7: TGCATGCA}
     #   - {name: libB, i5: GATCTAGC, i7: CTAGATCG}
+    # Default: detect standard P5/P7 handles, inner adapter family and i5/i7 indexes.
+    # Optional fixed-length UMIs on the physical P5-to-P7 strand:
+    # library_structure:
+    #   mode: custom
+    #   adapter_family: auto  # auto, truseq or nextera
+    #   adapter_i5_sequence: null  # optional 16-80 bp, physical P5-to-P7 strand
+    #   adapter_i7_sequence: null  # optional 16-80 bp, same strand (not reverse primer)
+    #   i5_length: 8          # omit to infer; 0 means no index
+    #   i7_length: 8
+    #   umis:
+    #     - {position: before_insert, length: 12}
+    #     - {position: after_insert, length: 8}
+    # Other UMI positions: before_i5, after_i5, before_i7, after_i7.
+    # Optional p5_sequence / p7_sequence: 16-80 A/C/G/T bases as shown
+    # left-to-right on the same strand, including the reverse-complemented P7.
+
   sampleB:
     fastq:
       - /path/to/sampleB.fastq.gz

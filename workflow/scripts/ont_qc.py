@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Dependency-light ONT QC for finished Illumina chromatin and Micro-C libraries."""
+"""Dependency-light ONT QC for finished NGS chromatin and Micro-C libraries."""
 
 import argparse
 import bisect
@@ -21,6 +21,8 @@ from qc_definitions import profile as metric_profile, configured_params, metric_
 from qc_plot_metrics import normalized_collision_stats, collision_metric_fields, svg_size_trace, size_trace_data
 from spikein_auto import scoped_summary as auto_spikein_summary
 from qc_reference_guide import context as reference_context, reference_notes_html
+from library_structure import normalize_structure, umi_lengths, handles, extract_umis, adapter_families, POSITIONS as UMI_POSITIONS
+from report_library_structure import family_label
 from report_brand import brand_bar, copy_mark, favicon
 
 
@@ -160,10 +162,10 @@ def matches_in_window(seq, pattern, lo, hi):
         hit["end"] += lo
     return hits
 
-def find_units(seq, max_unit):
+def find_units(seq, max_unit, structure=None):
     all_units = []
     matches_by_family = {}
-    for family, (r1, r2) in FAMILIES.items():
+    for family, (r1, r2) in adapter_families(structure, FAMILIES).items():
         hits = {
             "r1f": approximate_matches(seq, r1),
             "r1r": approximate_matches(seq, rc(r1)),
@@ -212,14 +214,23 @@ def nearest_after(hits, coordinate, max_gap=18):
     return min(valid, key=lambda h: h["start"]) if valid else None
 
 
-def add_indexes(seq, units):
+def add_indexes(seq, units, structure=None):
+    structure = structure or normalize_structure()
+    p5, p7_forward = handles(structure)
+    p7 = rc(p7_forward)
+    lengths = umi_lengths(structure)
+    def gap(index):
+        if structure['mode'] == 'auto':
+            return 18
+        return (structure[index + '_length'] if structure[index + '_length'] is not None else 24) + 2 + lengths.get('before_' + index, 0) + lengths.get('after_' + index, 0)
+    gap5, gap7 = gap('i5'), gap('i7')
     for unit in units:
         left, right = unit["left"], unit["right"]
         i5_obs = i7_obs = None
         p5_hit = p7_hit = None
         if unit["orientation"] == "p5_to_p7":
-            p5_hit = nearest_before(matches_in_window(seq, P5, left["start"] - len(P5) - 20, left["start"]), left["start"])
-            p7_hit = nearest_after(matches_in_window(seq, rc(P7), right["end"], right["end"] + len(P7) + 20), right["end"])
+            p5_hit = nearest_before(matches_in_window(seq, p5, left["start"] - len(p5) - gap5 - 2, left["start"]), left["start"], max_gap=gap5)
+            p7_hit = nearest_after(matches_in_window(seq, p7_forward, right["end"], right["end"] + len(p7) + gap7 + 2), right["end"], max_gap=gap7)
             if p5_hit:
                 i5_obs = seq[p5_hit["end"]:left["start"]]
             if p7_hit:
@@ -227,8 +238,8 @@ def add_indexes(seq, units):
             i5 = i5_obs
             i7 = i7_obs
         else:
-            p7_hit = nearest_before(matches_in_window(seq, P7, left["start"] - len(P7) - 20, left["start"]), left["start"])
-            p5_hit = nearest_after(matches_in_window(seq, rc(P5), right["end"], right["end"] + len(P5) + 20), right["end"])
+            p7_hit = nearest_before(matches_in_window(seq, p7, left["start"] - len(p7) - gap7 - 2, left["start"]), left["start"], max_gap=gap7)
+            p5_hit = nearest_after(matches_in_window(seq, rc(p5), right["end"], right["end"] + len(p5) + gap5 + 2), right["end"], max_gap=gap5)
             if p7_hit:
                 i7_obs = seq[p7_hit["end"]:left["start"]]
             if p5_hit:
@@ -269,8 +280,8 @@ def length_summary(values):
     }
 
 
-def index_consensus(values):
-    values = [v for v in values if v is not None and len(v) <= 14]
+def index_consensus(values, maximum_length=14):
+    values = [v for v in values if v is not None and len(v) <= maximum_length]
     if not values:
         return {"sequence": None, "length": None, "support": 0, "purity": None, "status": "not_observed"}
     length_counts = collections.Counter(map(len, values))
@@ -329,11 +340,11 @@ def index_pair_distance(left, right, maximum_edit=1):
 def cluster_index_pairs(units, single_fraction=.90, minimum_informative=20,
                         minimum_cluster_units=20, minimum_cluster_fraction=.01,
                         expected_text="", variant_max_edit=2,
-                        variant_dominance_ratio=5.0):
-    informative = [u for u in units if u["p5_detected"] and u["p7_detected"]]
+                        variant_dominance_ratio=5.0, maximum_index_length=14):
+    informative = [u for u in units if u["p5_detected"] and u["p7_detected"] and u["i5"] is not None and u["i7"] is not None]
     exact = collections.Counter((u["i5"], u["i7"]) for u in informative
                                 if u["i5"] is not None and u["i7"] is not None
-                                and len(u["i5"]) <= 14 and len(u["i7"]) <= 14)
+                                and len(u["i5"]) <= maximum_index_length and len(u["i7"]) <= maximum_index_length)
     expected = parse_expected_index_pairs(expected_text)
     seeds = []
     suppressed_variants = []
@@ -452,9 +463,10 @@ def cluster_index_pairs(units, single_fraction=.90, minimum_informative=20,
               "sequence_orientation": "physical P5-side i5 / P7-side i7, normalized P5-to-P7"}
     return result, assignments
 
-def zero_insert_template(family, i5, i7):
-    r1, r2 = FAMILIES[family]
-    return P5 + (i5 or "") + r1 + rc(r2) + (i7 or "") + rc(P7)
+def zero_insert_template(family, i5, i7, structure=None):
+    r1, r2 = adapter_families(structure, FAMILIES)[family]
+    p5, p7 = handles(structure or normalize_structure())
+    return p5 + (i5 or "") + r1 + rc(r2) + (i7 or "") + p7
 
 
 def full_length_template_identity(sequence, template):
@@ -479,6 +491,10 @@ def mean_error_q(quality):
 
 
 def cmd_prepare(args):
+    structure = normalize_structure(json.loads(getattr(args, 'library_structure', '{}')))
+    umi_sizes = umi_lengths(structure)
+    inner_umi_bases = umi_sizes.get('before_insert', 0) + umi_sizes.get('after_insert', 0)
+    structure_rejected = 0
     for path in (args.inserts, args.legs, args.leg1, args.leg2, args.read_table, args.index_assignments,
                  args.summary, args.raw_lengths, args.insert_lengths):
         Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -496,8 +512,15 @@ def cmd_prepare(args):
         q = mean_error_q(qual) if qual else 0
         mean_q.append(q)
         raw_all.append({"read_id": read_id, "seq": seq, "qual": qual, "mean_q": q})
-        units, _ = find_units(seq, args.max_unit)
-        add_indexes(seq, units)
+        units, _ = find_units(seq, args.max_unit + inner_umi_bases, structure)
+        add_indexes(seq, units, structure)
+        retained = []
+        for unit in units:
+            if extract_umis(seq, unit, structure, rc):
+                retained.append(unit)
+            else:
+                structure_rejected += 1
+        units = retained
         complete_reads += int(bool(units)); concatemer_reads += int(len(units) > 1)
         for number, unit in enumerate(units, 1):
             unit_count += 1
@@ -517,20 +540,22 @@ def cmd_prepare(args):
                 "i7_observed": unit["i7_observed"], "i7": unit["i7"],
                 "p5_detected": unit["p5_hit"] is not None, "p7_detected": unit["p7_hit"] is not None,
                 "is_adapter_dimer": canonical_dimer, "dimer_class": "canonical_adapter_dimer" if canonical_dimer else "not_dimer",
-                "template_identity": None,
+                "template_identity": None, "umis": unit["umis"],
+                "umi_sequence": unit["umi_sequence"], "umi_status": unit["umi_status"],
             })
     pairing, assignments = cluster_index_pairs(
         units_all, args.single_index_pair_fraction, args.minimum_index_informative_units,
         args.minimum_index_cluster_units, args.minimum_index_cluster_fraction, args.expected_index_pairs,
-        args.index_variant_max_edit, args.index_variant_dominance_ratio)
+        args.index_variant_max_edit, args.index_variant_dominance_ratio,
+        maximum_index_length=24 if structure["mode"] == "custom" else 14)
     unit_scope = {row["unit_id"]: row["scope_id"] for row in assignments if row["scope_id"]}
     pair_by_scope = {pair["scope_id"]: pair for pair in pairing["pairs"]}
     raw_dimer_reads = set()
     for unit in units_all:
         scope_id = unit_scope.get(unit["unit_id"])
         pair = pair_by_scope.get(scope_id)
-        if pair and args.adapter_dimer_raw_min_bp <= unit["raw_length"] <= args.adapter_dimer_raw_max_bp:
-            template = zero_insert_template(unit["family"], pair["i5"], pair["i7"])
+        if pair and not umi_sizes and args.adapter_dimer_raw_min_bp <= unit["raw_length"] <= args.adapter_dimer_raw_max_bp:
+            template = zero_insert_template(unit["family"], pair["i5"], pair["i7"], structure)
             unit["template_identity"] = full_length_template_identity(unit["raw_seq"], template)
             # A template can match a true 11-50 bp insert at >=80% identity.
             # Once both inner anchors resolve a nonzero insert, retain that evidence.
@@ -547,10 +572,10 @@ def cmd_prepare(args):
         pair["adapter_dimer_raw_reads"] = len({u["read_id"] for u in pair_units if u["is_adapter_dimer"]})
     # Search short unreconstructed reads against supported zero-insert templates.
     templates = []
-    family = max(families, key=families.get) if families else "truseq"
-    for pair in pairing["pairs"]:
-        templates.append((pair["scope_id"], zero_insert_template(family, pair["i5"], pair["i7"])))
-    unreconstructed_probable = 0
+    family = max(families, key=families.get) if families else next(iter(adapter_families(structure, FAMILIES)))
+    for pair in pairing["pairs"] if not umi_sizes else []:
+        templates.append((pair["scope_id"], zero_insert_template(family, pair["i5"], pair["i7"], structure)))
+    unreconstructed_probable = None if umi_sizes else 0
     reconstructed_reads = {u["read_id"] for u in units_all}
     for raw in raw_all:
         if raw["read_id"] in reconstructed_reads or not (args.adapter_dimer_raw_min_bp <= len(raw["seq"]) <= args.adapter_dimer_raw_max_bp):
@@ -566,7 +591,8 @@ def cmd_prepare(args):
                     "family", "orientation",
                     "insert_start", "insert_end", "insert_length", "adapter_edits", "is_adapter_dimer",
                     "dimer_class", "dimer_template_identity", "p5_detected", "p7_detected",
-                    "i5_observed", "i5_normalized", "i7_observed", "i7_normalized"]
+                    "i5_observed", "i5_normalized", "i7_observed", "i7_normalized",
+                    "umi_status", "umi_sequence"] + ["umi_" + position for position in UMI_POSITIONS]
     with gzip.open(args.inserts, "wt") as insert_out, gzip.open(args.legs, "wt") as leg_out, \
             gzip.open(args.leg1, "wt") as leg1_out, gzip.open(args.leg2, "wt") as leg2_out, \
             gzip.open(args.read_table, "wt") as table:
@@ -587,7 +613,8 @@ def cmd_prepare(args):
                    unit["family"], unit["orientation"], unit["insert_start"], unit["insert_end"],
                    unit["insert_length"], unit["adapter_edits"], int(unit["is_adapter_dimer"]),
                    unit["dimer_class"], unit["template_identity"], int(unit["p5_detected"]), int(unit["p7_detected"]),
-                   unit["i5_observed"], unit["i5"], unit["i7_observed"], unit["i7"]]
+                   unit["i5_observed"], unit["i5"], unit["i7_observed"], unit["i7"],
+                   unit["umi_status"], unit["umi_sequence"]] + [unit["umis"].get(position) for position in UMI_POSITIONS]
             table.write("\t".join("" if x is None else str(x) for x in row) + "\n")
     assignment_header = ["unit_id", "read_id", "scope_id", "assignment_status", "i5", "i7",
                          "p5_detected", "p7_detected", "is_adapter_dimer", "dimer_class"]
@@ -602,7 +629,8 @@ def cmd_prepare(args):
         out.writelines(f"{x}\n" for x in raw_lengths)
     with open(args.insert_lengths, "w") as out:
         out.writelines(f"{x}\n" for x in insert_lengths)
-    i5, i7 = index_consensus(i5_values), index_consensus(i7_values)
+    consensus_limit = 24 if structure["mode"] == "custom" else 14
+    i5, i7 = index_consensus(i5_values, consensus_limit), index_consensus(i7_values, consensus_limit)
     if i5["length"] == 0 and i7["length"] in {6, 8, 10}:
         architecture = "classic_single_index"
     elif i5["length"] in {6, 8, 10} and i7["length"] in {6, 8, 10}:
@@ -612,6 +640,13 @@ def cmd_prepare(args):
     raw_window_count = sum(args.adapter_dimer_raw_min_bp <= x <= args.adapter_dimer_raw_max_bp for x in raw_lengths)
     summary = {
         "sample": args.sample, "assay": args.assay, "raw": length_summary(raw_lengths),
+        "library_structure": structure,
+        "umi_summary": {"configured_bases": sum(umi_sizes.values()),
+                        "complete_units": sum(u['umi_status'] == 'complete' for u in units_all),
+                        "partial_units": sum(u['umi_status'] == 'partial' for u in units_all),
+                        "rejected_short_units": structure_rejected,
+                        "orientation": "P5-to-P7", "deduplication": "unchanged"},
+        "unreconstructed_dimer_screen": "not_assessed_for_umi_layout" if umi_sizes else "assessed",
         "inserts": length_summary(insert_lengths), "mean_read_q": statistics.mean(mean_q) if mean_q else None,
         "complete_reads": complete_reads, "complete_read_rate": complete_reads / read_count if read_count else 0,
         "library_units": unit_count, "units_per_raw_read": unit_count / read_count if read_count else 0,
@@ -881,12 +916,16 @@ def full_library_profile(unit_rows, adapter_summary):
     consensus. Missing index information is reported, never replaced by a fixed
     136 bp assumption. Both weighting modes use exactly these modeled units.
     """
+    structure = normalize_structure(adapter_summary.get('library_structure'))
+    p5, p7 = handles(structure)
+    umi_bases = sum(umi_lengths(structure).values())
+    templates = adapter_families(structure, FAMILIES)
     pairs = {p['scope_id']: p for p in adapter_summary.get('index_pairing', {}).get('pairs', [])}
     modeled = []
     excluded = collections.Counter()
     for row in unit_rows:
         family = row.get('family')
-        if family not in FAMILIES:
+        if family not in templates:
             excluded['unknown_adapter_family'] += 1
             continue
         pair = pairs.get(row.get('scope_id')) if row.get('assignment_status') == 'assigned' else None
@@ -896,15 +935,19 @@ def full_library_profile(unit_rows, adapter_summary):
         else:
             index_lengths = [adapter_summary.get(k, {}).get('length') for k in ('i5', 'i7')]
             basis = 'sample_index_length_consensus'
+        if any(structure[k + '_length'] is not None for k in ('i5', 'i7')):
+            index_lengths = [structure[k + '_length'] if structure[k + '_length'] is not None else value
+                             for k, value in zip(('i5', 'i7'), index_lengths)]
+            basis += '_with_configured_lengths'
         if any(isinstance(v, bool) or not isinstance(v, int) or v < 0 for v in index_lengths):
             excluded['unknown_index_length'] += 1
             continue
         insert = int(row['insert_length'])
         if insert < 0:
             raise ValueError('Full-library model requires non-negative insert lengths')
-        added = len(P5) + len(P7) + sum(map(len, FAMILIES[family])) + sum(index_lengths)
+        added = len(p5) + len(p7) + sum(map(len, templates[family])) + sum(index_lengths) + umi_bases
         modeled.append(dict(unit_id=row['unit_id'], read_id=row['read_id'],
-            insert_length_bp=insert, model_adapter_bases=added,
+            insert_length_bp=insert, model_adapter_bases=added, model_umi_bases=umi_bases,
             model_library_length_bp=insert + added, model_basis=basis,
             outer_handles_detected=int(str(row.get('p5_detected')) == '1' and str(row.get('p7_detected')) == '1')))
     return dict(source_units=len(unit_rows), modeled_units=len(modeled),
@@ -937,14 +980,14 @@ def write_library_size_assets(directory, prefix, label, unit_rows, adapter_summa
         writer = csv.writer(handle, delimiter='\t')
         writer.writerow(['size_bp', 'length_weighted_relative_signal', 'count_based_relative_signal'])
         writer.writerows(zip(length_data['lengths'], length_data['signal'], count_data['signal']))
-    fields = ['unit_id', 'read_id', 'insert_length_bp', 'model_adapter_bases',
+    fields = ['unit_id', 'read_id', 'insert_length_bp', 'model_adapter_bases', 'model_umi_bases',
               'model_library_length_bp', 'model_basis', 'outer_handles_detected']
     with (directory / names['units']).open('w') as handle:
         writer = csv.DictWriter(handle, fieldnames=fields, delimiter='\t')
         writer.writeheader()
         writer.writerows(model['rows'])
     info = {k: v for k, v in model.items() if k not in ('rows', 'lengths')}
-    info.update(length_definition='insert + P5 + family-specific inner adapters + P7 + physical i5/i7 lengths',
+    info.update(length_definition='insert + P5 + family-specific inner adapters + P7 + physical i5/i7 lengths + configured UMI bases',
                 coordinate='log1p(bp/50)', bandwidth=bandwidth, maximum_bp=maximum_bp,
                 main_weighting='length', count_based_default_collapsed=True,
                 normalization='each curve peak = 100 within the display window',
@@ -1226,6 +1269,8 @@ def cmd_metrics(args):
         "adapter_family": max(adapter["adapter_families"], key=adapter["adapter_families"].get)
                           if adapter["adapter_families"] else "not_detected",
         "index_architecture": adapter["index_architecture"], "index_pairing": adapter.get("index_pairing", {}),
+        "library_structure": adapter.get("library_structure", {"mode": "auto"}),
+        "umi_summary": adapter.get("umi_summary", {}),
         "i5": adapter["i5"]["sequence"], "i5_purity": adapter["i5"]["purity"],
         "i7": adapter["i7"]["sequence"], "i7_purity": adapter["i7"]["purity"],
         "aligner": args.aligner, "mycoplasma_screen": {k: v for k, v in mycoplasma.items() if k != "qualifying_read_loci"}, "mycoplasma_status": mycoplasma.get("status"),
@@ -1550,7 +1595,7 @@ METRIC_META = {
     "adapter_dimer_call": ("Adapter-dimer QC", "Screening call based on adapter-dimer burden and available unit count."),
     "concatemer_rate": ("Concatemer rate", "Total: fraction of all raw molecules with multiple reconstructed units. Sublibrary: fraction of its assigned raw molecules with multiple units, including units from other scopes; shared molecules may contribute to multiple scopes."),
     "scope_unit_fraction": ("Sublibrary share of all units", "Assigned units in this sublibrary / all reconstructed sample units, including unassigned and ambiguous units."),
-    "adapter_family": ("Adapter family", "Best-supported Illumina-compatible P5/P7 sequence family."),
+    "adapter_family": ("Adapter family", "Best-supported NGS-compatible P5/P7 sequence family."),
     "index_architecture": ("Index architecture", "Detected single-index, dual-index, mixed or unresolved architecture."),
     "i5": ("i5 consensus", "Consensus i5 index sequence normalized to P5-to-P7 orientation."),
     "i5_purity": ("i5 purity", "Fraction supporting the dominant i5 consensus among informative units."),
@@ -1653,6 +1698,8 @@ def is_percent_metric(key, ranges):
 
 
 def display_value(key, value, ranges):
+    if key == "adapter_family" and value is not None:
+        return family_label(value)
     if key == "mycoplasma_status" and value == "NOT_DETECTED_AT_THIS_DEPTH":
         return "NOT_DETECTED"
     if value is None:
@@ -2057,6 +2104,11 @@ def scoped_table_html(scopes, keys, ranges):
     return f"<div class='table-scroll'><table><tr><th>Metric</th><th>Reference interval</th>{heads}</tr>{''.join(rows)}</table></div>"
 
 
+def library_structure_html(metric, adapter_summary=None, unit_rows=None):
+    from report_library_structure import library_structure_html as render_structure
+    return render_structure(metric, adapter_summary, unit_rows, adapter_templates=FAMILIES)
+
+
 def pair_label(pair):
     return f"{pair.get('name',pair.get('scope_id','library'))}: i5 {pair.get('i5') or '∅'} / i7 {pair.get('i7') or '∅'} ({(pair.get('support_fraction') or 0):.1%})"
 
@@ -2351,7 +2403,8 @@ def cmd_report(args):
 <div class='traffic-grid'>{top}</div>
 <section class='report-section' id='sequencing'><span class='eyebrow'>01 · SEQUENCING</span><h2>ONT Sequencing QC</h2>{ont_table}</section>
 <section class='report-section' id='library-shape'><span class='eyebrow'>02 · NGS LIBRARY QC</span><h2>NGS Library Type / Shape QC</h2>{identity_panel_html(metric,pairing,pairs)}
-<div class='adapter-context'><strong>P5/P7-compatible adapter family</strong> · <code>{html.escape(metric['adapter_family'])}</code><p class='muted'>Physical i5 on the P5 side and i7 on the P7 side; sequences are normalized to P5→P7 orientation.</p></div>
+{library_structure_html(metric, adapter_summary, scope_profiles.get("total", {}).get("unit_rows", []))}
+<div class='adapter-context'><strong>P5/P7-compatible adapter family</strong> · <code>{html.escape(family_label(metric['adapter_family']))}</code><p class='muted'>Physical i5 on the P5 side and i7 on the P7 side; sequences are normalized to P5→P7 orientation.</p></div>
 <div id='library-key-metrics'>{library_primary_table}</div>
 <details class='metric-group' id='library-extra-metrics'><summary>Additional structure, index and reconstruction metrics</summary>{library_table}</details>
 {reference_notes_html()}
@@ -2521,6 +2574,7 @@ def parser():
     x.add_argument("--index-variant-dominance-ratio", type=float, default=5.0,
                    help="Minimum support ratio of a dominant pair over a rescued variant")
     x.add_argument("--expected-index-pairs", default="")
+    x.add_argument("--library-structure", default="{}", help="JSON library layout with fixed-length UMI positions")
     x.set_defaults(func=cmd_prepare)
     x = sub.add_parser("metrics")
     x.add_argument("--sample", required=True); x.add_argument("--assay", choices=["chromatin", "microc"], required=True)

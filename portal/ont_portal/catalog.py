@@ -75,6 +75,7 @@ def job_config(options,catalog,jobdir,cores):
             (jobdir/'spike-panel.json').write_text(json.dumps(safe,indent=2)+'\n');spike['database_manifest']='/job/spike-panel.json'
         else: spike['combined_bowtie2_index']=mounts.path(spec['combined_bowtie2_index'],prefix=True)
     sample={'fastq':['/job/input.fastq.gz'],'type':options.assay,'reference':options.reference,'index_pairs':[p.model_dump() for p in options.index_pairs]}
+    sample['library_structure']=options.library_structure.model_dump()
     if options.mapper!='auto':sample['mapper']=options.mapper
     if options.custom_regions:sample['custom_regions']={'bed':'/job/regions.bed','assembly':reference['assembly'],'label':options.regions_label,'mode':options.regions_mode,**({'bed_name':options.regions_filename} if options.regions_filename else {})}
     ranges=copy.deepcopy(RANGES)

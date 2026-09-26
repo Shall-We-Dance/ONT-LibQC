@@ -92,6 +92,11 @@ def expected_index_pairs(wildcards):
         pairs = [{"name": name, **value} for name, value in pairs.items()]
     return ";".join(f"{x.get('name', 'library')}|{x.get('i5', '')}|{x.get('i7', '')}" for x in pairs)
 
+def library_structure_config(wildcards):
+    from library_structure import normalize_structure
+    value = normalize_structure(config['samples'][wildcards.sample].get('library_structure'))
+    return json.dumps(value, separators=(',', ':'))
+
 def spikein_config(sample):
     settings = dict(SPIKE_IN)
     override = config["samples"][sample].get("spike_in")

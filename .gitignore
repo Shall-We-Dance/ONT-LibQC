@@ -94,3 +94,5 @@ release-manifest.json
 
 # Regression checks are maintained outside the public delivery directory.
 /portal/tests/
+
+/test-results/
