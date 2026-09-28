@@ -151,8 +151,16 @@ class Submission(StrictModel):
     size: int = Field(gt=0)
     options: Options
     consent: Literal[True]
+    data_policy_acknowledged: bool = Field(strict=True)
     submission_key: str = Field(default='',max_length=128)
     website: str = Field(default='',max_length=100)
+
+    @field_validator('data_policy_acknowledged')
+    @classmethod
+    def acknowledge_data_policy(cls, value):
+        if value is not True:
+            raise ValueError('Confirm that this submission contains no human patient data or other sensitive personal data')
+        return value
 
     @field_validator('email')
     @classmethod

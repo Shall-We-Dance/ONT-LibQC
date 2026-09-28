@@ -105,7 +105,7 @@ class BatchNotificationsTests(unittest.TestCase):
         catalog={'references':[dict(id='dm6',ready=True,mappers=['bowtie2'],mycoplasma=False,spike_in=False)]}
         settings=Settings(state=self.store.state,public_url='https://testserver',allowed_hosts=['testserver'],secret='test-only-'*8,submission_key='',public_catalog=catalog,min_free_bytes=0,mail_enabled=True)
         app=create_app(settings);app.state.store.heartbeat()
-        submission=dict(email='test@example.org',filename='test.fastq',size=10,options=dict(sample='test',reference='dm6',assay='chromatin'),consent=True)
+        submission=dict(email='test@example.org',filename='test.fastq',size=10,options=dict(sample='test',reference='dm6',assay='chromatin'),consent=True,data_policy_acknowledged=True)
         with TestClient(app,base_url='https://testserver',headers={'X-Portal-Request':'1'}) as client:
             result=client.post('/api/batches',json={'files':[submission,submission]})
             self.assertEqual(result.status_code,201,result.text)

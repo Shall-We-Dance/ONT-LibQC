@@ -274,8 +274,8 @@ function updateCount() {
   updateApplyControls();
   $('file-count').textContent = files.length + (files.length === 1 ? ' file' : ' files');
   $('empty-hint').hidden = files.length > 0;
-  $('submit-button').disabled = !files.length || submitting || !catalog?.worker_online || files.some(e => e.bedCheck.input.checked && e.bedChecking);
-  $('submit-note').textContent = files.length ? files.length + ' independent ' + (files.length === 1 ? 'analysis' : 'analyses') : 'Select a file to begin';
+  $('submit-button').disabled = !files.length || submitting || !catalog?.worker_online || !$('data-policy').checked || files.some(e => e.bedCheck.input.checked && e.bedChecking);
+  $('submit-note').textContent = files.length && !$('data-policy').checked ? 'Confirm the data policy to continue' : files.length ? files.length + ' independent ' + (files.length === 1 ? 'analysis' : 'analyses') : 'Select a file to begin';
 }
 function optionsFor(e) {
   if (!e.ref.value || !e.assay.value) throw new Error('Choose a reference genome and library assay for ' + e.file.name + '.');
@@ -471,10 +471,20 @@ async function refreshTasks() {
 }
 function saveText(name, text) { const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' })); const a = node('a', { href: url, download: name }); document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
 $('save-links').addEventListener('click', () => saveText(tasks.length === 1 ? 'ont-libqc-private-link.txt' : 'ont-libqc-private-links.txt', tasks.map(t => (t.job?.sample || t.name || t.id) + '\n' + privateLink(t)).join('\n\n')));
+$('data-policy').checked = false;
+$('data-policy').addEventListener('change', updateCount);
+window.addEventListener('pageshow', event => {
+  if (event.persisted) { $('data-policy').checked = false; updateCount(); }
+});
+
 $('submission-form').addEventListener('submit', async event => {
   event.preventDefault(); if (submitting || !files.length) return;
   showError(''); let entries;
   try {
+    if (!$('data-policy').checked) {
+      $('data-policy').focus();
+      throw new Error('Confirm that this submission contains no human patient data or other sensitive personal data.');
+    }
     if (files.length > catalog.max_files) throw new Error('Choose up to ' + catalog.max_files + ' files.');
     entries = files.map(e => ({ entry: e, options: optionsFor(e), bedFile: e.bed.files[0] }));
   } catch (e) { showError(e.message); return; }
@@ -485,7 +495,7 @@ $('submission-form').addEventListener('submit', async event => {
     }
     const batch = await api('/api/batches', 'POST', { files: entries.map(({ entry, options }) => ({
       email: $('email').value, filename: entry.file.name, size: entry.file.size, options,
-      consent: $('consent').checked, submission_key: $('submission-code').value, website: $('website').value
+      consent: $('consent').checked, data_policy_acknowledged: $('data-policy').checked, submission_key: $('submission-code').value, website: $('website').value
     })) });
     tasks = batch.jobs.map((job, i) => ({ id: job.id, token: job.token, name: entries[i].options.sample,
       uploadProgress: 0, job: { ...job, ...entries[i].options, filename: entries[i].entry.file.name } }));

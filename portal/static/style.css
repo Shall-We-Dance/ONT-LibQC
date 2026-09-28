@@ -175,3 +175,5 @@ nav a,.text-link,.required-marker{transition:color var(--motion-ui) ease}
 @media(prefers-reduced-motion:reduce){.structure-umi-row,.structure-block.umi{transition:none}}
 
 .structure-copy-note{color:var(--blue);font-size:11px;line-height:1.5;margin-top:8px}
+
+.submission-consents{display:grid;gap:12px;margin:24px 0}

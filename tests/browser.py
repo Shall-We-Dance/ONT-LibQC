@@ -23,37 +23,40 @@ server = http.server.ThreadingHTTPServer(("127.0.0.1", 0),
     functools.partial(Handler, directory=str(ROOT / "portal")))
 threading.Thread(target=server.serve_forever, daemon=True).start()
 origin = f"http://127.0.0.1:{server.server_port}"
-script = (ROOT / "tests/portal/library_structure.browser.js").read_text()
+scripts = {name: (ROOT / f"tests/portal/{name}.browser.js").read_text()
+           for name in ("library_structure", "data_policy")}
 try:
     with sync_playwright() as p:
         for engine in sys.argv[1:] or ["chromium", "webkit"]:
             browser = getattr(p, engine).launch()
             try:
                 for width in (1100, 390):
-                    page = browser.new_page(viewport={"width": width, "height": 900})
-                    def route_request(route):
-                        url = route.request.url
-                        if url == origin + "/api/catalog":
-                            route.fulfill(json=CATALOG)
-                        elif url.startswith(origin + "/static/"):
-                            route.continue_()
-                        else:
-                            route.abort()
-                    page.route("**/*", route_request)
-                    try:
-                        page.goto(origin + "/static/index.html")
-                        page.evaluate(script)
-                        result = page.evaluate("window.uiVerification")
-                        print(json.dumps({"browser": engine, **result}), flush=True)
-                        assert result["ok"], result
-                        labels = page.locator(".structure-settings select").all_text_contents()
-                        assert any("TruSeq" in label and "Nextera" in label for label in labels), labels
-                    except Exception:
-                        (ROOT / "test-results").mkdir(exist_ok=True)
-                        page.screenshot(path=str(ROOT / f"test-results/{engine}-{width}.png"), full_page=True)
-                        raise
-                    finally:
-                        page.close()
+                    for scenario, script in scripts.items():
+                        page = browser.new_page(viewport={"width": width, "height": 900})
+                        def route_request(route):
+                            url = route.request.url
+                            if url == origin + "/api/catalog":
+                                route.fulfill(json=CATALOG)
+                            elif url.startswith(origin + "/static/"):
+                                route.continue_()
+                            else:
+                                route.abort()
+                        page.route("**/*", route_request)
+                        try:
+                            page.goto(origin + "/static/index.html")
+                            page.evaluate(script)
+                            result = page.evaluate("window.uiVerification")
+                            print(json.dumps({"browser": engine, "scenario": scenario, **result}), flush=True)
+                            assert result["ok"], result
+                            if scenario == "library_structure":
+                                labels = page.locator(".structure-settings select").all_text_contents()
+                                assert any("TruSeq" in label and "Nextera" in label for label in labels), labels
+                        except Exception:
+                            (ROOT / "test-results").mkdir(exist_ok=True)
+                            page.screenshot(path=str(ROOT / f"test-results/{scenario}-{engine}-{width}.png"), full_page=True)
+                            raise
+                        finally:
+                            page.close()
             finally:
                 browser.close()
 finally:
