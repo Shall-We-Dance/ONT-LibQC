@@ -84,7 +84,7 @@ class StructureOptionsTests(unittest.TestCase):
             settings=Settings(state=Path(tmp),public_url='https://testserver',allowed_hosts=['testserver'],secret='test-only-'*8,submission_key='',public_catalog=PUBLIC,min_free_bytes=0)
             app=create_app(settings);app.state.store.heartbeat()
             with TestClient(app,base_url='https://testserver',headers={'X-Portal-Request':'1'}) as client:
-                base={'email':'test@example.org','filename':'test.fastq','size':20,'consent':True}
+                base={'email':'test@example.org','filename':'test.fastq','size':20,'consent':True,'data_policy_acknowledged':True}
                 invalid=client.post('/api/jobs',json=base|{'options':BASE|{'library_structure':{'mode':'auto','umis':CUSTOM['umis']}}})
                 self.assertEqual(invalid.status_code,422)
                 batch=client.post('/api/batches',json={'files':[base|{'options':BASE|{'library_structure':CUSTOM}},base|{'options':BASE|{'sample':'auto_test'}}]})

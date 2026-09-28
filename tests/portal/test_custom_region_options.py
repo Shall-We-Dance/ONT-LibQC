@@ -75,7 +75,7 @@ class CustomRegionOptionsTests(unittest.TestCase):
                         with self.subTest(endpoint=endpoint, assembly=assembly):
                             options = BASE | {'regions_mode': 'reference_point', 'regions_assembly': assembly}
                             submission = {'email': 'test@example.org', 'filename': 'test.fastq', 'size': 10,
-                                          'options': options, 'consent': True}
+                                          'options': options, 'consent': True, 'data_policy_acknowledged': True}
                             body = {'files': [submission]} if endpoint.endswith('batches') else submission
                             response = client.post(endpoint, json=body)
                             if assembly != 'dm6':

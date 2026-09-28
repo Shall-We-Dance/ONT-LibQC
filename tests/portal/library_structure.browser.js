@@ -29,6 +29,7 @@
   };
   try{
     await ready(()=>typeof catalog!=='undefined'&&catalog);
+    $('data-policy').checked=true;change($('data-policy'));
     addFiles([new File(['@test\nACGT\n+\nIIII\n'],'chromatin_library.fastq')]);
     const first=files[0],root=first.structure.root;
     first.ref.value='dm6';change(first.ref);first.assay.value='chromatin';change(first.assay);

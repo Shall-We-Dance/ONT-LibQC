@@ -131,7 +131,7 @@ class BedPresentationTests(unittest.TestCase):
             app=create_app(settings);app.state.store.heartbeat()
             name='HL280 peaks.bed'
             with TestClient(app,base_url='https://testserver',headers={'X-Portal-Request':'1'}) as client:
-                response=client.post('/api/jobs',json={'email':'test@example.org','filename':'test.fastq','size':10,'consent':True,
+                response=client.post('/api/jobs',json={'email':'test@example.org','filename':'test.fastq','size':10,'consent':True,'data_policy_acknowledged':True,
                     'options':BASE | {'regions_filename':name,'regions_mode':'region','regions_assembly':'dm6'}})
                 self.assertEqual(response.status_code,201,response.text)
                 saved=Options.model_validate_json(app.state.store.get(response.json()['id'])['options'])
