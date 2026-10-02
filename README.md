@@ -71,3 +71,7 @@ Micro-C Pairtools exports are in `report/data/pairtools/`: per-sample JSON setti
 All calculation intermediates go to `output_dir` (default `.work`). After the report is generated and its links are checked, the workflow removes BAM/BAI, SAM, extracted FASTQ, coverage tracks, matrices and the working directory. Failed runs retain working files for resumption. Original FASTQ and supplied references are preserved.
 
 Set `report_dir` to change the report location. It must be separate from `output_dir`; both directories must be outside the input/reference paths. Recomputing a completed analysis requires the original inputs because calculation intermediates have been removed.
+
+## License
+
+Licensed under the [MIT License](LICENSE).
