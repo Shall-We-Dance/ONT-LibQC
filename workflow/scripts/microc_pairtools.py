@@ -161,7 +161,8 @@ def run_analysis(args):
             if passing:
                 sam = work/'aligned.sam'
                 with sam.open('w') as handle:
-                    run([args.bwa_mem2, 'mem', '-SP', '-t', args.threads, args.index, clean1, clean2], handle)
+                    extra=['-K',getattr(args,'bwa_batch_bases',1000000)] if getattr(args,'aligner','bwa-mem2')=='bwa-mem' else []
+                    run([args.bwa_mem2, 'mem', '-SP', *extra, '-t', args.threads, args.index, clean1, clean2], handle)
                 run([args.pairtools, 'parse', '--chroms-path', args.chrom_sizes, '--drop-sam', '--add-columns', 'mapq',
                      '--walks-policy', 'mask', '--min-mapq', '1', '--max-inter-align-gap', '20',
                      '--max-molecule-size', '2000', '--nproc-in', '1', '--nproc-out', '1',
@@ -176,6 +177,8 @@ def run_analysis(args):
                 if set(before) != passing:
                     raise ValueError('Pairtools did not retain every fastp-passing pair')
         result = summarize(args.sample, before, after, eligible, short, assignments, names)
+        result['settings']['aligner']=getattr(args,'aligner','bwa-mem2')+' mem -SP'
+        if getattr(args,'aligner','bwa-mem2')=='bwa-mem':result['settings']['bwa_batch_bases']=getattr(args,'bwa_batch_bases',1000000)
         result['fastp_summary'] = fastp_summary
         result['versions'] = {}
         for label, executable in [('pairtools', args.pairtools), ('fastp', args.fastp)]:
@@ -217,6 +220,8 @@ def svg_categories(scope):
 def report_html(result, assets, scopes, data_url='../qc/pairtools'):
     """Shared renderer for new analyses and existing portable examples."""
     esc = html.escape
+    aligner=esc(result.get('settings',{}).get('aligner','bwa-mem2 mem -SP'))
+    aligner_name='BWA-MEM' if aligner.startswith('bwa-mem ') else 'BWA-MEM2'
     sample = result['sample']
     panels = []
     data_scopes = {s['scope_id']: s for s in result['scopes']}
@@ -246,11 +251,11 @@ def report_html(result, assets, scopes, data_url='../qc/pairtools'):
                        [('summary.tsv','Category counts and fractions'),('units.tsv.gz','Per-unit pair types'),('json','Settings and metrics')])
     return ("<section class='report-section' id='pairtools'><span class='eyebrow'>PAIRED-END PARSING</span>"
             "<h2>Pairtools pair types</h2><p>Reconstructed ONT inserts are viewed as overlapping terminal reads of at most 150 bp, "
-            "filtered with fastp, aligned with BWA-MEM2 and classified by Pairtools. Results are shown after duplicate marking. Percentages use every parsed pair, including unmapped pairs and masked walks.</p>"
+            f"filtered with fastp, aligned with {aligner_name} and classified by Pairtools. Results are shown after duplicate marking. Percentages use every parsed pair, including unmapped pairs and masked walks.</p>"
             + ''.join(panels) + "<details><summary>Pair types and analysis settings</summary><p><strong>UU</strong>: unique–unique; "
             "<strong>UR/RU</strong>: rescued single-ligation pairs; <strong>DD</strong>: coordinate duplicates marked within the sample; "
             "<strong>WW</strong>: masked complex walks; <strong>Other</strong>: remaining types, including unmapped or non-unique ends.</p>"
-            "<p>fastp paired-end adapter detection; BWA-MEM2 mem -SP; Pairtools parse with MAPQ ≥1, walks-policy mask, "
+            f"<p>fastp paired-end adapter detection; {aligner}; Pairtools parse with MAPQ ≥1, walks-policy mask, "
             "maximum inter-alignment gap 20 bp and maximum molecule size 2,000 bp; duplicate marking with a 1-bp tolerance, max method and scipy backend. "
             "Duplicates stay in the denominator. Sublibraries inherit marks from the full sample.</p>"
             "<p>These are parsing outcomes, not direct ligation counts or a calibrated library-quality score. DD depends on sampling depth and does not estimate PCR duplication or library complexity. "
@@ -264,12 +269,14 @@ def main():
     for flag in ('sample', 'inserts', 'read-table', 'adapter-summary', 'index', 'chrom-sizes', 'output-prefix'):
         parser.add_argument('--'+flag, required=True)
     parser.add_argument('--bwa-mem2', default='bwa-mem2')
+    parser.add_argument('--aligner',choices=('bwa-mem','bwa-mem2'),default='bwa-mem2')
+    parser.add_argument('--bwa-batch-bases',type=int,default=1000000)
     parser.add_argument('--fastp', default='fastp')
     parser.add_argument('--pairtools', default='pairtools')
     parser.add_argument('--threads', type=int, default=2)
     args = parser.parse_args()
-    if args.threads < 1:
-        parser.error('--threads must be positive')
+    if args.threads < 1 or args.bwa_batch_bases < 1:
+        parser.error('--threads and --bwa-batch-bases must be positive')
     run_analysis(args)
 
 

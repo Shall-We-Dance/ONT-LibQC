@@ -1,75 +1,99 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Example reports · ONT-LibQC</title><link rel="icon" type="image/svg+xml" href="assets/ont-libqc-mark.svg">
-<style>/* Palette and type match portal/static/style.css; all assets work offline. */
-:root{color-scheme:light;--ink:#152f39;--muted:#5d717a;--line:#dce5e9;--blue:#117478;--deep:#123a45;--wash:#f2f6f8;--white:#fff;--mint:#8ce4ce;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--ink);background:var(--wash);scroll-behavior:smooth;scroll-padding-top:85px}
-body{max-width:1380px;margin:30px auto 60px;padding:0 24px;font-family:inherit;font-size:14px;line-height:1.5;color:var(--ink)}
-h1,h2,h3,table,button,input,select{font-family:inherit}h1{letter-spacing:-.035em;font-size:36px;font-weight:650;margin:5px 0 10px}h2{font-size:23px;letter-spacing:-.025em;margin:3px 0 18px}h3{font-size:18px;color:var(--deep)}a{color:var(--blue);text-underline-offset:3px}
-.report-hero{padding:30px 34px;border-radius:12px;background:var(--deep);color:var(--white)}.report-hero a{color:#e0faf3}.report-hero .eyebrow{color:var(--mint)}.report-hero p{margin:0;color:#c0d6dc}.eyebrow{font-size:10px;letter-spacing:.13em;font-weight:750;color:var(--blue)}.hero-meta{display:flex;gap:12px;flex-wrap:wrap;margin-top:18px}.hero-meta span{border:1px solid #ffffff30;border-radius:20px;padding:4px 12px;font-size:12px}
-.report-nav{display:flex;flex-wrap:wrap;gap:6px;position:sticky;top:0;z-index:20;background:#f2f6f8f5;backdrop-filter:blur(10px);padding:12px 0;margin:8px 0 16px;border-bottom:1px solid var(--line)}.report-nav a{font-size:12px;font-weight:650;text-decoration:none;padding:7px 12px;border-radius:8px}.report-nav a:hover{background:#e9f2f4}
-.report-section{background:#fff;border:1px solid var(--line);border-radius:12px;padding:26px;margin:20px 0;scroll-margin-top:90px}.muted{color:var(--muted);font-size:13px}.report-section>p{max-width:1100px}.section-heading{margin-bottom:16px}
-.scope-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:15px 18px;box-shadow:none}.scope-card h3{font-size:14px;color:var(--muted)}.traffic{padding:10px 0;grid-template-columns:16px 1fr auto}.traffic b{font-size:13px}.traffic em{font-size:11px;text-transform:uppercase;letter-spacing:.035em}.traffic-grid{gap:16px;margin:20px 0}
-.plot-card{border:1px solid var(--line);border-radius:12px;padding:10px}.plots{gap:20px}.profile-scope{border-top:1px solid var(--line);padding-top:10px}.size-plots img{min-height:240px}.analysis-plots .plot-card img{height:340px}.custom-static{display:block;width:100%;max-width:1050px;margin:auto}
-.metric-group{margin:16px 0;border:1px solid var(--line);border-radius:10px;overflow:hidden}.metric-group summary{padding:13px 16px;font-weight:650;cursor:pointer;background:#f8fbfc}.metric-group .table-scroll{padding:0 12px}table{font-size:13px}th{background:#f6f9fa;font-size:12px;font-weight:650;padding:12px 10px}td{padding:11px 10px;border-bottom:1px solid #edf2f4}tr:last-child td{border-bottom:0}.metric-reading{font-weight:600}.light{width:10px;height:10px;box-shadow:0 0 0 3px var(--wash)}.metric-tip b{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:#e9f2f4;color:var(--muted);font-size:10px}.info-icon{display:inline-flex;align-items:center;justify-content:center;border:1px solid #bdd3d9!important;width:19px;height:19px;border-radius:50%;font-size:12px;font-weight:600;margin-left:7px;color:var(--blue);vertical-align:middle}
-.identity-panel{margin-bottom:20px}.identity-card{box-shadow:none}.identity-card h3{background:#edf5f5;color:var(--deep);font-size:13px}.adapter-context{padding:14px 18px;background:#edf5f5;border-radius:10px;margin:16px 0}.adapter-context code{background:#e0eeee;color:var(--deep);border-radius:4px}.note{border-radius:8px;background:#edf5f5;font-size:13px;border-left:3px solid var(--blue)}
-.custom-controls{display:flex;align-items:end;flex-wrap:wrap;gap:16px;background:#f6f9fa;padding:16px;border-radius:10px}.custom-controls label{display:grid;gap:6px;font-size:12px;color:var(--muted)}.custom-controls label:has(input[type=checkbox]){display:block;max-width:240px}button,select{border:1px solid var(--line);border-radius:7px;padding:9px 12px;background:white;color:var(--deep);font-size:13px}button{background:var(--blue);color:white;border-color:var(--blue);cursor:pointer}button:hover{background:var(--deep)}input[type=file]{font-size:12px;max-width:290px}.report-section details>summary{cursor:pointer;color:var(--blue);font-size:13px}.report-section details>p{color:var(--muted);font-size:12px;line-height:1.6}#custom-output svg{width:100%;display:block}#custom-downloads{display:flex;gap:18px;padding-bottom:15px}.report-footer{color:var(--muted);padding:14px 5px;font-size:12px}.table-scroll{border-radius:8px}.summary-plot{background:#fff;border-radius:14px;margin:18px 0}
-@media(max-width:850px){body{padding:0 12px}.report-hero{padding:22px}.report-section{padding:16px}h1{font-size:28px}.report-nav{position:relative}.size-plots img{min-height:0}.identity-panel{grid-template-columns:1fr}.plots{grid-template-columns:minmax(0,1fr)}.analysis-plots .plot-card img{height:auto}.traffic-grid{grid-template-columns:1fr}}
-@media print{.report-nav,.custom-controls,#custom-downloads{display:none}.report-section,.report-hero{box-shadow:none;break-inside:avoid}body{max-width:none;background:white}.report-hero{color:var(--deep);background:white}.report-hero p,.report-hero .eyebrow{color:var(--muted)}.plots img{break-inside:avoid}details{display:block}}
-
-.figure-link{font-size:11px;text-align:right;padding:2px 8px 4px;color:var(--muted)}
-
-.library-profiles{margin-top:26px;border-top:1px solid var(--line);padding-top:14px;scroll-margin-top:80px}.library-profiles>h3{font-size:20px}.fragment-caption{padding:8px 12px 0;font-size:13px;color:var(--deep)}.fragment-caption p{margin:7px 0 12px;font-size:12px;line-height:1.55;color:var(--muted)}.reference-notes{margin:15px 0}.reference-context{font-size:12px}.trace-comparison-note{padding:10px 14px;background:#f6f9fa;border-radius:8px}#library-key-metrics{margin:20px 0}
-
-.primary-size-plots{grid-template-columns:minmax(0,1fr)!important;max-width:1020px;margin-left:auto;margin-right:auto}.primary-size-plots .plot-card{box-sizing:border-box;width:100%}.size-model-note{margin-bottom:12px}.size-profile-downloads{display:flex;flex-wrap:wrap;gap:4px 10px;justify-content:center;margin-top:-8px}
-.count-based-details{border:1px solid var(--line);border-radius:10px;margin:18px 0 24px;overflow:hidden}.count-based-details>summary{padding:13px 16px;background:#f6f9fa;font-weight:650;cursor:pointer}.count-based-details>summary:focus-visible{outline:2px solid var(--blue);outline-offset:-3px}.count-based-details>p{padding:0 16px}.count-based-details .count-size-plots{padding:0 12px 12px;margin-bottom:0}.count-size-plots .full-library-count-card{grid-column:1/-1;width:100%;max-width:1020px;box-sizing:border-box;justify-self:center}
-
-/* Shared masthead, example entry points and download directory. */
-.report-brand{display:flex;align-items:center;justify-content:space-between;gap:18px;background:var(--white);border:1px solid var(--line);border-radius:12px;padding:16px 22px;margin-bottom:20px}
-.brand-name{display:flex;align-items:center;gap:11px;font-size:23px;font-weight:750;letter-spacing:-.5px;white-space:nowrap;color:var(--ink)}
-.brand-name img{display:block;flex-shrink:0}.brand-light{font-weight:430}
-.brand-context{font-size:12px;color:var(--muted);text-align:right}
-.report-hero h1{line-height:1.2}.report-hero .eyebrow{display:block;margin-bottom:10px}
-.report-footer{border-top:1px solid var(--line);margin-top:30px;padding:18px 5px}
-.report-footer strong{color:var(--ink)}.report-footer details>summary{cursor:pointer}
-.report-nav a:focus-visible,button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--blue);outline-offset:3px}
-body.report-directory{max-width:1100px;font-size:15px}
-.report-directory .report-hero{padding:36px}.report-directory .report-section{margin-top:0}
-.example-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;margin:26px 0}
-.example-card{display:flex;flex-direction:column;gap:12px;padding:28px;border:1px solid var(--line);border-radius:12px;background:var(--white);color:var(--ink);text-decoration:none;transition:border-color .15s,box-shadow .15s}
-.example-card:hover{border-color:var(--blue);box-shadow:0 4px 18px #123a450b}
-.example-card:focus-visible{outline:3px solid var(--blue);outline-offset:4px}
-.example-card h2{font-size:30px;font-weight:650;margin:0;letter-spacing:-.6px}
-.example-card p{margin:0;color:var(--muted);font-size:14px}
-.card-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;color:var(--blue);font-size:12px;font-weight:650;letter-spacing:.04em;margin-bottom:8px}
-.sample-kind{padding:4px 10px;border-radius:20px;background:#e9f2f4}
-.card-description{line-height:1.7;padding:6px 0 12px;flex:1}
-.card-action{border-top:1px solid var(--line);padding-top:16px;font-size:14px;font-weight:650;color:var(--blue);display:flex;justify-content:space-between}
-.directory-note{color:var(--muted);font-size:13px;line-height:1.7;margin:24px 2px}
-.download-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 26px;list-style:none;padding:0;margin:20px 0 0}
-.download-list li{border-top:1px solid var(--line);min-width:0}
-.download-list a{display:block;padding:14px 6px;overflow-wrap:anywhere;font:12px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace;text-decoration:none}
-.download-list a:hover{background:var(--wash);text-decoration:underline}.download-list a:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
-@media(max-width:650px){.example-grid,.download-list{grid-template-columns:minmax(0,1fr)}.report-brand{padding:14px 16px}.report-directory .report-hero{padding:26px 22px}.example-card{padding:24px}.brand-name{font-size:21px}}
-@media(max-width:400px){.brand-context{display:none}}
-@media(prefers-reduced-motion:reduce){:root{scroll-behavior:auto}.example-card{transition:none}}
-@media print{.report-brand{border:0;padding:0}.report-hero .hero-meta span{border-color:var(--line)}.example-card{break-inside:avoid}.download-list{display:block}}
-</style></head>
-<body class="report-directory">
-<div class="report-brand"><div class="brand-name"><img src="assets/ont-libqc-mark.svg" width="36" height="36" alt=""><span>ONT<span class="brand-light">-LibQC</span></span></div><span class="brand-context">Example reports</span></div>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Example Chromatin and Micro-C reports from ONT-LibQC.">
+<meta name="theme-color" content="#123a45">
+<title>Example reports · ONT-LibQC</title>
+<link rel="icon" type="image/svg+xml" href="assets/ont-libqc-mark.svg">
+<style>
+/* Keep the portal's typography and navigation available in the offline bundle. */
+:root{color-scheme:light;--ink:#152f39;--muted:#5d717a;--line:#dce5e9;--blue:#117478;--deep:#123a45;--wash:#f2f6f8;--white:#fff;--radius-panel:8px;--radius-control:6px;--font-mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,"Liberation Mono",monospace}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;min-height:100svh;display:flex;flex-direction:column;background:var(--wash);color:var(--ink);font:16px/1.55 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+h1,h2,p{margin:0}
+h1{font-size:clamp(26px,2.6vw,32px);line-height:1.25;letter-spacing:-.7px;font-weight:550}
+a{color:inherit;text-underline-offset:4px;outline-offset:4px}
+a:focus-visible{outline:2px solid var(--blue)}
+.topbar{background:var(--white);border-bottom:1px solid var(--line);min-height:82px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;padding:16px max(28px,calc((100vw - 1220px)/2));gap:12px 28px;align-items:center}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;white-space:nowrap;font-size:23px;font-weight:750;letter-spacing:-.5px}
+.brand img{display:block;flex-shrink:0}.brand-light{font-weight:430}
+.topbar nav{display:flex;align-items:center;gap:24px;min-width:0}
+.topbar nav a{display:inline-flex;align-items:center;min-height:40px;gap:4px;white-space:nowrap;font-size:14px;color:var(--muted);text-decoration:none;transition:color 180ms ease}
+.topbar nav a:hover,.topbar nav a[aria-current=page]{color:var(--blue)}
+.topbar nav a[aria-current=page]{font-weight:600}
+.lab-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;padding:8px 14px;border:1px solid #bdd3d9;border-radius:var(--radius-control);background:#f2f8f8;color:var(--blue);font-size:14px;font-weight:600;text-decoration:none;white-space:nowrap;transition:background-color 180ms ease,border-color 180ms ease}
+.lab-button:hover{background:#e4f1f0;border-color:var(--blue)}
+.lab-name-short{display:none}
+main{flex:1;width:100%;max-width:1220px;margin:0 auto;padding:42px 28px 70px}
+.page-heading{margin-bottom:24px}
+.example-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}
+.example-card{display:flex;flex-direction:column;gap:12px;min-width:0;padding:24px;border:1px solid var(--line);border-radius:var(--radius-panel);background:var(--white);text-decoration:none;transition:border-color 180ms ease,background-color 180ms ease}
+.example-card:hover{border-color:#80b4b5;background:#fcfefe}
+.sample-kind{color:var(--blue);font-size:14px;font-weight:600}
+.example-card h2{font-family:var(--font-mono);font-size:24px;line-height:1.35;font-weight:500;letter-spacing:-.5px}
+.sample-meta{font-family:var(--font-mono);font-size:13px;font-variant-numeric:tabular-nums;color:var(--muted)}
+.card-description{flex:1;color:var(--muted);font-size:14px;line-height:1.65}
+.card-action{display:flex;justify-content:space-between;gap:16px;margin-top:8px;padding-top:16px;border-top:1px solid var(--line);color:var(--blue);font-size:14px;font-weight:600}
+.report-data{margin-top:20px;font-size:14px}
+.report-data a{color:var(--blue)}
+footer{width:calc(100% - 56px);max-width:1164px;margin:0 auto;border-top:1px solid var(--line);padding:20px 0 30px;display:flex;flex-wrap:wrap;align-items:baseline;gap:10px 24px;color:var(--muted);font-size:12px}
+footer>span:first-child{font-weight:700;color:var(--ink)}
+.footer-credit{flex:1 1 auto;min-width:0;margin-left:auto;text-align:right;white-space:nowrap}
+.footer-contact{flex:1 0 100%;min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:2px 16px;line-height:1.65}
+.footer-contact>span{font-weight:600;color:var(--ink)}
+.footer-contact a{display:inline-flex;align-items:center;gap:4px;min-height:28px;text-decoration:none;white-space:nowrap}
+.footer-contact a:hover{color:var(--blue);text-decoration:underline}
+@media(max-width:1050px){.topbar{gap:12px 20px}.topbar nav{gap:18px}}
+@media(max-width:900px){.topbar{padding-inline:24px}}
+@media(max-width:740px){
+ .topbar{grid-template-columns:minmax(0,1fr) auto;min-height:0;padding:14px 18px 10px;gap:8px 12px}
+ .topbar .brand{grid-column:1;grid-row:1;font-size:20px;gap:8px;justify-self:start}
+ .topbar .brand img{width:30px;height:30px}
+ .topbar .lab-button{grid-column:2;grid-row:1;padding:7px 11px;min-height:38px;gap:6px}
+ .topbar nav{grid-column:1/-1;grid-row:2;gap:24px;justify-content:flex-start}
+ .topbar nav a{font-size:14px;min-height:36px}
+ .lab-name-long{display:none}.lab-name-short{display:inline}
+ main{padding:30px 18px 45px}.example-grid{gap:18px}
+ footer{width:auto;align-items:center;margin:0 18px;padding:18px 0 26px;column-gap:12px}
+ .footer-description,.credit-prefix{display:none}
+ footer>span:first-child{white-space:nowrap}.footer-credit{line-height:1.5}
+}
+@media(max-width:650px){.example-grid{grid-template-columns:minmax(0,1fr)}.example-card{padding:20px}}
+@media(max-width:300px){.topbar{grid-template-columns:1fr}.topbar .lab-button{grid-column:1;grid-row:2;justify-self:start}.topbar nav{grid-row:3;flex-wrap:wrap;gap:8px 16px}.footer-credit{white-space:normal}}
+@media(prefers-reduced-motion:reduce){.example-card,.lab-button,.topbar nav a{transition:none}}
+@media print{body{background:white;min-height:0}.topbar .lab-button,.topbar nav,.footer-contact{display:none}.example-card{break-inside:avoid}main{padding-block:24px}}
+</style>
+</head>
+<body>
+<header class="topbar">
+ <a class="brand" href="https://ontlibqc.org/"><img src="assets/ont-libqc-mark.svg" width="34" height="34" alt=""><span>ONT<span class="brand-light">-LibQC</span></span></a>
+ <nav aria-label="Main navigation"><a href="https://ontlibqc.org/">New analysis</a><a href="index.html" aria-current="page">Example reports</a></nav>
+ <a class="lab-button" href="https://jongminkimlab.org/" target="_blank" rel="noopener noreferrer" aria-label="Jongmin Kim Lab (opens in a new tab)"><span class="lab-name-long">Jongmin Kim Lab</span><span class="lab-name-short" aria-hidden="true">Kim Lab</span><span aria-hidden="true">↗</span></a>
+</header>
 <main>
-<header class="report-hero"><span class="eyebrow">EXPLORE THE REPORT</span><h1>One library. A clearer view.</h1>
-<p>Two real libraries, ready to explore. Choose a sample to open its complete interactive report.</p></header>
-<div class="example-grid">
-<a class="example-card" href="samples/HL240.html"><div class="card-heading"><span class="sample-kind">Chromatin</span><span aria-hidden="true">01</span></div>
-<h2>HL240</h2><p>hg38 · 2,936 raw ONT molecules</p>
-<p class="card-description">Library size and index identity, gene coverage and chromatin evidence. Explore your own hg38 BED regions directly in the report.</p>
-<span class="card-action">Open chromatin report <span aria-hidden="true">↗</span></span></a>
-<a class="example-card" href="samples/HL120.html"><div class="card-heading"><span class="sample-kind">Micro-C</span><span aria-hidden="true">02</span></div>
-<h2>HL120</h2><p>dm6 · 4,799 raw ONT molecules</p>
-<p class="card-description">Library size and index identity, contact metrics, ligation structure and MNase size evidence in one sample report.</p>
-<span class="card-action">Open Micro-C report <span aria-hidden="true">↗</span></span></a>
-</div>
-<p class="directory-note">Both examples include their figures and downloadable source data. Local BED exploration and plot exports work in your browser.</p>
+ <div class="page-heading"><h1>Example reports</h1></div>
+ <div class="example-grid">
+  <a class="example-card" href="samples/HL240.html" aria-label="Open HL240 Chromatin report">
+   <span class="sample-kind">Chromatin</span>
+   <h2>HL240</h2><p class="sample-meta">hg38 · 2,936 raw ONT molecules</p>
+   <p class="card-description">Insert sizes, library structure, gene coverage and custom BED regions.</p>
+   <span class="card-action">Open report <span aria-hidden="true">→</span></span>
+  </a>
+  <a class="example-card" href="samples/HL120.html" aria-label="Open HL120 Micro-C report">
+   <span class="sample-kind">Micro-C</span>
+   <h2>HL120</h2><p class="sample-meta">dm6 · 4,799 raw ONT molecules</p>
+   <p class="card-description">Contact pairs, ligation structure and MNase fragment sizes.</p>
+   <span class="card-action">Open report <span aria-hidden="true">→</span></span>
+  </a>
+ </div>
+ <p class="report-data"><a href="downloads.html">Download report data</a></p>
 </main>
-<footer class="report-footer"><strong>ONT-LibQC</strong> · <a href="downloads.html">Download report data</a></footer>
-</body></html>
+<footer>
+ <span>ONT-LibQC</span><span class="footer-description">Chromatin &amp; Micro-C libraries</span>
+ <span class="footer-credit" aria-label="Developed by Hongjiang Liu at Jongmin Kim Lab"><span class="credit-prefix">Developed by </span>Hongjiang Liu · <span class="lab-name-long">Jongmin Kim Lab</span><span class="lab-name-short" aria-hidden="true">Kim Lab</span></span>
+ <nav class="footer-contact" aria-label="Contact"><span>Contact</span><a href="https://github.com/Shall-We-Dance/ONT-LibQC/issues" target="_blank" rel="noopener noreferrer">GitHub Issues <span aria-hidden="true">↗</span></a><a href="mailto:hl2522@cornell.edu">hl2522@cornell.edu</a></nav>
+</footer>
+</body>
+</html>

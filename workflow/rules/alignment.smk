@@ -15,7 +15,9 @@ rule align:
     params:
         samtools=SAMTOOLS,
         minimap2=MINIMAP2,
-        bwa_mem2=BWA_MEM2,
+        bwa=lambda wc: bwa_tool(wc.sample),
+        bwa_options=lambda wc: bwa_batch_options(wc.sample),
+        sort_memory=str(ALIGNMENT.get('samtools_sort_memory','768M')),
         bowtie2=Bowtie2,
         assay=lambda wc: assay(wc.sample),
         mapper=lambda wc: sample_mapper(wc.sample),
@@ -30,16 +32,15 @@ rule align:
         if [ "{params.mapper}" = "bowtie2" ]; then
           {params.bowtie2} --end-to-end --very-sensitive --no-unal -p {threads} -x {params.index} \
             -U {input.query1} 2> {log}
-        elif [ "{params.mapper}" = "bwa-mem2" ]; then
+        elif [ "{params.mapper}" = "bwa-mem2" ] || [ "{params.mapper}" = "bwa-mem" ]; then
           if [ "{params.assay}" = "microc" ]; then
-            {params.bwa_mem2} mem -SP -t {threads} {params.index} {input.query1} {input.query2} 2> {log}
+            {params.bwa} mem -SP {params.bwa_options} -t {threads} {params.index} {input.query1} {input.query2} 2> {log}
           else
-            {params.bwa_mem2} mem -t {threads} {params.index} {input.query1} 2> {log}
+            {params.bwa} mem {params.bwa_options} -t {threads} {params.index} {input.query1} 2> {log}
           fi
         else
           {params.minimap2} -ax sr -k 9 -w 5 -N 3 --secondary=yes -t {threads} \
             {params.index} {params.minimap_query} 2> {log}
-        fi | {params.samtools} sort -@ {threads} -o {output.bam} -
+        fi | {params.samtools} sort -@ {threads} -m {params.sort_memory:q} -o {output.bam} -
         {params.samtools} index -@ {threads} {output.bam}
         """
-

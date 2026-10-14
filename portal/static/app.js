@@ -1,6 +1,8 @@
 'use strict';
 const $ = id => document.getElementById(id);
 let catalog, files = [], tasks = [], submitting = false, refreshing = false, retryRequestsAt = 0;
+// These IDs only connect controls within this page; task credentials come from the server.
+let nextLocalId = 0;
 const taskViews = new WeakMap();
 const bytes = n => (n / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 2 }) + ' MB';
 function node(tag, attrs = {}, ...children) {
@@ -44,7 +46,7 @@ async function api(path, method = 'GET', body, token) {
   }
   return data;
 }
-function control(label, input) { const id = 'field-' + crypto.randomUUID(); input.id = id; return node('div', { class: 'field' }, node('label', { for: id }, label), input); }
+function control(label, input) { const id = 'field-' + ++nextLocalId; input.id = id; return node('div', { class: 'field' }, node('label', { for: id }, label), input); }
 function select(values, value) { const input = node('select', {}, values.map(([id, label]) => node('option', { value: id }, label))); input.value = value; return input; }
 function requiredChoice(label, input) {
   input.required = true;
@@ -81,9 +83,21 @@ function referenceChange(entry) {
   updateAssay(entry);
 }
 function updateAssay(entry) {
-  const assay = entry.assay.value, r = catalog.references.find(x => x.id === entry.ref.value) || { mappers: [] };
+  const reference = catalog.references.find(x => x.id === entry.ref.value);
+  const r = reference || { mappers: [] };
+  const microc = entry.assay.querySelector('option[value="microc"]');
+  microc.disabled = Boolean(reference && !r.mappers.some(mapper => ['bwa-mem2', 'bwa-mem', 'minimap2'].includes(mapper)));
+  microc.textContent = microc.disabled ? 'Micro-C · unavailable on this server' : 'Micro-C';
+  entry.availabilityNote.textContent = reference?.availability_note || '';
+  entry.availabilityNote.hidden = entry.assay.value !== 'microc' || !reference?.availability_note;
+  if (entry.assay.selectedOptions[0]?.disabled) {
+    entry.assay.value = '';
+    entry.assay.dispatchEvent(new Event('change'));
+    return;
+  }
+  const assay = entry.assay.value;
   entry.mapper.disabled = !assay || !entry.ref.value;
-  entry.mapper.replaceChildren(node('option', { value: 'auto' }, !assay ? 'Choose a library assay first' : assay === 'microc' ? 'Default · BWA-MEM2' : 'Default · Bowtie2'),
+  entry.mapper.replaceChildren(node('option', { value: 'auto' }, !assay ? 'Choose a library assay first' : assay === 'microc' ? `Default · ${(r.microc_mapper || 'bwa-mem2').toUpperCase()}` : 'Default · Bowtie2'),
     ...r.mappers.filter(x => assay !== 'microc' || x !== 'bowtie2').map(x => node('option', { value: x }, x)));
   entry.bedCheck.input.disabled = assay !== 'chromatin';
   if (assay !== 'chromatin') entry.bedCheck.input.checked = false;
@@ -127,8 +141,8 @@ function addFiles(incoming) {
     if (problem) { errors.push(problem); continue; }
     if (!file.size) { errors.push('“' + file.name + '” was not added because it is empty. Choose a FASTQ file containing reads.'); continue; }
     if (file.size > catalog.max_upload_bytes) { errors.push('“' + file.name + '” was not added: maximum ' + bytes(catalog.max_upload_bytes) + ' per file. For larger files, download the pipeline from GitHub and run it locally.'); continue; }
-    const entry = { file, id: crypto.randomUUID() };
-    entry.sample = node('input', { value: file.name.replace(/\.(fastq|fq)(\.gz)?$/i, '').replace(/[^A-Za-z0-9_-]/g, '_').replace(/^[^A-Za-z]/, 'S_').slice(0, 48), required: true, pattern: '[A-Za-z][A-Za-z0-9_-]{0,47}', maxlength: '48' });
+    const entry = { file, id: ++nextLocalId };
+    entry.sample = node('input', { class: 'sample-name', value: file.name.replace(/\.(fastq|fq)(\.gz)?$/i, '').replace(/[^A-Za-z0-9_-]/g, '_').replace(/^[^A-Za-z]/, 'S_').slice(0, 48), required: true, pattern: '[A-Za-z][A-Za-z0-9_-]{0,47}', maxlength: '48' });
     entry.assay = select([['', 'Choose library assay…'], ['chromatin', 'Chromatin · CUT&RUN / CUT&Tag / ChIP / ATAC, etc.'], ['microc', 'Micro-C']], '');
     const available = catalog.references.filter(r => r.ready);
     entry.ref = select([['', 'Choose reference genome…'], ...available.map(r => [r.id, r.label])], '');
@@ -221,11 +235,12 @@ function addFiles(incoming) {
       node('button', { type: 'button', class: 'remove', 'aria-label': 'Remove ' + file.name, onclick: () => { files = files.filter(f => f.id !== entry.id); entry.card.remove(); updateCount(); } }, '×'));
     entry.structure = LibraryStructure.create(catalog.library_structure, value => applyStructureToAll(entry, value));
     entry.applyNote = node('span', { class: 'apply-note', role: 'status', 'aria-live': 'polite' });
+    entry.availabilityNote = node('p', { class: 'field-note', role: 'status', hidden: true });
     entry.applyButton = node('button', { type: 'button', class: 'secondary apply-all', onclick: () => applyToAll(entry), 'aria-label': 'Apply reference genome and library assay from ' + file.name + ' to all libraries' }, 'Apply to all');
     entry.applyRow = node('div', { class: 'apply-row', hidden: true }, entry.applyNote, entry.applyButton);
     entry.card = node('article', { class: 'file-card' }, header, node('div', { class: 'file-body' },
       node('div', { class: 'fields' }, control('Sample name', entry.sample), requiredChoice('Reference genome', entry.ref), node('div', { class: 'full' }, requiredChoice('Library assay', entry.assay))),
-      entry.applyRow, entry.structure.root, node('div', { class: 'check-list' }, entry.myco.wrapper, entry.spike.wrapper, entry.declared.wrapper, entry.bedCheck.wrapper), entry.bedBox, advanced, ranges));
+      entry.availabilityNote, entry.applyRow, entry.structure.root, node('div', { class: 'check-list' }, entry.myco.wrapper, entry.spike.wrapper, entry.declared.wrapper, entry.bedCheck.wrapper), entry.bedBox, advanced, ranges));
     entry.ref.addEventListener('change', () => referenceChange(entry)); entry.assay.addEventListener('change', () => updateAssay(entry));
     for (const input of [entry.ref, entry.assay]) input.addEventListener('change', () => {
       for (const file of files) file.applyFeedback = '';
@@ -339,8 +354,8 @@ function taskView(task) {
   const deleted = expired && job.deletion_reason === 'manual';
   const deletionPending = !expired && Boolean(task.deletionRequested || job.deletion_requested);
   const card = node('article', { class: 'task-card' });
-  const title = node('div', { class: 'task-title' }, node('h2', {}, expired ? (deleted ? 'Report deleted' : 'Report expired') : job.sample || 'Analysis'), node('span', { class: 'status ' + (deleted ? 'deleted' : job.status) }, deletionPending ? 'Deletion requested' : deleted ? 'Deleted' : labels[job.status] || job.status));
-  card.append(title, node('p', { class: 'task-meta' }, [job.filename, job.assay === 'microc' ? 'Micro-C' : job.assay === 'chromatin' ? 'Chromatin' : '', job.reference].filter(Boolean).join(' · ')));
+  const title = node('div', { class: 'task-title' }, node('h2', { class: !expired && job.sample ? 'task-sample' : '' }, expired ? (deleted ? 'Report deleted' : 'Report expired') : job.sample || 'Analysis'), node('span', { class: 'status ' + (deleted ? 'deleted' : job.status) }, deletionPending ? 'Deletion requested' : deleted ? 'Deleted' : labels[job.status] || job.status));
+  card.append(title, node('p', { class: 'task-meta' }, [job.filename ? node('span', { class: 'task-filename' }, job.filename) : null, job.assay === 'microc' ? 'Micro-C' : job.assay === 'chromatin' ? 'Chromatin' : '', job.reference].filter(Boolean).flatMap((part, index) => index ? [' · ', part] : [part])));
   const { percent, message } = taskProgress(task);
   const bar = node('span'); bar.style.width = percent + '%';
   if (expired) {

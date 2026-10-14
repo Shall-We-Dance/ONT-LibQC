@@ -14,10 +14,12 @@ rule microc_pairtools:
     threads: 4
     params:
         python=PYTHON,
-        bwa=BWA_MEM2,
+        bwa=lambda wc: bwa_tool(wc.sample),
+        aligner=lambda wc: microc_bwa_mapper(wc.sample),
+        batch=int(ALIGNMENT.get('bwa_batch_bases',1000000)),
         pairtools=TOOLS.get("pairtools", "pairtools"),
         fastp=TOOLS.get("fastp", "fastp"),
-        index=lambda wc: reference_for(wc.sample)["bwa_mem2_index"],
+        index=lambda wc: bwa_index(wc.sample),
         prefix=lambda wc: f"{OUT}/qc/pairtools/{wc.sample}",
     conda:
         "../envs/ont-qc.yaml"
@@ -27,6 +29,7 @@ rule microc_pairtools:
         {params.python:q} {input.script:q} --sample {wildcards.sample:q} \
           --inserts {input.inserts:q} --read-table {input.reads:q} --adapter-summary {input.adapter:q} \
           --chrom-sizes {input.chrom_sizes:q} --index {params.index:q} \
-          --bwa-mem2 {params.bwa:q} --pairtools {params.pairtools:q} --fastp {params.fastp:q} \
+          --bwa-mem2 {params.bwa:q} --aligner {params.aligner:q} --bwa-batch-bases {params.batch} \
+          --pairtools {params.pairtools:q} --fastp {params.fastp:q} \
           --threads {threads} --output-prefix {params.prefix:q} > {log:q} 2>&1
         """

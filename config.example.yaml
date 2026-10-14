@@ -46,6 +46,7 @@ spike_in:
 
 alignment:
   chromatin_mapper: bowtie2
+  # Optional: bwa-mem, with a separately built references.<id>.bwa_index.
   microc_mapper: bwa-mem2
 
 # Mode: auto (all retained intervals 1 bp → reference_point, otherwise region); manual: reference_point or region.

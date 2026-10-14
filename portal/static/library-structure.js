@@ -24,8 +24,8 @@ const LibraryStructure = (() => {
     const live=node('span',{class:'visually-hidden',role:'status','aria-live':'polite'});
     const notice=node('p',{class:'structure-copy-note',role:'status',hidden:true});
     const error=node('p',{class:'error',role:'alert',hidden:true});
-    const add=node('button',{type:'button',class:'structure-add'},'+ Add UMI');
-    const apply=node('button',{type:'button',class:'structure-apply',hidden:true},'Apply structure to all');
+    const add=node('button',{type:'button',class:'primary structure-add'},'+ Add UMI');
+    const apply=node('button',{type:'button',class:'secondary structure-apply',hidden:true},'Apply structure to all');
     const advanced=node('details',{class:'structure-settings'},node('summary',{},'Adapter & index settings'));
     const family=select([['auto','Auto · TruSeq / Nextera'],['truseq','TruSeq'],['nextera','Nextera']],'auto');
     const i5=node('input',{type:'number',min:'0',max:'24',step:'1',placeholder:'Auto'});
@@ -131,7 +131,7 @@ const LibraryStructure = (() => {
           const chip=node('button',{type:'button',class:'structure-block umi'+(selected===id?' selected':''),'aria-pressed':String(selected===id),'aria-label':'Edit UMI '+number+' between '+labels[index]+', '+umi.length+' bp',title:'Drag to move or swap; click to edit','data-position':position,'data-umi-key':id},node('strong',{},'UMI '+number),node('small',{},umi.length===null?'Set length':umi.length+' bp'));
           chip.addEventListener('click',()=>selectUMI(umi,true));dragSource(chip,umi);dropTarget(chip,position);track.append(chip);
         }else if(customizing){const gap=node('button',{type:'button',class:'structure-gap','aria-label':'Add UMI between '+labels[index],title:'Add or drop a UMI here','data-position':position,onclick:()=>addUMI(position)},'+');dropTarget(gap,position);track.append(gap);}
-        else track.append(node('span',{class:'structure-connector','aria-hidden':'true'},'—'));
+        else track.append(node('span',{class:'structure-connector','aria-hidden':'true'}));
       });
       track.append(node('span',{class:'structure-end','aria-hidden':'true'},'3′'));
       [...track.children].forEach((part,index)=>{part.style.gridColumn=String(index+1);});

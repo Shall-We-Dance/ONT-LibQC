@@ -7,7 +7,7 @@
   "validation": {
     "sample_reports": 2,
     "html_pages": 4,
-    "local_links": 129
+    "local_links": 130
   },
   "source_run_id": null,
   "synthetic_example": false
