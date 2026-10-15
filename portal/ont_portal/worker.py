@@ -11,6 +11,7 @@ from .schema import Options
 from .report_files import REPORT_FILE_SUFFIXES
 from .store import Store, ACTIVE, TERMINAL, token_for
 from .catalog import job_config, public_catalog
+from .mappers import BWA_INDEX_KEYS, resolve_mapper, microc_bwa_mapper
 
 LOG=logging.getLogger('ont-worker')
 STOP=False
@@ -122,11 +123,15 @@ class Worker:
 
     def memory_for(self, options):
         required=memory_bytes(self.memory)
-        mapper=options.mapper if options.mapper!='auto' else ('bwa-mem2' if options.assay=='microc' else 'bowtie2')
-        if mapper=='bwa-mem2' or options.assay=='microc':
-            prefix=self.catalog['references'][options.reference]['bwa_mem2_index']
-            index_size=sum(Path(prefix+suffix).stat().st_size for suffix in ('.bwt.2bit.64','.0123','.pac'))
-            required=max(required,math.ceil((index_size+3*1024**3)/1024**3)*1024**3)
+        ref=self.catalog['references'][options.reference]
+        mapper=resolve_mapper(options.mapper,options.assay,ref)
+        bwa= microc_bwa_mapper(mapper,ref) if options.assay=='microc' else mapper
+        if bwa in BWA_INDEX_KEYS:
+            prefix=ref[BWA_INDEX_KEYS[bwa]]
+            parts=('.bwt','.sa','.pac') if bwa=='bwa-mem' else ('.bwt.2bit.64','.0123','.pac')
+            index_size=sum(Path(prefix+suffix).stat().st_size for suffix in parts)
+            reserve=768*1024**2 if bwa=='bwa-mem' else 3*1024**3
+            required=max(required,math.ceil((index_size+reserve)/1024**3)*1024**3)
         if mapper=='minimap2':
             prefix=self.catalog['references'][options.reference].get('minimap2_index')
             if not prefix:raise ValueError('Minimap2 needs an administrator-prepared index')

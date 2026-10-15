@@ -47,12 +47,14 @@ Run commands from the directory containing `Snakefile`. The default target is `a
 - `samples.<name>.fastq`: one FASTQ path or a list, plain or gzip compressed.
 - `samples.<name>.type`: `chromatin` or `microc`.
 - `references`: FASTA, chromosome sizes, GTF annotation, prebuilt mapper indexes and primary chromosome names. Optional `minimap2_index` reuses a `.mmi` prepared with `-k 9 -w 5`.
+- **BWA-MEM2 remains the default for Micro-C.** Classic BWA-MEM is optional: set a sample's `mapper: bwa-mem` and supply that reference's separately built `bwa_index` (`bwa index`). The selected BWA variant is used for endpoint mapping, full-insert ligation analysis and Pairtools. Portal operators can explicitly set a reference's `microc_mapper` to override its default.
+- Operator alignment settings `bwa_batch_bases` (classic BWA only; default 1,000,000) and `samtools_sort_memory` (per sorting thread) bound processing memory. The portal uses `128M` for sorting.
 - `samples.<name>.custom_regions`: optional BED, assembly, label and plot mode (`auto`, `reference_point` or `region`). The BED filename is retained in the report. Chromatin reports also accept additional BED files in the browser.
 - `spike_in` / `mycoplasma_screen`: optional competitive screens; supply prepared reference indexes before enabling them.
 - `params` / `qc_reference_ranges`: analysis settings and local screening cutoffs; see [metric definitions](workflow/scripts/metric_definitions.json).
 - `tools`: optional executable overrides; otherwise commands are found on `PATH`.
 
-Micro-C reports include Pairtools categories (UU, UR/RU, DD, WW and Other) after duplicate marking. This uses overlapping ends of at most 150 bp, fastp, BWA-MEM2 and Pairtools, alongside the native contact and full-insert analyses. All parsed pairs remain in the denominator; fastp exclusions are reported separately. Promoter/gene/distal pies are limited to chromatin libraries.
+Micro-C reports include Pairtools categories (UU, UR/RU, DD, WW and Other) after duplicate marking. This uses overlapping ends of at most 150 bp, fastp, the configured BWA-MEM/BWA-MEM2 aligner and Pairtools, alongside the native contact and full-insert analyses. All parsed pairs remain in the denominator; fastp exclusions are reported separately. Promoter/gene/distal pies are limited to chromatin libraries.
 
 ## Output
 

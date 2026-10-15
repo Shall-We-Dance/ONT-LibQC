@@ -24,7 +24,7 @@ server = http.server.ThreadingHTTPServer(("127.0.0.1", 0),
 threading.Thread(target=server.serve_forever, daemon=True).start()
 origin = f"http://127.0.0.1:{server.server_port}"
 scripts = {name: (ROOT / f"tests/portal/{name}.browser.js").read_text()
-           for name in ("library_structure", "data_policy")}
+           for name in ("library_structure", "data_policy", "mapper_availability")}
 try:
     with sync_playwright() as p:
         for engine in sys.argv[1:] or ["chromium", "webkit"]:

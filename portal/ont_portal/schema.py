@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from email_validator import validate_email, EmailNotValidError
 from .structure import LibraryStructure, structure_catalog
+from .mappers import resolve_mapper, microc_bwa_mapper
 
 # label, default, minimum, maximum, numeric kind, UI group
 PARAMS = {
@@ -65,7 +66,7 @@ class Options(StrictModel):
     sample: str = Field(pattern='^'+SAFE_NAME+'$', max_length=48)
     assay: Literal['chromatin','microc']
     reference: str = Field(pattern=r'^[a-zA-Z0-9_-]{1,32}$')
-    mapper: Literal['auto','bowtie2','bwa-mem2','minimap2'] = 'auto'
+    mapper: Literal['auto','bowtie2','bwa-mem2','bwa-mem','minimap2'] = 'auto'
     spike_in: bool = False
     declared_spike_in: bool = False
     mycoplasma: bool = False
@@ -123,9 +124,11 @@ class Options(StrictModel):
         refs = {r['id']:r for r in catalog['references']}
         ref = refs.get(self.reference)
         if not ref or not ref['ready']: raise ValueError('Reference is unavailable')
-        mapper = self.mapper if self.mapper != 'auto' else ('bwa-mem2' if self.assay=='microc' else 'bowtie2')
+        mapper = resolve_mapper(self.mapper,self.assay,ref)
         if mapper not in ref['mappers'] or (self.assay=='microc' and mapper=='bowtie2'):
             raise ValueError('Mapper is unavailable for this assay/reference')
+        if self.assay=='microc' and microc_bwa_mapper(mapper,ref) not in ref['mappers']:
+            raise ValueError('Micro-C auxiliary mapper is unavailable for this reference')
         if self.mycoplasma and not ref['mycoplasma']: raise ValueError('Mycoplasma reference is unavailable')
         if self.spike_in and not ref['spike_in']: raise ValueError('Spike-in reference is unavailable')
         if self.custom_regions and self.assay!='chromatin': raise ValueError('Custom regions require a chromatin library')

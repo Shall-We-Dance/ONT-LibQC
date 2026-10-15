@@ -22,9 +22,11 @@ rule microc_full_insert_ligation:
     wildcard_constraints:
         sample="|".join(MICROC)
     params:
-        bwa=BWA_MEM2,
+        bwa=lambda wc: bwa_tool(wc.sample),
+        aligner=lambda wc: microc_bwa_mapper(wc.sample),
+        bwa_options=lambda wc: bwa_batch_options(wc.sample),
         python=PYTHON,
-        index=lambda wc: reference_for(wc.sample)["bwa_mem2_index"],
+        index=lambda wc: bwa_index(wc.sample),
         primary=lambda wc: chromosome_setting(wc.sample,"primary_chromosomes"),
         plot_prefix=lambda wc: f"{OUT}/plots/ligation/{wc.sample}",
         mapq=MAPQ,
@@ -37,8 +39,8 @@ rule microc_full_insert_ligation:
         r"""
         set -euo pipefail
         mkdir -p $(dirname {output.sam}) $(dirname {log})
-        {params.bwa} mem -t {threads} -Y -k 15 -T 20 {params.index} {input.fastq} > {output.sam} 2> {log}
-        {params.python} {input.script} --sample {wildcards.sample} --fastq {input.fastq} --sam {output.sam} \
+        {params.bwa} mem {params.bwa_options} -t {threads} -Y -k 15 -T 20 {params.index} {input.fastq} > {output.sam} 2> {log}
+        {params.python} {input.script} --aligner {params.aligner} --sample {wildcards.sample} --fastq {input.fastq} --sam {output.sam} \
           --assignments {input.assignments} --primary '{params.primary}' --output {output.json} \
           --minimum-segment-bp {params.segment} --minimum-query-coverage {params.coverage} \
           --maximum-query-gap {params.gap} --mapq {params.mapq} --plot-prefix {params.plot_prefix} >> {log} 2>&1

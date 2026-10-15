@@ -23,6 +23,7 @@ PYTHON = TOOLS.get("python", "python3")
 MINIMAP2 = TOOLS.get("minimap2", "minimap2")
 Bowtie2 = TOOLS.get("bowtie2", "bowtie2")
 BWA_MEM2 = TOOLS.get("bwa_mem2", "bwa-mem2")
+BWA = TOOLS.get("bwa", "bwa")
 SAMTOOLS = TOOLS.get("samtools", "samtools")
 BAMCOVERAGE = TOOLS.get("bamCoverage", "bamCoverage")
 BEDGRAPH2BW = TOOLS.get("bedGraphToBigWig", "bedGraphToBigWig")
@@ -58,13 +59,28 @@ def fastqs(wildcards):
 
 def sample_mapper(sample):
     sample_override = config["samples"][sample].get("mapper")
-    default = ALIGNMENT.get("microc_mapper", "bwa-mem2") if assay(sample) == "microc" else ALIGNMENT.get("chromatin_mapper", "bowtie2")
+    default = ALIGNMENT.get("microc_mapper", reference_for(sample).get("microc_mapper", "bwa-mem2")) if assay(sample) == "microc" else ALIGNMENT.get("chromatin_mapper", "bowtie2")
     mapper = str(sample_override or default).lower()
-    if mapper not in {"bowtie2", "bwa-mem2", "minimap2"}:
+    if mapper not in {"bowtie2", "bwa-mem2", "bwa-mem", "minimap2"}:
         raise ValueError(f"Unsupported mapper for {sample}: {mapper}")
     if assay(sample) == "microc" and mapper == "bowtie2":
-        raise ValueError("Micro-C requires bwa-mem2 or minimap2; Bowtie2 is only supported for chromatin")
+        raise ValueError("Micro-C requires bwa-mem, bwa-mem2 or minimap2; Bowtie2 is only supported for chromatin")
     return mapper
+
+def microc_bwa_mapper(sample):
+    mapper=sample_mapper(sample)
+    mapper=mapper if mapper in {'bwa-mem','bwa-mem2'} else reference_for(sample).get('microc_mapper','bwa-mem2')
+    if mapper not in {'bwa-mem','bwa-mem2'}:raise ValueError('Micro-C auxiliary mapper must be bwa-mem or bwa-mem2')
+    return mapper
+
+def bwa_tool(sample):
+    return BWA if microc_bwa_mapper(sample)=='bwa-mem' else BWA_MEM2
+
+def bwa_index(sample):
+    return reference_for(sample)['bwa_index' if microc_bwa_mapper(sample)=='bwa-mem' else 'bwa_mem2_index']
+
+def bwa_batch_options(sample):
+    return '-K '+str(int(ALIGNMENT.get('bwa_batch_bases',1000000))) if microc_bwa_mapper(sample)=='bwa-mem' else ''
 
 def query1(wildcards):
     suffix = "leg1" if assay(wildcards.sample) == "microc" else "inserts"
@@ -84,6 +100,8 @@ def index_prefix(wildcards):
         return reference["bowtie2_index"]
     if mapper == "bwa-mem2":
         return reference["bwa_mem2_index"]
+    if mapper == "bwa-mem":
+        return reference["bwa_index"]
     return reference.get("minimap2_index") or reference["fasta"]
 
 def expected_index_pairs(wildcards):

@@ -23,7 +23,9 @@ def adopt(config,out):
     origin=Path(config).resolve();cfg=yaml.safe_load(origin.read_text());catalog={'references':{},'mycoplasma_regex':cfg.get('mycoplasma_screen',{}).get('target_contig_regex','mycoplasma_target')}
     for key,ref in cfg['references'].items():
         if not SAFE.fullmatch(key):raise ValueError('Unsafe reference ID')
-        row={k:absolute(ref[k],origin.parent) for k in ('fasta','chrom_sizes','annotation','bowtie2_index','bwa_mem2_index')}
+        row={k:absolute(ref[k],origin.parent) for k in ('fasta','chrom_sizes','annotation','bowtie2_index','bwa_mem2_index','bwa_index') if ref.get(k)}
+        for setting in ('microc_mapper','disabled_mappers','availability_note'):
+            if setting in ref:row[setting]=ref[setting]
         if ref.get('minimap2_index'):row['minimap2_index']=absolute(ref['minimap2_index'],origin.parent)
         if ref.get('mycoplasma_index'):row['mycoplasma_index']=absolute(ref['mycoplasma_index'],origin.parent)
         row.update(assembly=ref.get('assembly',key),primary_chromosomes=ref['primary_chromosomes'],label=ref.get('label',{'hg38':'Human · hg38 / GRCh38','dm6':'Fruit fly · dm6'}.get(key,key)))
@@ -34,7 +36,7 @@ def adopt(config,out):
                 if spike.get(k):row['spike_in'][k]=absolute(spike[k],origin.parent)
         catalog['references'][key]=row
     ready=public_catalog(catalog)
-    if not all(x['ready'] for x in ready['references']):raise ValueError('One or more references lack FASTA, GTF, chromosome sizes, Bowtie2 or BWA-MEM2 indexes')
+    if not all(x['ready'] for x in ready['references']):raise ValueError('One or more references lack FASTA, GTF, chromosome sizes, Bowtie2 or a supported BWA index')
     save(out,catalog);save(Path(out).with_name('catalog.public.json'),ready)
     print(json.dumps({'catalog':str(Path(out).resolve()),'references':[{k:r[k] for k in ('id','ready','mappers','mycoplasma','spike_in')} for r in ready['references']]},indent=2))
 
