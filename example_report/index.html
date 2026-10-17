@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="description" content="Example Chromatin and Micro-C reports from ONT-LibQC.">
-<meta name="theme-color" content="#123a45">
+<meta name="theme-color" content="#2b5689">
 <title>Example reports · ONT-LibQC</title>
 <link rel="icon" type="image/svg+xml" href="assets/ont-libqc-mark.svg">
 <style>
 /* Keep the portal's typography and navigation available in the offline bundle. */
-:root{color-scheme:light;--ink:#152f39;--muted:#5d717a;--line:#dce5e9;--blue:#117478;--deep:#123a45;--wash:#f2f6f8;--white:#fff;--radius-panel:8px;--radius-control:6px;--font-mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,"Liberation Mono",monospace}
+:root{color-scheme:light;--ink:#24364b;--muted:#5b6d82;--line:#dce5f0;--blue:#2a6cbd;--blue-soft:#edf4fc;--primary-hover:#225ca4;--surface-shadow:0 1px 2px #24476d0a,0 2px 6px #24476d05;--deep:#285e9e;--wash:#f5f8fc;--white:#fff;--radius-panel:8px;--radius-control:6px;--font-mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,"Liberation Mono",monospace}
 *{box-sizing:border-box}
 body{margin:0;min-height:100vh;min-height:100svh;display:flex;flex-direction:column;background:var(--wash);color:var(--ink);font:16px/1.55 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 h1,h2,p{margin:0}
@@ -23,19 +23,18 @@ a:focus-visible{outline:2px solid var(--blue)}
 .topbar nav a{display:inline-flex;align-items:center;min-height:40px;gap:4px;white-space:nowrap;font-size:14px;color:var(--muted);text-decoration:none;transition:color 180ms ease}
 .topbar nav a:hover,.topbar nav a[aria-current=page]{color:var(--blue)}
 .topbar nav a[aria-current=page]{font-weight:600}
-.lab-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;padding:8px 14px;border:1px solid #bdd3d9;border-radius:var(--radius-control);background:#f2f8f8;color:var(--blue);font-size:14px;font-weight:600;text-decoration:none;white-space:nowrap;transition:background-color 180ms ease,border-color 180ms ease}
-.lab-button:hover{background:#e4f1f0;border-color:var(--blue)}
+.lab-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;padding:8px 14px;border:1px solid #c9dbef;border-radius:var(--radius-control);background:#edf4fc;color:var(--blue);font-size:14px;font-weight:600;text-decoration:none;white-space:nowrap;transition:background-color 180ms ease,border-color 180ms ease}
+.lab-button:hover{background:#e1edfc;border-color:var(--blue)}
 .lab-name-short{display:none}
 main{flex:1;width:100%;max-width:1220px;margin:0 auto;padding:42px 28px 70px}
 .page-heading{margin-bottom:24px}
 .example-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}
-.example-card{display:flex;flex-direction:column;gap:12px;min-width:0;padding:24px;border:1px solid var(--line);border-radius:var(--radius-panel);background:var(--white);text-decoration:none;transition:border-color 180ms ease,background-color 180ms ease}
-.example-card:hover{border-color:#80b4b5;background:#fcfefe}
+.example-card{box-shadow:var(--surface-shadow);display:flex;flex-direction:column;gap:12px;min-width:0;padding:24px;border:1px solid var(--line);border-radius:var(--radius-panel);background:var(--white);text-decoration:none;transition:border-color 180ms ease,background-color 180ms ease}
+.example-card:hover{border-color:#9bbce4;background:#fcfefe}
 .sample-kind{color:var(--blue);font-size:14px;font-weight:600}
 .example-card h2{font-family:var(--font-mono);font-size:24px;line-height:1.35;font-weight:500;letter-spacing:-.5px}
 .sample-meta{font-family:var(--font-mono);font-size:13px;font-variant-numeric:tabular-nums;color:var(--muted)}
 .card-description{flex:1;color:var(--muted);font-size:14px;line-height:1.65}
-.card-action{display:flex;justify-content:space-between;gap:16px;margin-top:8px;padding-top:16px;border-top:1px solid var(--line);color:var(--blue);font-size:14px;font-weight:600}
 .report-data{margin-top:20px;font-size:14px}
 .report-data a{color:var(--blue)}
 footer{width:calc(100% - 56px);max-width:1164px;margin:0 auto;border-top:1px solid var(--line);padding:20px 0 30px;display:flex;flex-wrap:wrap;align-items:baseline;gap:10px 24px;color:var(--muted);font-size:12px}
@@ -64,36 +63,45 @@ footer>span:first-child{font-weight:700;color:var(--ink)}
 @media(max-width:300px){.topbar{grid-template-columns:1fr}.topbar .lab-button{grid-column:1;grid-row:2;justify-self:start}.topbar nav{grid-row:3;flex-wrap:wrap;gap:8px 16px}.footer-credit{white-space:normal}}
 @media(prefers-reduced-motion:reduce){.example-card,.lab-button,.topbar nav a{transition:none}}
 @media print{body{background:white;min-height:0}.topbar .lab-button,.topbar nav,.footer-contact{display:none}.example-card{break-inside:avoid}main{padding-block:24px}}
+/* Report viewing is the primary action; reruns and source reads stay alongside it. */
+.card-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px 20px;margin-top:8px;padding-top:16px;border-top:1px solid var(--line);font-size:14px;color:var(--blue)}
+.card-actions a{min-height:40px;display:inline-flex;align-items:center}
+.open-report{justify-content:center;padding:8px 14px;border:1px solid var(--blue);border-radius:var(--radius-control);background:var(--blue);color:var(--white);text-decoration:none;font-weight:550;transition:background-color 180ms ease,border-color 180ms ease}
+.open-report:hover{background:var(--primary-hover);border-color:var(--primary-hover)}
+.card-secondary{display:flex;align-items:center;flex-wrap:wrap;gap:6px 16px}
+.card-secondary a:hover{color:var(--deep)}
+.example-note{color:var(--muted);font-size:13px;line-height:1.7;max-width:850px;margin-top:12px}
+@media(prefers-reduced-motion:reduce){.open-report{transition:none}}
 </style>
 </head>
 <body>
 <header class="topbar">
  <a class="brand" href="https://ontlibqc.org/"><img src="assets/ont-libqc-mark.svg" width="34" height="34" alt=""><span>ONT<span class="brand-light">-LibQC</span></span></a>
- <nav aria-label="Main navigation"><a href="https://ontlibqc.org/">New analysis</a><a href="index.html" aria-current="page">Example reports</a></nav>
+ <nav aria-label="Main navigation"><a href="https://ontlibqc.org/">New analysis</a><a href="index.html" aria-current="page">Example reports</a><a href="https://ontlibqc.org/help">Help</a></nav>
  <a class="lab-button" href="https://jongminkimlab.org/" target="_blank" rel="noopener noreferrer" aria-label="Jongmin Kim Lab (opens in a new tab)"><span class="lab-name-long">Jongmin Kim Lab</span><span class="lab-name-short" aria-hidden="true">Kim Lab</span><span aria-hidden="true">↗</span></a>
 </header>
 <main>
  <div class="page-heading"><h1>Example reports</h1></div>
  <div class="example-grid">
-  <a class="example-card" href="samples/HL240.html" aria-label="Open HL240 Chromatin report">
+  <article class="example-card">
    <span class="sample-kind">Chromatin</span>
    <h2>HL240</h2><p class="sample-meta">hg38 · 2,936 raw ONT molecules</p>
    <p class="card-description">Insert sizes, library structure, gene coverage and custom BED regions.</p>
-   <span class="card-action">Open report <span aria-hidden="true">→</span></span>
-  </a>
-  <a class="example-card" href="samples/HL120.html" aria-label="Open HL120 Micro-C report">
+   <div class="card-actions"><a class="open-report" href="samples/HL240.html" target="_blank" rel="noopener noreferrer" aria-label="Open HL240 report (opens in a new tab)" title="Opens in a new tab">Open report</a><div class="card-secondary"><a href="https://ontlibqc.org/?example=HL240" aria-label="Load HL240 example">Load example</a><a href="https://ontlibqc.org/example-inputs/HL240.fastq.gz" download aria-label="Download HL240 FASTQ">FASTQ.gz</a></div></div>
+  </article>
+  <article class="example-card">
    <span class="sample-kind">Micro-C</span>
    <h2>HL120</h2><p class="sample-meta">dm6 · 4,799 raw ONT molecules</p>
    <p class="card-description">Contact pairs, ligation structure and MNase fragment sizes.</p>
-   <span class="card-action">Open report <span aria-hidden="true">→</span></span>
-  </a>
+   <div class="card-actions"><a class="open-report" href="samples/HL120.html" target="_blank" rel="noopener noreferrer" aria-label="Open HL120 report (opens in a new tab)" title="Opens in a new tab">Open report</a><div class="card-secondary"><a href="https://ontlibqc.org/?example=HL120" aria-label="Load HL120 example">Load example</a><a href="https://ontlibqc.org/example-inputs/HL120.fastq.gz" download aria-label="Download HL120 FASTQ">FASTQ.gz</a></div></div>
+  </article>
  </div>
- <p class="report-data"><a href="downloads.html">Download report data</a></p>
+ <p class="report-data"><a href="downloads.html">Download report data</a> · <a href="https://ontlibqc.org/help">Input formats and help</a></p><p class="example-note">Load example opens the submission form with the complete FASTQ and matching reference and assay. Review the settings, then start analysis. Downloads retain the reads used in these reports; reruns may differ with updated software or settings.</p>
 </main>
 <footer>
  <span>ONT-LibQC</span><span class="footer-description">Chromatin &amp; Micro-C libraries</span>
  <span class="footer-credit" aria-label="Developed by Hongjiang Liu at Jongmin Kim Lab"><span class="credit-prefix">Developed by </span>Hongjiang Liu · <span class="lab-name-long">Jongmin Kim Lab</span><span class="lab-name-short" aria-hidden="true">Kim Lab</span></span>
- <nav class="footer-contact" aria-label="Contact"><span>Contact</span><a href="https://github.com/Shall-We-Dance/ONT-LibQC/issues" target="_blank" rel="noopener noreferrer">GitHub Issues <span aria-hidden="true">↗</span></a><a href="mailto:hl2522@cornell.edu">hl2522@cornell.edu</a></nav>
+ <nav class="footer-contact" aria-label="Contact"><span>Contact</span><a href="https://github.com/Shall-We-Dance/ONT-LibQC/issues" target="_blank" rel="noopener noreferrer">GitHub Issues <span aria-hidden="true">↗</span></a><a href="mailto:hl2522@cornell.edu">hl2522@cornell.edu</a><a href="https://ontlibqc.org/license">MIT License</a></nav>
 </footer>
 </body>
 </html>

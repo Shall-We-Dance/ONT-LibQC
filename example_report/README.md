@@ -1,14 +1,22 @@
-<p><img src="assets/ont-libqc-mark.svg" width="40" height="40" alt="ONT-LibQC"></p>
+# Example reports
 
-# ONT-LibQC · Example reports
+[View online](https://ontlibqc.org/example/index.html), or open `index.html` in a browser after downloading this folder. Keep the folder together so figures and data links work.
 
-Open `index.html` directly in a browser. Keep this entire folder together.
+| Sample | Assay | Reference | Raw ONT reads |
+| --- | --- | --- | ---: |
+| [HL240](samples/HL240.html) | Chromatin | hg38 | 2,936 |
+| [HL120](samples/HL120.html) | Micro-C | dm6 | 4,799 |
 
-- [HL240](samples/HL240.html): chromatin library, hg38, 2,936 raw ONT molecules.
-- [HL120](samples/HL120.html): Micro-C library, dm6, 4,799 raw ONT molecules.
+These reports contain real sample measurements, figures and downloadable data. Cohort tables include only these two samples; execution paths in metadata use portable placeholders. [Example FASTQs](../portal/example_inputs/README.md) are available for running your own analysis.
 
-These are real sample reports from the ONT-LibQC analysis. Sample measurements and figures are retained. The entry page links directly to these two reports; downloadable cohort tables contain only these two samples.
+## Chromatin: custom BED profiles
 
-HL240 supports local analysis of hg38 BED regions: choose a BED, select **Plot mode** (`Auto`, `Reference point` or `Region (scaled)`), confirm hg38 coordinates and click **Draw metaplot**. The result shows the selected filename and provides SVG, data and provenance downloads. Selecting another BED clears the previous browser result and requires coordinate confirmation again. These interactive results stay in your browser; export them before leaving the page.
+In HL240, choose an hg38 BED file, select **Plot mode**, confirm the coordinates and click **Draw metaplot**. The report offers SVG, data and provenance downloads for the new result.
 
-HL120 includes Pairtools category fractions after duplicate marking, contact, ligation-structure and MNase-size evidence. Its promoter/gene/distal pie has been removed. The Pairtools analysis uses overlapping 150-bp insert ends, fastp and BWA-MEM2; every parsed pair stays in the denominator, including DD, WW and Other. Counts, fractions, settings and per-unit types are downloadable. All linked figures and report data are included. Execution paths in metadata use portable placeholders.
+Selecting another BED clears the previous browser result and requires coordinate confirmation again. Export new results before leaving; they stay in your browser and are not added to the saved report.
+
+## Micro-C: contacts and structure
+
+HL120 includes Pairtools categories, contact metrics, ligation structure and MNase size evidence. Pairtools uses overlapping 150-bp insert ends, fastp and BWA-MEM2. Every parsed pair remains in the denominator, including DD, WW and Other.
+
+Counts, fractions, settings and per-unit pair types are included. DD is a coordinate-duplicate category, not an estimate of PCR duplication or library complexity. Promoter/gene/distal pies apply only to Chromatin reports.

@@ -54,6 +54,18 @@ jobs:
       - run: python -m playwright install --with-deps ${{ matrix.browser }}
       - name: Desktop and mobile portal interactions
         run: python tests/browser.py ${{ matrix.browser }}
+      - name: Public pages and complete example reports
+        run: python tests/portal/check_public_pages_browser.py test-results/public-pages ${{ matrix.browser }}
+        env:
+          PYTHONPATH: portal
+      - name: Private reports without cookies
+        run: python tests/portal/check_private_reports_browser.py test-results/private-reports ${{ matrix.browser }}
+        env:
+          PYTHONPATH: portal
+      - name: Optional email submission and delivery
+        run: python tests/portal/check_optional_email_browser.py test-results/optional-email ${{ matrix.browser }}
+        env:
+          PYTHONPATH: portal
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: failure()
         with:

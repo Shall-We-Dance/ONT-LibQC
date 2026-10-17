@@ -1,79 +1,93 @@
-<p align="center">
-  <img src="assets/ont-libqc-banner.svg" width="1120" alt="ONT-LibQC — from ONT reads to a clear report">
-</p>
+<p><img src="portal/static/mark.svg" width="40" height="40" alt=""></p>
 
-<p align="center">
-  <a href="#run-your-data"><strong>Run pipeline locally</strong></a> ·
-  <a href="https://ontlibqc.org"><strong>Online at ontlibqc.org</strong></a> ·
-  <a href="example_report/README.md">Example reports</a> ·
-  <a href="portal/README.md">Host the web portal</a>
-</p>
+# ONT-LibQC
 
-ONT-LibQC is a Snakemake workflow for quality control of completed NGS chromatin and Micro-C libraries using shallow ONT sequencing. It reconstructs adapter-bounded library units, identifies physical index pairs, and produces an interactive HTML report. The web portal offers an Auto/Customize library diagram with fixed-length UMI positions; the same `library_structure` settings are available in the sample configuration. See [library structure and UMI handling](portal/README.md#library-structure-and-fixed-length-umis).
+[Web server](https://ontlibqc.org) · [Example reports](https://ontlibqc.org/example/index.html) · [Run locally](#run-your-data) · [Self-hosting](portal/README.md)
 
-## Example report
+ONT-LibQC checks completed **Chromatin and Micro-C libraries** using shallow ONT sequencing. It reconstructs adapter-bounded library units, resolves physical i5/i7 index pairs, and reports library size, mapping and assay-specific metrics. Run it in the browser or locally with Snakemake.
 
-**[Open the example report](example_report/index.html)**
+## Try it online
 
-Download or clone the repository, then open `example_report/index.html` in your browser. The report is already generated and works locally. GitHub's file view displays the HTML source.
+Upload FASTQ files at **[ontlibqc.org](https://ontlibqc.org)**, then choose a reference and assay for each library. Email is optional; save the private task link to return to your results. The server accepts up to 16 files per batch, 50 MB each, and keeps reports for 7 days. Do not submit patient data or other sensitive personal data.
 
-| Sample | Library | Reference | Explore |
-| --- | --- | --- | --- |
-| [HL240](example_report/samples/HL240.html) | Chromatin | hg38 | Library profiles, gene coverage and local BED regions |
-| [HL120](example_report/samples/HL120.html) | Micro-C | dm6 | Pairtools UU/UR/RU fractions, contacts, ligation structure and MNase size evidence |
+Library structure is detected automatically. Use **Customize** for fixed-length UMIs or custom adapters. [Help](https://ontlibqc.org/help) covers settings, input limits and result interpretation.
 
-Explore library size profiles, gene coverage, local BED uploads, contact metrics, ligation structure and MNase size evidence. Figures and downloadable report data for both samples are included.
+| Example | Reference | Report contents |
+| --- | --- | --- |
+| [HL240 - Chromatin](https://ontlibqc.org/example/samples/HL240.html) | hg38 | Library size, gene coverage and custom BED profiles |
+| [HL120 - Micro-C](https://ontlibqc.org/example/samples/HL120.html) | dm6 | Pairtools categories, contacts, ligation structure and MNase size evidence |
 
-## Web portal
-
-Use the hosted portal at [ontlibqc.org](https://ontlibqc.org), or host your own instance. The interface accepts up to 16 FASTQ files per batch (50 MB each), with per-file settings, private task links and optional email notification. The report footer and Report data page offer **Download complete report (ZIP)**, including the saved HTML report, figures, tables and settings. Extract the ZIP and open `report/index.html` to view it locally.
-
-Custom region metaplots identify the BED submitted with the analysis and preserve its original filename for new submissions. You can also load another BED in the report, choose **Plot mode**, confirm the reference coordinates and draw a new profile while keeping the submitted plot for comparison. Browser-generated results have their own export controls.
-
-Limits are adjustable in one server configuration file; defaults allow 128 submissions per email/client per 24 hours and up to two concurrent analyses. The reference preparation script includes ten common species. See [deployment, report access and reference preparation](portal/README.md) for installation on your own server and migration instructions. For questions or problems, [open a GitHub issue](https://github.com/Shall-We-Dance/ONT-LibQC/issues) or email [hl2522@cornell.edu](mailto:hl2522@cornell.edu).
+Use **Load example** on the website to try either FASTQ. The [saved reports](example_report/README.md) also work offline: clone or download this repository and open `example_report/index.html` in a browser.
 
 ## Run your data
+
+From the directory containing `Snakefile`:
 
 ```bash
 conda env create -f environment.yaml
 conda activate ont-library-qc
 cp config.example.yaml config.yaml
-# Edit FASTQ paths, assay types, references and optional screens.
+# Edit config.yaml with your FASTQ paths, assays and reference files.
 snakemake --cores 8 --rerun-incomplete
 ```
 
-Run commands from the directory containing `Snakefile`. The default target is `all`.
+The default target is `all`. Start with [config.example.yaml](config.example.yaml):
 
-- `samples.<name>.fastq`: one FASTQ path or a list, plain or gzip compressed.
-- `samples.<name>.type`: `chromatin` or `microc`.
-- `references`: FASTA, chromosome sizes, GTF annotation, prebuilt mapper indexes and primary chromosome names. Optional `minimap2_index` reuses a `.mmi` prepared with `-k 9 -w 5`.
-- **BWA-MEM2 remains the default for Micro-C.** Classic BWA-MEM is optional: set a sample's `mapper: bwa-mem` and supply that reference's separately built `bwa_index` (`bwa index`). The selected BWA variant is used for endpoint mapping, full-insert ligation analysis and Pairtools. Portal operators can explicitly set a reference's `microc_mapper` to override its default.
-- Operator alignment settings `bwa_batch_bases` (classic BWA only; default 1,000,000) and `samtools_sort_memory` (per sorting thread) bound processing memory. The portal uses `128M` for sorting.
-- `samples.<name>.custom_regions`: optional BED, assembly, label and plot mode (`auto`, `reference_point` or `region`). The BED filename is retained in the report. Chromatin reports also accept additional BED files in the browser.
-- `spike_in` / `mycoplasma_screen`: optional competitive screens; supply prepared reference indexes before enabling them.
-- `params` / `qc_reference_ranges`: analysis settings and local screening cutoffs; see [metric definitions](workflow/scripts/metric_definitions.json).
-- `tools`: optional executable overrides; otherwise commands are found on `PATH`.
+| Setting | What to provide |
+| --- | --- |
+| `samples.<name>.fastq` | One FASTQ path or a list; plain text or gzip |
+| `samples.<name>.type` | `chromatin` or `microc` |
+| `references` | FASTA, chromosome sizes, GTF, mapper indexes and primary chromosome names |
+| `samples.<name>.library_structure` | Optional custom adapters and fixed-length UMIs; [structure guide](portal/README.md#library-structure-and-fixed-length-umis) |
+| `samples.<name>.custom_regions` | Optional BED, assembly, label and plot mode: `auto`, `reference_point` or `region` |
+| `spike_in` / `mycoplasma_screen` | Optional competitive screens with prepared reference indexes |
+| `params` / `qc_reference_ranges` | Analysis settings and local cutoffs; [metric definitions](workflow/scripts/metric_definitions.json) |
+| `tools` | Optional executable overrides; otherwise tools are found on `PATH` |
 
-Micro-C reports include Pairtools categories (UU, UR/RU, DD, WW and Other) after duplicate marking. This uses overlapping ends of at most 150 bp, fastp, the configured BWA-MEM/BWA-MEM2 aligner and Pairtools, alongside the native contact and full-insert analyses. All parsed pairs remain in the denominator; fastp exclusions are reported separately. Promoter/gene/distal pies are limited to chromatin libraries.
+**BWA-MEM2 is the default Micro-C aligner.** To use classic BWA-MEM, set `mapper: bwa-mem` for the sample and provide a separately built `bwa_index` (`bwa index`). The chosen variant is used for endpoint mapping, full-insert ligation analysis and Pairtools. A portal operator can override the default with a reference's `microc_mapper` setting.
 
-## Output
+<details>
+<summary>Index reuse and memory settings</summary>
 
-Open `report/index.html` after a local workflow run. Copy the entire `report/` folder to share it. Online analyses provide the same portable files in a complete report ZIP and open the individual sample directly. BED uploads and plot exports run locally in the browser; export any additional browser-generated plots separately from the saved report bundle.
+- `minimap2_index` reuses a saved `.mmi` built with `-k 9 -w 5`.
+- `bwa_batch_bases` bounds classic BWA batches; its default is 1,000,000 bases.
+- `samtools_sort_memory` controls memory per sorting thread. The portal uses `128M`.
+- Reference preparation and server resource limits are described in the [deployment guide](portal/README.md#reference-and-index-preparation).
+
+</details>
+
+## Read the report
+
+Open `report/index.html` after the workflow finishes. Share the entire `report/` folder, or download **Complete report (ZIP)** from an online result. Extract the ZIP and open `report/index.html`.
 
 | Location | Contents |
 | --- | --- |
-| `report/index.html` | All-sample overview |
-| `report/samples/` | Sample reports and sublibrary results |
+| `report/index.html` | All-sample overview; online jobs open their sample directly |
+| `report/samples/` | Sample reports, including resolved sublibraries |
 | `report/assets/` | Figures and figure source tables |
-| `report/data/` | QC metrics, adapter/index tables, screens, Pairtools categories, ligation and MNase evidence |
-| `report/downloads.html` | All downloadable report data |
+| `report/data/` | QC metrics, adapter/index tables, screening results and analysis settings |
+| `report/downloads.html` | Links to all report data |
 
-Micro-C Pairtools exports are in `report/data/pairtools/`: per-sample JSON settings/counts, `.summary.tsv` fractions, and `.units.tsv.gz` pair types after marking linked to parent reads. DD is a depth-dependent processing category, not an estimate of PCR duplication or library complexity. The category definitions follow [Pairtools parsing](https://pairtools.readthedocs.io/en/latest/parsing.html).
+Chromatin reports accept additional BED files in the browser. Choose a plot mode, confirm the reference coordinates, then select **Draw metaplot**. The submitted BED plot stays available for comparison. Export new plots with their own controls before leaving the page; they are not added to the saved report ZIP.
 
-All calculation intermediates go to `output_dir` (default `.work`). After the report is generated and its links are checked, the workflow removes BAM/BAI, SAM, extracted FASTQ, coverage tracks, matrices and the working directory. Failed runs retain working files for resumption. Original FASTQ and supplied references are preserved.
+### Micro-C interpretation
 
-Set `report_dir` to change the report location. It must be separate from `output_dir`; both directories must be outside the input/reference paths. Recomputing a completed analysis requires the original inputs because calculation intermediates have been removed.
+Pairtools analyzes overlapping insert ends of at most 150 bp using fastp and the configured BWA aligner. It complements the native contact and full-insert analyses. All parsed pairs, including DD, WW and Other, remain in the denominator; fastp exclusions are listed separately.
+
+DD marks coordinate duplicates at the observed depth. It does **not** estimate PCR duplication or library complexity. Counts, fractions, settings and per-unit pair types are in `report/data/pairtools/`. See the [Pairtools category definitions](https://pairtools.readthedocs.io/en/latest/parsing.html). Promoter/gene/distal pies are shown only for Chromatin libraries.
+
+### Working files
+
+Calculation intermediates go to `output_dir` (default `.work`). After the report and its links pass validation, the workflow removes this directory, including BAM/SAM, extracted FASTQ, coverage tracks and matrices. Failed runs retain working files for resumption. Original FASTQ and supplied references are preserved.
+
+Use `report_dir` to change the report location. It must be separate from `output_dir`, and neither directory may contain input or reference files. Recomputing a completed analysis requires the original inputs.
+
+## Self-hosting and support
+
+The [portal guide](portal/README.md) covers deployment, reference preparation, resource limits and private report access. Limits are configurable by the operator.
+
+For questions or problems, [open an issue](https://github.com/Shall-We-Dance/ONT-LibQC/issues) or email [hl2522@cornell.edu](mailto:hl2522@cornell.edu).
 
 ## License
 
-Licensed under the [MIT License](LICENSE).
+[MIT License](LICENSE).

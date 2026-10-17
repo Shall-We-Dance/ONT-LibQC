@@ -36,10 +36,12 @@ def notify(config,limit=5):
         with store.connect() as c:
             c.execute('CREATE TABLE IF NOT EXISTS notification_attempts (job_id TEXT PRIMARY KEY, first_attempt REAL NOT NULL)')
             c.execute('CREATE TABLE IF NOT EXISTS notification_messages (job_id TEXT PRIMARY KEY, payload BLOB NOT NULL)')
+            # Also guard legacy/imported rows: no recipient means no send or retry.
+            c.execute("UPDATE jobs SET mail_status='disabled' WHERE TRIM(email)='' AND mail_status IN ('pending','retry','sending')")
             # Frozen MIME makes retries identical even if a task expires meanwhile.
             c.execute("DELETE FROM notification_attempts WHERE job_id NOT IN (SELECT COALESCE(batch_id,id) FROM jobs WHERE status != 'expired')")
             c.execute('DELETE FROM notification_messages WHERE job_id NOT IN (SELECT job_id FROM notification_attempts)')
-            candidates=[dict(r) for r in c.execute("SELECT * FROM jobs WHERE status IN ('succeeded','failed','cancelled') AND expires>? AND mail_status IN ('pending','retry','sending') AND mail_attempts<5 AND mail_updated<? ORDER BY created",(time.time(),time.time()-300))]
+            candidates=[dict(r) for r in c.execute("SELECT * FROM jobs WHERE status IN ('succeeded','failed','cancelled') AND TRIM(email)!='' AND expires>? AND mail_status IN ('pending','retry','sending') AND mail_attempts<5 AND mail_updated<? ORDER BY created",(time.time(),time.time()-300))]
         seen=set();attempted=0
         for row in candidates:
             key=row['batch_id'] or row['id']
@@ -51,7 +53,7 @@ def notify(config,limit=5):
                 live=[r for r in rows if r['mail_status']!='expired']
                 if not live or any(r['mail_status'] not in {'pending','retry','sending'} or r['mail_attempts']>=5 or r['mail_updated']>=time.time()-300 for r in live):continue
                 if any(r['status']=='succeeded' and r['expires']>time.time() and not (state/'reports'/r['id']/'report.zip').is_file() for r in rows):continue
-                if len({r['email'] for r in live})!=1:continue
+                if any(not r['email'].strip() for r in live) or len({r['email'] for r in live})!=1:continue
                 # A batch keeps the same retry record even if its earliest task expires.
                 row=live[0];jid=key;ids=[r['id'] for r in live]
                 placeholders=','.join('?' for _ in ids)

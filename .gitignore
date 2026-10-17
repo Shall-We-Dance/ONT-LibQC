@@ -95,4 +95,8 @@ release-manifest.json
 # Regression checks are maintained outside the public delivery directory.
 /portal/tests/
 
+# Only these explicitly published research examples are versioned.
+!/portal/example_inputs/HL120.fastq.gz
+!/portal/example_inputs/HL240.fastq.gz
+
 /test-results/

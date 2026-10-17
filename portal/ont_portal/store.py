@@ -8,10 +8,6 @@ TERMINAL = ('succeeded','failed','cancelled','expired')
 def token_for(secret, job_id):
     return hmac.new(secret.encode(),('job:'+job_id).encode(),hashlib.sha256).hexdigest()
 
-def report_session_token(secret, job_id):
-    """Report-only browser credential; never accepted by task management APIs."""
-    return hmac.new(secret.encode(),('report-session:'+job_id).encode(),hashlib.sha256).hexdigest()
-
 def report_grant(secret, job_id, expires):
     expires=int(expires)
     signature=hmac.new(secret.encode(),f'report:{job_id}:{expires}'.encode(),hashlib.sha256).hexdigest()

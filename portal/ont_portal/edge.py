@@ -4,7 +4,48 @@ from urllib.parse import urlsplit
 import ipaddress, re, ssl, subprocess
 
 
+def separate_resource_limits(config, limits):
+    """Give read-only reports/static downloads their own bounded edge budget.
+
+    Empty map keys are not counted by nginx's limit modules. Other methods and
+    paths still consume the original API budget, including submission limits.
+    The same mapping is used when upgrading an existing domain configuration.
+    """
+    from .limits import DEFAULTS
+    limits = DEFAULTS | limits
+    if 'zone=resource_client_connections:' in config:
+        raise ValueError('Resource limits are already configured')
+    maps = r'''    map "$request_method:$uri" $resource_request {
+        default 0;
+        ~^(GET|HEAD):/(reports|example|static|example-inputs)/ 1;
+    }
+    map $resource_request $api_client { default $binary_remote_addr; 1 ""; }
+    map $resource_request $api_server { default $server_name; 1 ""; }
+    map $resource_request $resource_client { default ""; 1 $binary_remote_addr; }
+    map $resource_request $resource_server { default ""; 1 $server_name; }
+'''
+    config = config.replace('    limit_conn_zone $binary_remote_addr zone=client_connections:1m;',
+        maps + '    limit_conn_zone $api_client zone=client_connections:1m;')
+    config = config.replace('limit_conn_zone $server_name zone=all_connections:', 'limit_conn_zone $api_server zone=all_connections:')
+    config = config.replace('limit_req_zone $binary_remote_addr zone=client_requests:', 'limit_req_zone $api_client zone=client_requests:')
+    config = config.replace('limit_req_zone $server_name zone=all_requests:', 'limit_req_zone $api_server zone=all_requests:')
+    zones = f'''    limit_conn_zone $resource_client zone=resource_client_connections:1m;
+    limit_conn_zone $resource_server zone=resource_all_connections:64k;
+    limit_req_zone $resource_client zone=resource_client_requests:1m rate={limits['resource_requests_per_minute']}r/m;
+    limit_req_zone $resource_server zone=resource_all_requests:64k rate={limits['global_resource_requests_per_minute']}r/m;
+'''
+    config = config.replace('    map "$request_method:$uri" $submission_client {', zones + '    map "$request_method:$uri" $submission_client {')
+    config = re.sub(r'        limit_conn all_connections [0-9]+;', f'''        limit_conn all_connections {limits['max_http_requests']};
+        limit_conn resource_client_connections {limits['max_resource_requests_per_client']};
+        limit_conn resource_all_connections {limits['max_resource_requests']};
+        limit_req zone=resource_client_requests burst={limits['resource_request_burst']} nodelay;
+        limit_req zone=resource_all_requests burst={limits['global_resource_request_burst']} nodelay;''', config, count=1)
+    return config.replace('worker_connections 128;', 'worker_connections 1024;')
+
+
 def configure(compose, runtime, public_url, limits):
+    from .limits import DEFAULTS
+    limits = DEFAULTS | limits
     runtime = Path(runtime)
     hostname = urlsplit(public_url).hostname or ''
     try:ipaddress.ip_address(hostname)
@@ -25,16 +66,17 @@ def configure(compose, runtime, public_url, limits):
     # peer is our edge, which overwrites forwarded headers using its socket peer.
     web['command'] = ['python','-m','uvicorn','ont_portal.app:app','--host','0.0.0.0','--port','8443',
         '--proxy-headers','--forwarded-allow-ips','*','--no-access-log','--workers','1',
-        '--limit-concurrency','32','--backlog','32','--h11-max-incomplete-event-size','16384',
+        '--limit-concurrency',str(max(256,2*(limits['max_http_requests']+limits['max_resource_requests']))),'--backlog','32','--h11-max-incomplete-event-size','16384',
         '--timeout-keep-alive','3','--timeout-graceful-shutdown','15',
         '--ssl-keyfile','/tls/backend.key','--ssl-certfile','/tls/backend.crt']
+    web.setdefault('ulimits',{})['nofile']={'soft':1024,'hard':1024}
     compose['networks']['backend'] = {'internal':True}
     compose['services']['edge'] = {
         'image':'nginx:stable-alpine','entrypoint':['nginx'],'command':['-g','daemon off;'],
         'init':True,'restart':'unless-stopped','user':web['user'],'read_only':True,
         'cap_drop':['ALL'],'security_opt':['no-new-privileges:true'],
         'cpus':0.25,'mem_limit':'64m','memswap_limit':'64m','pids_limit':32,
-        'ulimits':{'nofile':{'soft':256,'hard':256}},'tmpfs':['/tmp:rw,nosuid,nodev,size=32m'],
+        'ulimits':{'nofile':{'soft':2048,'hard':2048}},'tmpfs':['/tmp:rw,nosuid,nodev,size=32m'],
         'ports':ports,'networks':['frontend','backend'],
         'depends_on':{'web':{'condition':'service_healthy'}},
         'volumes':[f'{runtime / "edge.conf"}:/etc/nginx/nginx.conf:ro',f'{runtime / "tls"}:/tls:ro',
@@ -77,7 +119,7 @@ http {
         "POST:/api/jobs" $binary_remote_addr;
         "POST:/api/batches" $binary_remote_addr;
     }
-    limit_req_zone $submission_client zone=submissions:1m rate=6r/m;
+    limit_req_zone $submission_client zone=submissions:1m rate=@SUBMISSION_RATE@r/m;
     server {
         listen 8443 ssl;
         server_name _;
@@ -92,7 +134,7 @@ http {
         limit_conn_status 429;
         limit_req zone=client_requests burst=@CLIENT_BURST@ nodelay;
         limit_req zone=all_requests burst=@GLOBAL_BURST@ nodelay;
-        limit_req zone=submissions burst=4 nodelay;
+        limit_req zone=submissions burst=@SUBMISSION_BURST@ nodelay;
         limit_req_status 429;
         # Error bodies do not reflect request input. Application errors pass through.
         error_page 429 = @busy;
@@ -144,8 +186,10 @@ http {
     values={'HOST':'ont-qc-backend','UPLOAD':max(limits['max_upload_bytes'],4*1024**2,limits['max_files']*65536),
         'IDLE':limits['body_idle_seconds'],'CLIENT_RATE':limits['requests_per_minute'],
         'GLOBAL_RATE':limits['global_requests_per_minute'],'CLIENT_BURST':limits['request_burst'],
-        'GLOBAL_BURST':limits['global_request_burst'],'CLIENT_CONNECTIONS':limits['max_http_requests_per_client']}
+        'GLOBAL_BURST':limits['global_request_burst'],'CLIENT_CONNECTIONS':limits['max_http_requests_per_client'],
+        'SUBMISSION_RATE':limits['submissions_per_minute'],'SUBMISSION_BURST':limits['submission_burst']}
     for key,value in values.items():config=config.replace('@'+key+'@',str(value))
+    config=separate_resource_limits(config,limits)
     from .domain_edge import configure as configure_domain
     config=configure_domain(config,compose,runtime)
     (runtime/'edge.conf').write_text(config)

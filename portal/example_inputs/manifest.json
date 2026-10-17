@@ -1,0 +1,30 @@
+{
+  "examples": [
+    {
+      "id": "HL120",
+      "filename": "HL120.fastq.gz",
+      "reference": "dm6",
+      "assay": "microc",
+      "description": "Fruit fly Micro-C library",
+      "reads": 4799,
+      "bytes": 1769276,
+      "expanded_bytes": 4106130,
+      "sha256": "08df0c562bd80c563be0c63eabb7edfb69599440b79b12a0289bf471bc930a6e",
+      "url": "/example-inputs/HL120.fastq.gz",
+      "report_url": "/example/samples/HL120.html"
+    },
+    {
+      "id": "HL240",
+      "filename": "HL240.fastq.gz",
+      "reference": "hg38",
+      "assay": "chromatin",
+      "description": "U2OS cell-line chromatin library",
+      "reads": 2936,
+      "bytes": 721920,
+      "expanded_bytes": 1808672,
+      "sha256": "25fb6bb1107b93994fe51550e955f4df86beec38f33a5f2c83691949641d4945",
+      "url": "/example-inputs/HL240.fastq.gz",
+      "report_url": "/example/samples/HL240.html"
+    }
+  ]
+}
