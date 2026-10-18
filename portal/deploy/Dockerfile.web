@@ -5,6 +5,7 @@ COPY portal/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 COPY portal/ont_portal /app/ont_portal
 COPY portal/static /app/static
+COPY portal/example_inputs /app/example_inputs
 RUN mkdir -p /state/control /state/uploads /state/reports
 USER 1000:1000
-CMD ["python", "-m", "uvicorn", "ont_portal.app:app", "--host", "0.0.0.0", "--port", "8443", "--no-proxy-headers", "--no-access-log", "--workers", "1", "--limit-concurrency", "32", "--backlog", "32", "--h11-max-incomplete-event-size", "16384", "--timeout-keep-alive", "3", "--timeout-graceful-shutdown", "15", "--ssl-keyfile", "/tls/server.key", "--ssl-certfile", "/tls/server.crt"]
+CMD ["python", "-m", "uvicorn", "ont_portal.app:app", "--host", "0.0.0.0", "--port", "8443", "--no-proxy-headers", "--no-access-log", "--workers", "1", "--limit-concurrency", "256", "--backlog", "32", "--h11-max-incomplete-event-size", "16384", "--timeout-keep-alive", "3", "--timeout-graceful-shutdown", "15", "--ssl-keyfile", "/tls/server.key", "--ssl-certfile", "/tls/server.crt"]

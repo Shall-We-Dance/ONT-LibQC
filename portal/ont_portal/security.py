@@ -16,13 +16,20 @@ def client_address(scope):
     except ValueError:return 'unknown'
 
 
-class RequestGate:
-    def __init__(self, app, settings):
+class _RequestPool:
+    def __init__(self, app, settings, resources=False):
         self.app, self.settings = app, settings
+        self.resources = resources
         self.active = self.uploads = 0
         self.clients = OrderedDict()
         self.inflight = {}
-        self.global_bucket = (time.monotonic(), settings.global_request_burst)
+        self.client_burst = settings.resource_request_burst if resources else settings.request_burst
+        self.client_rate = settings.resource_requests_per_minute if resources else settings.requests_per_minute
+        self.global_burst = settings.global_resource_request_burst if resources else settings.global_request_burst
+        self.global_rate = settings.global_resource_requests_per_minute if resources else settings.global_requests_per_minute
+        self.client_limit = settings.max_resource_requests_per_client if resources else settings.max_http_requests_per_client
+        self.global_limit = settings.max_resource_requests if resources else settings.max_http_requests
+        self.global_bucket = (time.monotonic(), self.global_burst)
 
     @staticmethod
     def consume(bucket, now, rate, burst):
@@ -34,16 +41,16 @@ class RequestGate:
     async def __call__(self, scope, receive, send):
         if scope['type'] != 'http':return await self.app(scope, receive, send)
         s = self.settings; now = time.monotonic(); client = client_address(scope)
-        bucket = self.clients.pop(client, (now, s.request_burst))
-        self.clients[client], client_ok = self.consume(bucket, now, s.requests_per_minute, s.request_burst)
+        bucket = self.clients.pop(client, (now, self.client_burst))
+        self.clients[client], client_ok = self.consume(bucket, now, self.client_rate, self.client_burst)
         if len(self.clients)>4096:self.clients.popitem(last=False)
-        self.global_bucket, global_ok = self.consume(self.global_bucket, now, s.global_requests_per_minute, s.global_request_burst)
+        self.global_bucket, global_ok = self.consume(self.global_bucket, now, self.global_rate, self.global_burst)
         upload = scope['method']=='PUT' and scope['path'].endswith(('/upload','/regions'))
         active, uploads = self.inflight.get(client, (0,0))
         status, detail = 0, ''
-        if not client_ok or active>=s.max_http_requests_per_client or (upload and uploads>=s.max_uploads_per_client):
+        if not client_ok or active>=self.client_limit or (upload and uploads>=s.max_uploads_per_client):
             status, detail = 429, 'Too many requests from this network. Please retry shortly.'
-        elif not global_ok or self.active>=s.max_http_requests or (upload and self.uploads>=s.max_concurrent_uploads):
+        elif not global_ok or self.active>=self.global_limit or (upload and self.uploads>=s.max_concurrent_uploads):
             status, detail = 503, 'The service is busy. Please retry shortly.'
         if status:
             return await JSONResponse({'detail':detail}, status, headers={'Retry-After':'5','Cache-Control':'no-store','Connection':'close'})(scope, receive, send)
@@ -58,11 +65,28 @@ class RequestGate:
             else:self.inflight[client] = (active-1, uploads-int(upload))
 
 
+class RequestGate:
+    """A report page can fetch many figures without spending the API/upload budget.
+
+    Both pools remain bounded per client and globally. Routing and report access
+    checks still run for every request; this does not make private files public.
+    """
+    def __init__(self, app, settings):
+        self.api = _RequestPool(app, settings)
+        self.resources = _RequestPool(app, settings, resources=True)
+
+    async def __call__(self, scope, receive, send):
+        resource = (scope['type'] == 'http' and scope['method'] in {'GET', 'HEAD'}
+                    and scope['path'].startswith(('/reports/', '/example/', '/static/', '/example-inputs/')))
+        await (self.resources if resource else self.api)(scope, receive, send)
+
+
 class RequestSecurity:
     """ASGI body bounds preserve endpoint cleanup and avoid buffering uploads."""
-    def __init__(self, app, settings, app_csp, report_csp):
+    def __init__(self, app, settings, app_csp, report_csp, public_csp, example_index_csp):
         self.app, self.settings = app, settings
         self.app_csp, self.report_csp = app_csp, report_csp
+        self.public_csp, self.example_index_csp = public_csp, example_index_csp
 
     async def __call__(self, scope, receive, send):
         if scope['type'] != 'http':
@@ -72,6 +96,9 @@ class RequestSecurity:
         from starlette.exceptions import HTTPException
         s = self.settings
         path, method = scope['path'], scope['method']
+        example_index = path in {'/example/', '/example/index.html'}
+        report = path.startswith('/reports/') or (path.startswith('/example/') and not example_index)
+        private_task = path.startswith('/jobs/')
         headers = Headers(scope=scope)
         started = False
         async def secured_send(message):
@@ -83,9 +110,12 @@ class RequestSecurity:
                 response['Referrer-Policy'] = 'no-referrer'
                 response['X-Frame-Options'] = 'DENY'
                 response['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=()'
-                response['Cache-Control'] = 'no-store'
-                response['Content-Security-Policy'] = self.report_csp if path.startswith(('/reports/','/example/')) else self.app_csp
-                if s.secure_cookies: response['Strict-Transport-Security'] = 'max-age=31536000'
+                # no-transform prevents proxy-injected analytics on private tasks
+                # and reports, whose opaque sandbox origin cannot send RUM data.
+                response['Cache-Control'] = 'no-store, no-transform' if report or private_task else 'no-store'
+                response['Content-Security-Policy'] = (self.report_csp if report else
+                    self.app_csp if private_task else self.example_index_csp if example_index else self.public_csp)
+                if s.require_https: response['Strict-Transport-Security'] = 'max-age=31536000'
             await send(message)
         async def deny(status, detail):
             await JSONResponse({'detail': detail}, status, headers={'Connection':'close'})(scope, receive, secured_send)

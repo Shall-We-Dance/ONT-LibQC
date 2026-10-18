@@ -2,6 +2,7 @@
 import functools
 import http.server
 import json
+import os
 from pathlib import Path
 import sys
 import threading
@@ -28,7 +29,8 @@ scripts = {name: (ROOT / f"tests/portal/{name}.browser.js").read_text()
 try:
     with sync_playwright() as p:
         for engine in sys.argv[1:] or ["chromium", "webkit"]:
-            browser = getattr(p, engine).launch()
+            browser = getattr(p, engine).launch(**({'executable_path':os.environ['ONT_WEBKIT_EXECUTABLE']}
+                if engine=='webkit' and os.environ.get('ONT_WEBKIT_EXECUTABLE') else {}))
             try:
                 for width in (1100, 390):
                     for scenario, script in scripts.items():

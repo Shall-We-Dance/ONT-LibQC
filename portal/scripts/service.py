@@ -33,7 +33,7 @@ def init(args):
     (root/'secrets.json').write_text(json.dumps({'signing_key':secrets.token_hex(32),'submission_key':'' if args.open_submissions else secrets.token_urlsafe(18)},indent=2)+'\n')
     write(root/'limits.yaml',RUNTIME_DEFAULTS)
     common={}
-    common.update(public_url=args.public_url.rstrip('/'),allowed_hosts=list(dict.fromkeys([url.hostname,'localhost','127.0.0.1'])),mail_enabled=False,secure_cookies=True)
+    common.update(public_url=args.public_url.rstrip('/'),allowed_hosts=list(dict.fromkeys([url.hostname,'localhost','127.0.0.1'])),mail_enabled=False,require_https=True)
     write(root/'web.yaml',common|{'limits_file':'/config/limits.yaml','state':'/state','secrets_file':'/config/secrets.json','public_catalog_file':'/config/catalog.public.json','examples':'/examples','static':'/app/static'})
     write(root/('frontend.yaml' if args.frontend_only else 'worker.yaml'),common|{'limits_file':str(root/'limits.yaml'),'state':str(state),'secrets_file':str(root/'secrets.json'),'public_catalog_file':str(root/'catalog.public.json'),
         'catalog_file':str(root/'catalog.admin.json'),'pipeline_dir':str(ROOT),'runner_image':'ont-qc-runner:1',

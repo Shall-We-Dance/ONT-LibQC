@@ -55,6 +55,29 @@ class BatchNotificationsTests(unittest.TestCase):
         self.job('a',batch='one');self.job('b',batch='two');self.job('c',batch=None)
         notify(self.config);self.assertEqual(self.send.call_count,3)
 
+    def test_missing_recipient_never_creates_a_send_or_retry_attempt(self):
+        for jid,status in [('a','succeeded'),('b','failed'),('c','cancelled')]:
+            self.job(jid,status,email='')
+        self.store.update('b',mail_status='retry')
+        self.store.update('c',mail_status='sending')
+        self.job('legacy',batch=None,email='   ')
+        for _ in range(2):notify(self.config)
+        self.send.assert_not_called()
+        for jid in ['a','b','c','legacy']:
+            row=self.store.get(jid)
+            self.assertEqual((row['mail_status'],row['mail_attempts']),('disabled',0))
+        with self.store.connect() as c:
+            self.assertEqual(c.execute('SELECT COUNT(*) FROM notification_attempts').fetchone()[0],0)
+            self.assertEqual(c.execute('SELECT COUNT(*) FROM notification_messages').fetchone()[0],0)
+
+    def test_missing_email_batches_do_not_block_requested_notifications(self):
+        self.job('empty',batch='without-email',email='')
+        self.job('requested',batch='with-email')
+        notify(self.config,limit=1);self.send.assert_called_once()
+        self.assertEqual(self.send.call_args.args[1]['To'],'user@example.org')
+        self.assertEqual(self.store.get('empty')['mail_status'],'disabled')
+        self.assertEqual(self.store.get('requested')['mail_status'],'sent')
+
     def test_retry_is_one_identical_message_for_batch(self):
         self.job('a');self.job('b');self.send.side_effect=smtplib.SMTPServerDisconnected('test')
         notify(self.config)

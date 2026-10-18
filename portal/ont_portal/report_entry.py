@@ -18,7 +18,7 @@ def online_report_links(text, file):
     archive=html.escape(prefix+'report.zip',quote=True)
     browse=html.escape(prefix+'downloads.html',quote=True)
     button=('<a href="'+archive+'" download style="display:inline-block;padding:10px 16px;'
-            'border-radius:7px;background:#176e87;color:#fff;text-decoration:none;font-weight:600">'
+            'border-radius:7px;background:#2a6cbd;color:#fff;text-decoration:none;font-weight:600">'
             'Download complete report (ZIP)</a>')
     block=('<div class="report-download-actions" style="margin:20px 0">'
            '<p style="display:flex;flex-wrap:wrap;align-items:center;gap:12px">'+button)

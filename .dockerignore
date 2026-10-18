@@ -6,6 +6,10 @@
 !portal/ont_portal/**
 !portal/static/
 !portal/static/**
+!portal/example_inputs/
+!portal/example_inputs/manifest.json
+!portal/example_inputs/HL120.fastq.gz
+!portal/example_inputs/HL240.fastq.gz
 
 # Exclude private material even inside otherwise allowed source folders.
 **/.env

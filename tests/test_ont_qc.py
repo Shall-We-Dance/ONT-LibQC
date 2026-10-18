@@ -144,8 +144,8 @@ class ReportLayoutTests(unittest.TestCase):
             "adapter_dimer_call": "pass",
             "biological_qc_call": "low_quality",
         })
-        self.assertIn("ONT Sequencing QC", rendered)
-        self.assertIn("NGS Library Type / Shape QC", rendered)
+        self.assertIn("Sequencing", rendered)
+        self.assertIn("Library quality", rendered)
         self.assertNotIn("Biological", rendered)
 
     def test_mycoplasma_unavailable_result_is_red_and_labeled_inconclusive(self):

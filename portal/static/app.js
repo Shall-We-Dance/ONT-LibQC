@@ -3,6 +3,7 @@ const $ = id => document.getElementById(id);
 let catalog, files = [], tasks = [], submitting = false, refreshing = false, retryRequestsAt = 0;
 // These IDs only connect controls within this page; task credentials come from the server.
 let nextLocalId = 0;
+let loadingExample = false;
 const taskViews = new WeakMap();
 const bytes = n => (n / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 2 }) + ' MB';
 function node(tag, attrs = {}, ...children) {
@@ -38,7 +39,7 @@ async function api(path, method = 'GET', body, token) {
   const headers = { 'X-Portal-Request': '1' };
   if (token) headers.Authorization = 'Bearer ' + token;
   if (body !== undefined) headers['Content-Type'] = 'application/json';
-  const response = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), credentials: 'same-origin' });
+  const response = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), credentials: 'omit' });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     if ([429, 503].includes(response.status)) retryRequestsAt = Date.now() + (Math.min(120, Math.max(5, Number(response.headers.get('Retry-After')) || 5)) + Math.random() * 3) * 1000;
@@ -134,6 +135,7 @@ function showUploadErrors(messages) {
 }
 function addFiles(incoming) {
   showError('');
+  const added = [];
   const errors = [];
   for (const file of incoming) {
     if (files.length >= catalog.max_files) { errors.push('Some files were not added. Choose up to ' + catalog.max_files + ' files per submission.'); break; }
@@ -246,10 +248,11 @@ function addFiles(incoming) {
       for (const file of files) file.applyFeedback = '';
       updateApplyControls();
     });
-    referenceChange(entry); files.push(entry); $('file-list').append(entry.card);
+    referenceChange(entry); files.push(entry); added.push(entry); $('file-list').append(entry.card);
   }
   showUploadErrors(errors);
   updateCount();
+  return added;
 }
 function updateApplyControls() {
   for (const entry of files) {
@@ -341,6 +344,28 @@ async function binaryUpload(task, file, endpoint, onprogress) {
   }
 }
 const labels = { created: 'Waiting for upload', uploading: 'Uploading', uploaded: 'Upload complete', queued: 'Queued', running: 'Analyzing', succeeded: 'Report ready', failed: 'Analysis failed', cancelling: 'Cancelling', cancelled: 'Cancelled', expired: 'Expired' };
+async function followReportLink(event, task, field) {
+  if (event.type === 'auxclick' && event.button !== 1) return;
+  if (task.job?.report_access_expires > Date.now() / 1000 + 30) return;
+  event.preventDefault();
+  // A suspended tab may have outlived its read-only links. Renew using the private
+  // task credential, reserving a report tab during the click to avoid popup blocks.
+  const newTab = field === 'report_url' || event.ctrlKey || event.metaKey || event.shiftKey || event.button === 1;
+  const popup = newTab ? window.open('about:blank', '_blank') : null;
+  if (popup) popup.opener = null;
+  try {
+    if (newTab && !popup) throw new Error('Allow this site to open a report tab, then try again.');
+    task.job = await api('/api/jobs/' + task.id, 'GET', undefined, task.token);
+    task.lastChecked = Date.now(); task.fetchError = null;
+    const target = task.job[field];
+    if (!target) throw new Error('This report is no longer available. Check the task status below.');
+    (popup || window).location.assign(target);
+  } catch (error) {
+    if (popup) popup.close();
+    task.fetchError = error.message;
+  }
+  renderTasks();
+}
 function taskProgress(task) {
   const job = task.job || { status: 'created' };
   const percent = Math.round(Math.min(100, Math.max(0, (task.uploading ? task.uploadProgress * 100 : job.progress) || 0)));
@@ -370,8 +395,10 @@ function taskView(task) {
   }
   if (task.failure || task.fetchError || job.error) card.append(node('div', { class: 'error' }, task.failure || task.fetchError || job.error));
   const actions = node('div', { class: 'task-actions' });
-  if (job.status === 'succeeded' && !deletionPending) {
-    actions.append(node('a', { class: 'primary button', href: job.report_url, target: '_blank', rel: 'noopener' }, 'Open ' + (job.sample || 'sample') + ' report ↗'), node('a', { class: 'secondary button', href: job.download_url }, 'Download report ZIP'));
+  if (job.status === 'succeeded' && !deletionPending && job.report_url && job.download_url) {
+    const reportClick = event => followReportLink(event, task, 'report_url');
+    const downloadClick = event => followReportLink(event, task, 'download_url');
+    actions.append(node('a', { class: 'primary button', href: job.report_url, target: '_blank', rel: 'noopener', onclick: reportClick, onauxclick: reportClick }, 'Open ' + (job.sample || 'sample') + ' report ↗'), node('a', { class: 'secondary button', href: job.download_url, onclick: downloadClick, onauxclick: downloadClick }, 'Download report ZIP'));
     card.append(node('p', { class: 'field-note' }, 'Available until ' + new Date(job.expires * 1000).toLocaleString()));
   }
   actions.append(node('button', { type: 'button', class: 'secondary', onclick: async event => { try { await navigator.clipboard.writeText(privateLink(task)); event.target.textContent = 'Link copied'; } catch { saveText('ont-libqc-private-link.txt', privateLink(task)); } } }, 'Copy private link'));
@@ -443,6 +470,7 @@ function updateTaskView(task) {
   return view.card;
 }
 function renderTasks() {
+  $('new-nav').removeAttribute('aria-current');
   const single = tasks.length === 1;
   const ready = tasks.length > 0 && tasks.every(t => t.job?.status === 'succeeded' && !t.deletionRequested && !t.job.deletion_requested);
   const unavailable = tasks.length > 0 && tasks.every(t => t.job?.status === 'expired');
@@ -457,6 +485,8 @@ function renderTasks() {
   $('tasks-eyebrow').textContent = single ? 'YOUR ANALYSIS' : 'YOUR ANALYSES';
   $('tasks-description').textContent = unavailable
     ? 'The reason for removal is shown below. Submit the FASTQ again to generate ' + (single ? 'a new report.' : 'new reports.')
+    : tasks.length && tasks.every(t => t.job?.mail_status === 'disabled')
+    ? 'No email will be sent. Save your private task ' + (single ? 'link' : 'links') + ' to check progress and collect your results later.'
     : single
     ? 'Track your analysis below. Save your private task link to return later.'
     : 'Track each analysis below. Save your private task links to return later.';
@@ -467,10 +497,7 @@ function renderTasks() {
 async function refreshTask(task) {
   if (task.uploading) return;
   try {
-    task.job = await api('/api/jobs/' + task.id, 'GET', undefined, task.token); task.fetchError = null;
-    if (task.job.status === 'succeeded' && !task.job.deletion_requested && (!task.session || Date.now() - task.session > 1200000)) {
-      await api('/api/jobs/' + task.id + '/session', 'POST', {}, task.token); task.session = Date.now();
-    }
+    task.job = await api('/api/jobs/' + task.id, 'GET', undefined, task.token); task.fetchError = null; task.lastChecked = Date.now();
   } catch (e) { task.fetchError = e.message; }
   if (!refreshing) renderTasks();
 }
@@ -480,7 +507,7 @@ async function refreshTasks() {
   try {
     for (const task of tasks) {
       if (Date.now() < retryRequestsAt) break;
-      if (!task.job || !['succeeded', 'expired', 'cancelled', 'failed'].includes(task.job.status) || task.fetchError || (task.job?.status !== 'expired' && (task.deletionRequested || task.job?.deletion_requested || task.job?.expires <= Date.now() / 1000)) || (task.job.status === 'succeeded' && (!task.session || Date.now() - task.session > 1200000))) await refreshTask(task);
+      if (!task.job || !['succeeded', 'expired', 'cancelled', 'failed'].includes(task.job.status) || task.fetchError || (task.job?.status !== 'expired' && (task.deletionRequested || task.job?.deletion_requested || task.job?.expires <= Date.now() / 1000)) || (task.job.status === 'succeeded' && (!task.lastChecked || Date.now() - task.lastChecked > 1200000))) await refreshTask(task);
     }
   } finally { refreshing = false; renderTasks(); }
 }
@@ -509,7 +536,7 @@ $('submission-form').addEventListener('submit', async event => {
       if (options.custom_regions && await checkedBedFile(entry.bed, 4 * 1024 ** 2) !== bedFile) throw new Error('The BED selection changed. Review the file and submit again.');
     }
     const batch = await api('/api/batches', 'POST', { files: entries.map(({ entry, options }) => ({
-      email: $('email').value, filename: entry.file.name, size: entry.file.size, options,
+      email: $('email').value.trim(), filename: entry.file.name, size: entry.file.size, options,
       consent: $('consent').checked, data_policy_acknowledged: $('data-policy').checked, submission_key: $('submission-code').value, website: $('website').value
     })) });
     tasks = batch.jobs.map((job, i) => ({ id: job.id, token: job.token, name: entries[i].options.sample,
@@ -532,6 +559,39 @@ $('submission-form').addEventListener('submit', async event => {
   } catch (e) { showError(e.message); }
   finally { submitting = false; updateCount(); }
 });
+async function loadExample(id) {
+  if (submitting || loadingExample) return;
+  const status = $('example-status');
+  const example = catalog.examples?.find(item => item.id === id);
+  let timer;
+  try {
+    if (!example) throw Error('This example is unavailable. Open Example reports to choose a sample.');
+    const existing = files.find(entry => entry.exampleId === id);
+    if (existing) { existing.card.scrollIntoView({ block: 'center' }); existing.sample.focus({ preventScroll: true }); status.textContent = id + ' is already loaded.'; return; }
+    if (files.length >= catalog.max_files) throw Error('Remove a file before loading an example.');
+    const reference = catalog.references.find(ref => ref.id === example.reference && ref.ready);
+    if (!reference || (example.assay === 'microc' && !reference.mappers.some(mapper => ['bwa-mem2', 'bwa-mem', 'minimap2'].includes(mapper)))) {
+      throw Error('The reference or assay for this example is unavailable on this server. You can still download its FASTQ.');
+    }
+    loadingExample = true; updateCount(); status.textContent = 'Loading ' + id + '…';
+    const controller = new AbortController();
+    timer = setTimeout(() => controller.abort(), 30000);
+    const response = await fetch(example.url, { credentials: 'omit', signal: controller.signal });
+    if (!response.ok) throw Error('Could not load the example. Please try again shortly, or download its FASTQ.');
+    const blob = await response.blob();
+    if (blob.size !== example.bytes) throw Error('The example download was incomplete. Please try again.');
+    if (submitting || files.length >= catalog.max_files) throw Error('The file list changed while loading. Try again after the current submission, or remove a file.');
+    const [entry] = addFiles([new File([blob], example.filename, { type: 'application/gzip' })]);
+    if (!entry) throw Error('This example exceeds the current upload limit. You can download it to run locally.');
+    entry.exampleId = id; entry.sample.value = id;
+    entry.ref.value = example.reference; entry.ref.dispatchEvent(new Event('change'));
+    entry.assay.value = example.assay; entry.assay.dispatchEvent(new Event('change'));
+    status.textContent = id + ' loaded · ' + example.reads.toLocaleString() + ' reads. Review the settings, then start analysis.';
+    entry.sample.focus({ preventScroll: true });
+  } catch (error) {
+    status.textContent = error.name === 'AbortError' ? 'The example download timed out. Please try again.' : error.message;
+  } finally { clearTimeout(timer); loadingExample = false; updateCount(); }
+}
 async function init() {
   try {
     catalog = await api('/api/catalog');
@@ -540,15 +600,22 @@ async function init() {
     $('pipeline-link').href = catalog.pipeline_url;
     $('large-file-note').textContent = 'Larger than ' + bytes(catalog.max_upload_bytes) + '? Run the pipeline locally. Gzip files must also expand to at most ' + bytes(catalog.max_expanded_bytes) + '. Online analyses are limited to ' + catalog.max_reads.toLocaleString() + ' reads per file.';
     $('retention').textContent = catalog.retention_days + ' days';
-    $('email-note').textContent = catalog.mail_enabled ? 'We’ll send one summary email with all your results when every file in this submission has finished.' : 'Email delivery is not enabled on this server. Save your private task links to collect the reports here.';
-    $('privacy-delivery-note').textContent = catalog.mail_enabled ? 'Your private link will also arrive by email. Keep it safe and share it only with people you trust.' : 'Save your task links before leaving. Without email delivery, lost links cannot be recovered here.';
+    $('email-note').textContent = catalog.mail_enabled ? 'Receive one summary when all files finish, or leave blank and use your private task links.' : 'Email delivery is not enabled on this server. Leave this blank and save your private task links to collect the reports here.';
+    $('privacy-delivery-note').textContent = catalog.mail_enabled ? 'Save your private task links before leaving. If you provide an email, we’ll also send them when all files finish.' : 'Save your task links before leaving. Without email delivery, lost links cannot be recovered here.';
     $('code-field').hidden = !catalog.submission_key_required; $('submission-code').required = catalog.submission_key_required;
     const single = location.pathname.match(/^\/jobs\/([0-9a-f]{32})$/);
+    if (single) $('new-nav').removeAttribute('aria-current');
     if (single && /^[0-9a-f]{64}$/.test(location.hash.slice(1))) tasks = [{ id: single[1], token: location.hash.slice(1) }];
     else if (location.hash.startsWith('#jobs=')) tasks = location.hash.slice(6).split(',').slice(0, 64).map(t => t.split(':')).filter(([id, token]) => /^[0-9a-f]{32}$/.test(id) && /^[0-9a-f]{64}$/.test(token)).map(([id, token]) => ({ id, token }));
-    if (single && !tasks.length) { $('submission-view').hidden = true; showError(new URLSearchParams(location.search).has('report') ? 'Open the complete private task link from your email or saved links to access this report. The report URL alone does not include its access key.' : 'This task needs its complete private link, including the part after #.', 'global-error'); }
+    if (single && !tasks.length) { $('submission-view').hidden = true; showError(new URLSearchParams(location.search).has('report') ? 'This report link has expired or is incomplete. Reopen the complete private task link from your email or saved links to view or download your report.' : 'This task needs its complete private link, including the part after #.', 'global-error'); }
     if (tasks.length) { renderTasks(); await refreshTasks(); }
     updateCount();
+    const example = new URLSearchParams(location.search).get('example');
+    if (example && location.pathname === '/' && !tasks.length) {
+      const clean = new URL(location.href); clean.searchParams.delete('example');
+      history.replaceState(null, '', clean.pathname + clean.search + clean.hash);
+      await loadExample(example);
+    }
   } catch (e) { showError('Cannot connect to the analysis service. ' + e.message, 'global-error'); $('submit-button').disabled = true; }
 }
 $('fastq-input').addEventListener('change', e => { if (catalog) addFiles(e.target.files); e.target.value = ''; });

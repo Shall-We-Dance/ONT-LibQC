@@ -149,7 +149,7 @@ class Options(StrictModel):
         return self
 
 class Submission(StrictModel):
-    email: str = Field(max_length=254)
+    email: str = Field(default='',max_length=254)
     filename: str = Field(min_length=1,max_length=180)
     size: int = Field(gt=0)
     options: Options
@@ -165,11 +165,15 @@ class Submission(StrictModel):
             raise ValueError('Confirm that this submission contains no human patient data or other sensitive personal data')
         return value
 
-    @field_validator('email')
+    @field_validator('email',mode='before')
     @classmethod
     def email_address(cls,v):
+        if v is None:return ''
+        if not isinstance(v,str):raise ValueError('Enter a valid email address or leave it blank')
+        v=v.strip()
+        if not v:return ''
         try: return validate_email(v,check_deliverability=False,allow_smtputf8=False).normalized
-        except EmailNotValidError as e: raise ValueError('Enter a valid email address') from e
+        except EmailNotValidError as e: raise ValueError('Enter a valid email address or leave it blank') from e
 
     @field_validator('filename')
     @classmethod
