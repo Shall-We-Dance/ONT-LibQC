@@ -2,6 +2,8 @@
 
 # ONT-LibQC
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23481973.svg)](https://doi.org/10.5281/zenodo.23481973)
+
 [Web server](https://ontlibqc.org) · [Example reports](https://ontlibqc.org/example/index.html) · [Run locally](#run-your-data) · [Self-hosting](portal/README.md)
 
 ONT-LibQC checks completed **Chromatin and Micro-C libraries** using shallow ONT sequencing. It reconstructs adapter-bounded library units, resolves physical i5/i7 index pairs, and reports library size, mapping and assay-specific metrics. Run it in the browser or locally with Snakemake.
