@@ -4,7 +4,7 @@
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23481973.svg)](https://doi.org/10.5281/zenodo.23481973)
 
-[Web server](https://ontlibqc.org) · [Example reports](https://ontlibqc.org/example/index.html) · [Run locally](#run-your-data) · [Self-hosting](portal/README.md)
+[Web server](https://ontlibqc.org) · [Example reports](https://ontlibqc.org/example/index.html) · [Run locally](#run-your-data) · [Self-hosting](portal/README.md) · [Citation](#citation)
 
 ONT-LibQC checks completed **Chromatin and Micro-C libraries** using shallow ONT sequencing. It reconstructs adapter-bounded library units, resolves physical i5/i7 index pairs, and reports library size, mapping and assay-specific metrics. Run it in the browser or locally with Snakemake.
 
@@ -89,6 +89,32 @@ Use `report_dir` to change the report location. It must be separate from `output
 The [portal guide](portal/README.md) covers deployment, reference preparation, resource limits and private report access. Limits are configurable by the operator.
 
 For questions or problems, [open an issue](https://github.com/Shall-We-Dance/ONT-LibQC/issues) or email [hl2522@cornell.edu](mailto:hl2522@cornell.edu).
+
+## Citation
+
+If you use ONT-LibQC, please cite:
+
+Liu, H., & Kim, J. J. (2026). *ONT-LibQC: rapid quality control of chromatin assay libraries using shallow nanopore sequencing*. bioRxiv [Preprint]. [https://doi.org/10.64898/2026.10.19.760194](https://doi.org/10.64898/2026.10.19.760194)
+
+<details>
+<summary>BibTeX</summary>
+
+```bibtex
+@article{liu_kim_2026_ontlibqc,
+  author    = {Liu, Hongjiang and Kim, Jongmin J},
+  title     = {{ONT-LibQC}: rapid quality control of chromatin assay libraries using shallow nanopore sequencing},
+  journal   = {bioRxiv},
+  publisher = {openRxiv},
+  date      = {2026-10-24},
+  year      = {2026},
+  month     = oct,
+  note      = {Preprint},
+  doi       = {10.64898/2026.10.19.760194},
+  url       = {https://doi.org/10.64898/2026.10.19.760194}
+}
+```
+
+</details>
 
 ## License
 

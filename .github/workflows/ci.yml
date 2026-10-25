@@ -37,6 +37,7 @@ jobs:
         run: |
           node --check portal/static/app.js
           node --check portal/static/library-structure.js
+          node --check portal/static/cite.js
   browser:
     name: Browser ${{ matrix.browser }}
     runs-on: ubuntu-latest

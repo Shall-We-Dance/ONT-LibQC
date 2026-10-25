@@ -4,6 +4,7 @@ import gzip
 import hashlib
 import json
 from pathlib import Path
+import re
 import tempfile
 import unittest
 
@@ -137,6 +138,27 @@ class PublicExamplesTests(unittest.TestCase):
         help_text = self.client.get('/help').text
         for link in ['/?example=HL120','/?example=HL240','/example/samples/HL120.html','/example/samples/HL240.html']:
             self.assertIn(link, help_text)
+
+    def test_citation_download_matches_readme_and_stays_public(self):
+        for path in ['/static/cite.js', '/static/ont-libqc.bib']:
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, 200)
+                self.assertNotIn('set-cookie', response.headers)
+                self.assertEqual(response.headers['x-content-type-options'], 'nosniff')
+                self.assertEqual(response.headers['referrer-policy'], 'no-referrer')
+        response = self.client.get('/static/ont-libqc.bib')
+        self.assertEqual(response.headers['content-type'].split(';')[0], 'application/x-bibtex')
+        self.assertEqual(response.headers['content-disposition'], 'attachment; filename="ont-libqc-biorxiv.bib"')
+        readme = (self.settings.static.parents[1]/'README.md').read_text()
+        bibtex = re.search(r'```bibtex\n(.*?)\n```', readme, re.DOTALL)
+        self.assertIsNotNone(bibtex, 'README must include the downloadable citation.')
+        self.assertEqual(response.text.strip(), bibtex.group(1).strip())
+        self.assertIn('10.64898/2026.10.19.760194', response.text)
+        for path in ['/static/help.html', '/static/LICENSE.txt', '/static/other.bib',
+                     '/static/%2e%2e%2fLICENSE']:
+            with self.subTest(path=path):
+                self.assertEqual(self.client.get(path).status_code, 404)
 
     def test_cloudflare_analytics_is_limited_to_public_portal_pages(self):
         for path in ['/','/?example=HL120','/help','/license','/example/','/example/index.html']:
