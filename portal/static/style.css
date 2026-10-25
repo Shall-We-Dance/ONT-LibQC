@@ -206,3 +206,14 @@ button.structure-block:hover{border-color:currentColor}
 
 /* Low elevation keeps the main surfaces distinct without heavy borders. */
 .panel,.task-card,.info-panel{box-shadow:var(--surface-shadow)}
+
+/* Citation text remains selectable and downloads work without JavaScript. */
+.citation-heading{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-bottom:18px}
+.citation-heading h2{margin:0}
+.citation-text{font-size:16px;line-height:1.9;overflow-wrap:anywhere;user-select:text}
+.citation-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:22px}
+.citation-actions .button,.citation-actions button{min-height:42px;display:inline-flex;align-items:center;justify-content:center}
+.citation-actions button:disabled{background:var(--wash);color:var(--muted);border-color:var(--line);opacity:1;box-shadow:none;transform:none}
+.citation-status{min-height:1.6em;margin:10px 0 0!important;font-size:13px;color:var(--muted)}
+.citation-status:empty{display:none}
+@media(max-width:470px){.citation-text{font-size:15px}.citation-actions{align-items:stretch}.citation-actions .button,.citation-actions button{flex:1 1 auto}}

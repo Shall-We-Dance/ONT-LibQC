@@ -33,6 +33,59 @@ def wait_js(page, expression, timeout=30000):
         page.wait_for_timeout(50)
     raise AssertionError('Timed out: '+expression)
 
+
+def check_bibtex_download(page):
+    with page.expect_download() as pending:
+        page.get_by_role('link', name='Download BibTeX', exact=True).click()
+    download = pending.value
+    assert download.failure() is None
+    assert download.suggested_filename == 'ont-libqc-biorxiv.bib'
+    assert Path(download.path()).read_text() == (ROOT/'portal/static/ont-libqc.bib').read_text()
+
+
+def check_citation(page):
+    reference = page.locator('#citation-text')
+    expected = ' '.join(reference.inner_text().split())
+    doi = 'https://doi.org/10.64898/2026.10.19.760194'
+    assert 'Liu, H., & Kim, J. J. (2026).' in expected and 'bioRxiv [Preprint]' in expected
+    assert reference.get_by_role('link', name=doi, exact=True).get_attribute('href') == doi
+    copy = page.get_by_role('button', name='Copy citation', exact=True)
+    copy.wait_for(state='visible')
+    # Model browser permission outcomes without depending on the OS clipboard.
+    page.evaluate("""() => {
+        window.copiedCitation = null;
+        Object.defineProperty(navigator, 'clipboard', {configurable: true,
+            value: {writeText: async text => {window.copiedCitation = text;}}});
+    }""")
+    copy.click()
+    wait_js(page, 'window.copiedCitation !== null')
+    assert page.evaluate('window.copiedCitation') == expected
+    status = page.locator('#citation-status')
+    assert status.get_attribute('aria-live') == 'polite'
+    assert status.inner_text() == 'Citation copied.' and copy.is_enabled()
+    page.evaluate("""() => {navigator.clipboard.writeText = async () => {
+        throw new DOMException('Clipboard access denied', 'NotAllowedError');
+    };}""")
+    copy.click()
+    wait_js(page, "document.activeElement.id === 'citation-text'")
+    assert ' '.join(page.evaluate('window.getSelection().toString()').split()) == expected
+    assert status.inner_text() == 'Select and copy the citation above.' and copy.is_enabled()
+    check_bibtex_download(page)
+
+
+def check_citation_without_javascript(browser, origin):
+    context = browser.new_context(java_script_enabled=False, viewport={'width':390, 'height':960})
+    try:
+        page = context.new_page()
+        response = page.goto(origin+'/help#cite')
+        assert response.status == 200
+        assert page.locator('#citation-text').is_visible()
+        assert page.locator('#copy-citation').is_hidden()
+        check_bibtex_download(page)
+        assert not context.cookies(), 'Reading or downloading the citation must not create cookies.'
+    finally:
+        context.close()
+
 with tempfile.TemporaryDirectory() as directory:
     sock=socket.socket();sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
     origin=f'http://127.0.0.1:{port}'
@@ -136,12 +189,19 @@ with tempfile.TemporaryDirectory() as directory:
                                 assert selected.inner_text()==active
                                 assert selected.evaluate('(link) => getComputedStyle(link).color')==accent_rgb
                                 assert selected.evaluate('(link) => getComputedStyle(link).fontWeight')=='600'
+                            if route=='/help':
+                                check_citation(page)
                             page.screenshot(path=str(OUTPUT/(route.strip('/').replace('/','-')+f'-{engine}-{width}.png')))
                         assert not failures, failures
                         results.append({'browser':engine,'width':width,'example_autofill':True,'primary_open_report':True,
                             'same_tab_example_index':True,'new_tab_reports':True,'consistent_active_navigation':True,
-                            'fastq_download':True,'report_images':report_counts,'failed_requests':failures})
+                            'fastq_download':True,'citation_copy_and_fallback':True,'bibtex_download':True,
+                            'report_images':report_counts,'failed_requests':failures})
                         context.close()
+                    check_citation_without_javascript(browser, origin)
+                    for result in results:
+                        if result['browser']==engine:
+                            result['citation_without_javascript']=True
                 finally:browser.close()
     finally:
         server.should_exit=True;thread.join(timeout=10);sock.close()

@@ -282,7 +282,9 @@ def create_app(settings=None):
 
     @api.get('/static/{file}')
     async def static(file:str):
-        if file not in {'app.js','library-structure.js','style.css','mark.svg','favicon-32.png','apple-touch-icon.png','brand-logo.png','mail-logo.png','mail-logo.svg'}: raise HTTPException(404)
+        if file not in {'app.js','library-structure.js','cite.js','ont-libqc.bib','style.css','mark.svg','favicon-32.png','apple-touch-icon.png','brand-logo.png','mail-logo.png','mail-logo.svg'}: raise HTTPException(404)
+        if file=='ont-libqc.bib':
+            return FileResponse(s.static/file,media_type='application/x-bibtex',filename='ont-libqc-biorxiv.bib')
         return FileResponse(s.static/file)
 
     @api.get('/')
