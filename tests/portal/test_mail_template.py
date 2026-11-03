@@ -14,6 +14,8 @@ class MailMarkup(HTMLParser):
         self.tags = []
         self.links = []
         self.images = []
+        self.headings = []
+        self._heading = None
         self.feed(html)
 
     def handle_starttag(self, tag, attrs):
@@ -23,6 +25,17 @@ class MailMarkup(HTMLParser):
             self.links.append(attrs.get('href'))
         if tag == 'img':
             self.images.append(attrs.get('src'))
+        if tag == 'h1':
+            self._heading = []
+
+    def handle_data(self, data):
+        if self._heading is not None:
+            self._heading.append(data)
+
+    def handle_endtag(self, tag):
+        if tag == 'h1' and self._heading is not None:
+            self.headings.append(''.join(self._heading).strip())
+            self._heading = None
 
 
 class MailTemplateTests(unittest.TestCase):
@@ -57,39 +70,79 @@ class MailTemplateTests(unittest.TestCase):
     def task_link(self, row):
         return 'https://example.org/jobs/' + row['id'] + '#' + token_for(self.secret, row['id'])
 
+    def assert_presentation(self, message, heading, action):
+        plain, html = self.bodies(message)
+        self.assertEqual(plain.splitlines()[0], heading)
+        self.assertEqual(MailMarkup(html).headings, [heading])
+        self.assertIn(action + ':', plain)
+        self.assertIn(action, html)
+        self.assertNotIn('\u2014', message['Subject'])
+        for body in (plain, html):
+            for redundant in ('LIBRARY 01', 'YOUR LIBRARY', 'ANALYSIS COMPLETE'):
+                self.assertNotIn(redundant, body)
+
     def test_single_success_uses_singular_copy_for_legacy_and_batch_calls(self):
         row = self.job()
         for rows in (None, [row]):
             with self.subTest(batch=rows is not None):
                 message = self.message(row, rows)
-                self.assertEqual(message['Subject'], 'Your ONT-LibQC report is ready')
+                self.assertEqual(message['Subject'], 'ONT-LibQC - report ready')
+                self.assert_presentation(message, 'Report ready', 'Open report')
                 plain, html = self.bodies(message)
                 self.assertEqual(set(MailMarkup(html).links), {self.task_link(row)})
                 self.assertNotIn('/#jobs=', plain)
                 for body in (plain, html):
-                    self.assertIn('Your report is ready.', body)
-                    self.assertIn('View your report', body)
-                    for plural in ('1 files', 'Your reports are ready.', 'View all results', 'compare your libraries', 'LIBRARY 01'):
+                    for plural in ('1 files', 'Reports ready', 'View all results', 'compare your libraries'):
                         self.assertNotIn(plural, body)
 
-    def test_single_failure_uses_attention_copy_for_legacy_and_batch_calls(self):
+    def test_single_failure_uses_failure_copy_for_legacy_and_batch_calls(self):
         row = self.job(status='failed')
         for rows in (None, [row]):
             with self.subTest(batch=rows is not None):
                 message = self.message(row, rows)
-                self.assertEqual(message['Subject'], 'Your ONT-LibQC analysis needs attention')
+                self.assertEqual(message['Subject'], 'ONT-LibQC - analysis failed')
+                self.assert_presentation(message, 'Analysis failed', 'View analysis')
                 for body in self.bodies(message):
-                    self.assertIn('Your analysis needs attention.', body)
-                    self.assertIn('View your task', body)
                     self.assertIn('Failed', body)
-                    for misleading in ('Your report is ready.', 'View all results', 'compare your libraries', 'LIBRARY 01'):
+                    for misleading in ('Report ready', 'View all results', 'compare your libraries'):
                         self.assertNotIn(misleading, body)
+
+    def test_single_cancelled_analysis_is_not_presented_as_failed_or_ready(self):
+        row = self.job(status='cancelled')
+        for rows in (None, [row]):
+            with self.subTest(batch=rows is not None):
+                message = self.message(row, rows)
+                self.assertEqual(message['Subject'], 'ONT-LibQC - analysis cancelled')
+                self.assert_presentation(message, 'Analysis cancelled', 'View analysis')
+                for body in self.bodies(message):
+                    self.assertIn(self.task_link(row), body)
+                    self.assertNotIn('Report ready', body)
+                    self.assertNotIn('Analysis failed', body)
+
+    def test_single_expired_report_distinguishes_manual_deletion_from_retention(self):
+        for expires in (0, 1790074800):
+            row = self.job(status='expired', expires=expires)
+            for rows in (None, [row]):
+                with self.subTest(manual=expires == 0, batch=rows is not None):
+                    message = self.message(row, rows)
+                    self.assertEqual(message['Subject'], 'ONT-LibQC - report unavailable')
+                    self.assert_presentation(message, 'Report unavailable', 'View analysis')
+                    for body in self.bodies(message):
+                        self.assertIn(self.task_link(row), body)
+                        self.assertNotIn('Available until', body)
+                        self.assertNotIn('1970', body)
+                        self.assertNotIn('Report ready', body)
+                        if expires:
+                            self.assertIn('Expired on', body)
+                        else:
+                            self.assertIn('deleted', body.lower())
+                            self.assertNotIn('Expired on', body)
 
     def test_completed_batch_has_plural_subject_and_all_private_links(self):
         rows = [self.job(jid) for jid in ('one', 'two', 'three')]
         message = self.message(rows[0], rows)
-        self.assertEqual(message['Subject'], 'Your ONT-LibQC results: 3 files - reports ready')
-        self.assertNotIn('\u2014', message['Subject'])
+        self.assertEqual(message['Subject'], 'ONT-LibQC - 3 reports ready')
+        self.assert_presentation(message, 'Reports ready', 'View all results')
         batch_link = 'https://example.org/#jobs=' + ','.join(
             row['id'] + ':' + token_for(self.secret, row['id']) for row in rows
         )
@@ -97,7 +150,6 @@ class MailTemplateTests(unittest.TestCase):
         markup = MailMarkup(html)
         self.assertIn(batch_link, markup.links)
         for body in (plain, html):
-            self.assertIn('Your reports are ready.', body)
             self.assertIn('View all results', body)
             self.assertIn(batch_link, body)
             for row in rows:
@@ -109,10 +161,10 @@ class MailTemplateTests(unittest.TestCase):
     def test_mixed_batch_reports_each_terminal_status_without_claiming_all_ready(self):
         rows = [self.job(str(i), status) for i, status in enumerate(('succeeded', 'failed', 'cancelled', 'expired'))]
         message = self.message(rows[0], rows)
-        self.assertEqual(message['Subject'], 'Your ONT-LibQC results: 4 files - submission finished')
+        self.assertEqual(message['Subject'], 'ONT-LibQC - 4 analyses finished')
+        self.assert_presentation(message, 'Submission finished', 'View all results')
         for body in self.bodies(message):
-            self.assertIn('Your submission has finished.', body)
-            self.assertNotIn('Your reports are ready.', body)
+            self.assertNotIn('Reports ready', body)
             for label in ('Report ready', 'Failed', 'Cancelled', 'Expired', 'Expired on'):
                 self.assertIn(label, body)
             for row in rows:
@@ -144,7 +196,7 @@ class MailTemplateTests(unittest.TestCase):
         self.assertEqual(message.as_bytes(), self.message(row, [row]).as_bytes())
 
     def test_legacy_delivery_identity_still_uses_job_and_status(self):
-        for status in ('succeeded', 'failed'):
+        for status in ('succeeded', 'failed', 'cancelled', 'expired'):
             with self.subTest(status=status):
                 row = self.job(status=status)
                 message = self.message(row)

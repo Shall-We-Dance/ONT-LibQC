@@ -147,6 +147,7 @@ class ReportAccessTests(unittest.TestCase):
         response=self.client.get(self.task()['report_url'])
         csp=response.headers['content-security-policy']
         self.assertIn('allow-popups',csp);self.assertNotIn('allow-same-origin',csp)
+        self.assertIn('allow-modals',csp)
         self.assertIn('sandbox ',csp);self.assertIn("connect-src 'none'",csp)
         self.assertEqual(response.headers['referrer-policy'],'no-referrer')
         self.assertEqual(response.headers['cache-control'],'no-store, no-transform')

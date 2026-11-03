@@ -44,12 +44,12 @@ Publish one DMARC TXT record at `_dmarc` in the sending domain, starting with `v
 The service waits until every file in the batch has reached a terminal state (completed, failed, cancelled or expired) and successful reports are published. It then sends one summary with:
 
 - Each file's status, assay, reference, availability date and private task link.
-- **View all results** for a batch, or **View your report / task** for a single file.
+- **View all results** for a batch, or **Open report / View analysis** for a single file.
 - A plain-text alternative and an HTML version with a small embedded logo. No remote images or sequencing files are attached.
 
 Separate submissions stay separate, even if they share an email address. Batch metadata is saved when files are reserved, preventing early individual messages. Legacy tasks without batch metadata retain individual delivery; already sent messages are not sent again.
 
-Sample labels are escaped and long filenames wrap. Subjects and body text use singular/plural wording appropriate to the file count, with a plain hyphen separator in batch subjects. Private links open the task page for report viewing and downloads.
+Sample labels are escaped and long filenames wrap. Subjects and body text use singular/plural wording appropriate to the file count, with a plain hyphen separator in subjects. Private links open the task page for report viewing and downloads.
 
 ## Retries and troubleshooting
 

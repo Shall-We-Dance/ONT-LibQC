@@ -18,6 +18,7 @@ from ont_portal.app import create_app
 from ont_portal.settings import Settings
 
 ROOT = Path(__file__).resolve().parents[2]
+SOURCE_URL = 'https://github.com/Shall-We-Dance/ONT-LibQC'
 OUTPUT = Path(sys.argv[1]) if len(sys.argv)>1 else Path('test-results/public-pages')
 OUTPUT.mkdir(parents=True, exist_ok=True)
 catalog={'references':[{'id':name,'assembly':name,'label':label,'ready':True,
@@ -183,6 +184,15 @@ with tempfile.TemporaryDirectory() as directory:
                         for route,active in [('/','New analysis'),('/help','Help'),('/license',None),('/example/index.html','Example reports')]:
                             page.goto(origin+route,wait_until='load')
                             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'),(engine,width,route,'overflow')
+                            source_links=page.locator(f'.topbar nav a[href="{SOURCE_URL}"]')
+                            assert source_links.count() and any(link.is_visible() for link in source_links.all()),(engine,width,route,'source link')
+                            for link in source_links.all():
+                                assert link.get_attribute('target')=='_blank'
+                                assert {'noopener','noreferrer'} <= set((link.get_attribute('rel') or '').split())
+                            assert page.locator('.topbar nav').get_by_role('link',name='Citation',exact=True).count()==0
+                            cite_link=page.locator('footer').get_by_role('link',name='Citation',exact=True)
+                            assert cite_link.is_visible()
+                            assert cite_link.get_attribute('href') in {'/help#cite','https://ontlibqc.org/help#cite'}
                             selected=page.locator('.topbar nav [aria-current=page]')
                             assert selected.count()==int(active is not None)
                             if active:

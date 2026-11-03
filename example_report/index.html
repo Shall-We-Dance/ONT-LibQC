@@ -40,10 +40,9 @@ main{flex:1;width:100%;max-width:1220px;margin:0 auto;padding:42px 28px 70px}
 footer{width:calc(100% - 56px);max-width:1164px;margin:0 auto;border-top:1px solid var(--line);padding:20px 0 30px;display:flex;flex-wrap:wrap;align-items:baseline;gap:10px 24px;color:var(--muted);font-size:12px}
 footer>span:first-child{font-weight:700;color:var(--ink)}
 .footer-credit{flex:1 1 auto;min-width:0;margin-left:auto;text-align:right;white-space:nowrap}
-.footer-contact{flex:1 0 100%;min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:2px 16px;line-height:1.65}
-.footer-contact>span{font-weight:600;color:var(--ink)}
-.footer-contact a{display:inline-flex;align-items:center;gap:4px;min-height:28px;text-decoration:none;white-space:nowrap}
-.footer-contact a:hover{color:var(--blue);text-decoration:underline}
+.footer-links{flex:0 1 auto;min-width:0;margin:0;display:flex;flex-wrap:wrap;align-items:center;gap:2px 16px;line-height:1.65}
+.footer-links a{display:inline-flex;align-items:center;gap:4px;min-height:28px;text-decoration:none;white-space:nowrap}
+.footer-links a:hover{color:var(--blue);text-decoration:underline}
 @media(max-width:1050px){.topbar{gap:12px 20px}.topbar nav{gap:18px}}
 @media(max-width:900px){.topbar{padding-inline:24px}}
 @media(max-width:740px){
@@ -56,13 +55,14 @@ footer>span:first-child{font-weight:700;color:var(--ink)}
  .lab-name-long{display:none}.lab-name-short{display:inline}
  main{padding:30px 18px 45px}.example-grid{gap:18px}
  footer{width:auto;align-items:center;margin:0 18px;padding:18px 0 26px;column-gap:12px}
- .footer-description,.credit-prefix{display:none}
+ .credit-prefix{display:none}
  footer>span:first-child{white-space:nowrap}.footer-credit{line-height:1.5}
 }
 @media(max-width:650px){.example-grid{grid-template-columns:minmax(0,1fr)}.example-card{padding:20px}}
+@media(max-width:470px){footer .footer-credit{display:none}}
 @media(max-width:300px){.topbar{grid-template-columns:1fr}.topbar .lab-button{grid-column:1;grid-row:2;justify-self:start}.topbar nav{grid-row:3;flex-wrap:wrap;gap:8px 16px}.footer-credit{white-space:normal}}
 @media(prefers-reduced-motion:reduce){.example-card,.lab-button,.topbar nav a{transition:none}}
-@media print{body{background:white;min-height:0}.topbar .lab-button,.topbar nav,.footer-contact{display:none}.example-card{break-inside:avoid}main{padding-block:24px}}
+@media print{body{background:white;min-height:0}.topbar .lab-button,.topbar nav,.footer-links{display:none}.example-card{break-inside:avoid}main{padding-block:24px}}
 /* Report viewing is the primary action; reruns and source reads stay alongside it. */
 .card-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px 20px;margin-top:8px;padding-top:16px;border-top:1px solid var(--line);font-size:14px;color:var(--blue)}
 .card-actions a{min-height:40px;display:inline-flex;align-items:center}
@@ -72,12 +72,17 @@ footer>span:first-child{font-weight:700;color:var(--ink)}
 .card-secondary a:hover{color:var(--deep)}
 .example-note{color:var(--muted);font-size:13px;line-height:1.7;max-width:850px;margin-top:12px}
 @media(prefers-reduced-motion:reduce){.open-report{transition:none}}
+
+/* Source and citation links share the existing navigation rhythm. */
+.topbar nav{flex-wrap:wrap;column-gap:20px;row-gap:2px}
+@media(max-width:740px){.topbar nav{column-gap:18px;row-gap:2px}}
+@media(max-width:470px){.topbar nav{column-gap:14px}.topbar nav a{font-size:13px}}
 </style>
 </head>
 <body>
 <header class="topbar">
  <a class="brand" href="https://ontlibqc.org/"><img src="assets/ont-libqc-mark.svg" width="34" height="34" alt=""><span>ONT<span class="brand-light">-LibQC</span></span></a>
- <nav aria-label="Main navigation"><a href="https://ontlibqc.org/">New analysis</a><a href="index.html" aria-current="page">Example reports</a><a href="https://ontlibqc.org/help">Help</a></nav>
+ <nav aria-label="Main navigation"><a href="https://ontlibqc.org/">New analysis</a><a href="index.html" aria-current="page">Example reports</a><a href="https://ontlibqc.org/help">Help</a><a href="https://github.com/Shall-We-Dance/ONT-LibQC" target="_blank" rel="noopener noreferrer" aria-label="GitHub repository (opens in a new tab)">GitHub <span aria-hidden="true">↗</span></a></nav>
  <a class="lab-button" href="https://jongminkimlab.org/" target="_blank" rel="noopener noreferrer" aria-label="Jongmin Kim Lab (opens in a new tab)"><span class="lab-name-long">Jongmin Kim Lab</span><span class="lab-name-short" aria-hidden="true">Kim Lab</span><span aria-hidden="true">↗</span></a>
 </header>
 <main>
@@ -98,10 +103,6 @@ footer>span:first-child{font-weight:700;color:var(--ink)}
  </div>
  <p class="report-data"><a href="downloads.html">Download report data</a> · <a href="https://ontlibqc.org/help">Input formats and help</a></p><p class="example-note">Load example opens the submission form with the complete FASTQ and matching reference and assay. Review the settings, then start analysis. Downloads retain the reads used in these reports; reruns may differ with updated software or settings.</p>
 </main>
-<footer>
- <span>ONT-LibQC</span><span class="footer-description">Chromatin &amp; Micro-C libraries</span>
- <span class="footer-credit" aria-label="Developed by Hongjiang Liu at Jongmin Kim Lab"><span class="credit-prefix">Developed by </span>Hongjiang Liu · <span class="lab-name-long">Jongmin Kim Lab</span><span class="lab-name-short" aria-hidden="true">Kim Lab</span></span>
- <nav class="footer-contact" aria-label="Contact"><span>Contact</span><a href="https://github.com/Shall-We-Dance/ONT-LibQC/issues" target="_blank" rel="noopener noreferrer">GitHub Issues <span aria-hidden="true">↗</span></a><a href="mailto:hl2522@cornell.edu">hl2522@cornell.edu</a><a href="https://ontlibqc.org/license">MIT License</a></nav>
-</footer>
+<footer><span>ONT-LibQC</span><nav class="footer-links" aria-label="Footer links"><a href="mailto:hl2522@cornell.edu">Email</a><a href="https://ontlibqc.org/help#cite">Citation</a><a href="https://ontlibqc.org/license">MIT License</a></nav><span class="footer-credit" aria-label="Developed by Hongjiang Liu at Jongmin Kim Lab"><span class="credit-prefix">Developed by </span>Hongjiang Liu · <span class="lab-name-long">Jongmin Kim Lab</span><span class="lab-name-short" aria-hidden="true">Kim Lab</span></span></footer>
 </body>
 </html>

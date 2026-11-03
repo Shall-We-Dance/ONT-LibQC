@@ -38,6 +38,7 @@ jobs:
           node --check portal/static/app.js
           node --check portal/static/library-structure.js
           node --check portal/static/cite.js
+          node --check workflow/scripts/report_export.js
   browser:
     name: Browser ${{ matrix.browser }}
     runs-on: ubuntu-latest
@@ -65,6 +66,10 @@ jobs:
           PYTHONPATH: portal
       - name: Optional email submission and delivery
         run: python tests/portal/check_optional_email_browser.py test-results/optional-email ${{ matrix.browser }}
+        env:
+          PYTHONPATH: portal
+      - name: Public report PDF export
+        run: python tests/portal/check_report_export_browser.py test-results/report-export ${{ matrix.browser }}
         env:
           PYTHONPATH: portal
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

@@ -24,6 +24,7 @@ from qc_reference_guide import context as reference_context, reference_notes_htm
 from library_structure import normalize_structure, umi_lengths, handles, extract_umis, adapter_families, POSITIONS as UMI_POSITIONS
 from report_library_structure import family_label
 from report_brand import brand_bar, copy_mark, favicon
+from report_export import add_pdf_export
 
 
 def rc(seq):
@@ -2413,7 +2414,7 @@ def cmd_report(args):
 {pairtools_html}
 {custom_html}{extension_report_html(out, sample, scopes, metric)}
 <footer class='report-footer'><details><summary>Methods &amp; interpretation</summary><div class='report-explanation'><ul><li><strong>Reference values</strong> distinguish local screening settings, biological context and statistical expectations.</li><li><strong>Gene profiles</strong> show mean coverage and SEM across annotated genes; SEM does not describe biological replicate uncertainty. CPM uses MAPQ-pass configured primary nuclear alignments within each scope.</li><li><strong>Genomic distribution:</strong> chromatin region fractions and chromosome density use mapped alignments; Micro-C chromosome density uses endpoint legs.</li><li><strong>Duplicates:</strong> Pairtools marks sample-level coordinate duplicates as DD. Shallow sequencing does not estimate PCR duplication or library complexity. Native Micro-C contact deduplication is an internal validity filter.</li></ul></div></details><p><a href='../summary/index.html'>All samples</a> · <a href='../qc/adapters/{sample}.reads.tsv.gz'>Adapter table</a> · <a href='../qc/adapters/{sample}.index_assignments.tsv.gz'>Index assignments</a></p></footer>{REPORT_TOOLTIP_SCRIPT}</body></html>"""
-        (out/"reports"/f"{sample}.html").write_text(report)
+        (out/"reports"/f"{sample}.html").write_text(add_pdf_export(report))
     columns=["sample","assay","reference_assembly","mean_read_q","outer_complete_unit_rate","index_assignment_rate","index_ambiguous_fraction","index_unassigned_fraction","cis_ratio_ci95_low","cis_ratio_ci95_high","raw_reads","sequencing_yield_call","complete_read_rate","adapter_dimer_rate","adapter_dimer_call","index_architecture","primary_mapping_rate","spike_in_reads","spike_in_fraction","collision_bin_size","collision_oe","collision_fragments","collision_observed_pairs","collision_null_expected_pairs","usable_fragment_rate","both_legs_mapping_rate","mapq_pass_pairs","same_fragment_filter_pass_pairs","unique_valid_contacts","valid_contact_rate","cis_ratio","long_range_cis_min_bp","long_range_cis_contacts","long_range_cis_fraction","contact_evidence_status","metric_profile","metric_definition_version"]
     for m in metrics:
         m.update({k:m.get("metric_settings",{}).get(k) for k in ("metric_profile","metric_definition_version")})

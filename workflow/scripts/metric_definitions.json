@@ -30,7 +30,8 @@
       "chr3L",
       "chr3R",
       "chr4",
-      "chrX"
+      "chrX",
+      "chrY"
     ],
     "hg38": [
       "chr1",
@@ -55,7 +56,8 @@
       "chr20",
       "chr21",
       "chr22",
-      "chrX"
+      "chrX",
+      "chrY"
     ]
   },
   "definitions": {

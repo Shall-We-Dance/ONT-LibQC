@@ -131,9 +131,312 @@ code{border-radius:3px;background:#f0f4f6;overflow-wrap:anywhere}
 
 .report-hero,.report-section{box-shadow:var(--surface-shadow)}
 @media print{.report-hero,.report-section{box-shadow:none}}
+</style><style id="report-export-style">
+.report-export-controls{float:right;margin:0 0 12px 18px}
+.report-export-controls button{display:inline-flex;align-items:center;gap:7px;background:#fff;color:var(--blue,#2a6cbd);border:1px solid var(--line,#dce5f0);border-radius:6px;padding:8px 12px;font-family:inherit;font-size:13px;font-weight:500;line-height:1.4;white-space:nowrap}
+.report-export-controls button:hover{background:var(--blue-soft,#edf4fc);border-color:var(--blue,#2a6cbd)}
+.report-export-controls button:focus-visible{outline:2px solid var(--blue,#2a6cbd);outline-offset:3px}
+.report-export-controls button:disabled{cursor:wait;opacity:.65}
+.report-export-status{font-size:12px;color:var(--muted,#5b6d82);margin:8px 0 0}
+.report-export-status:empty{display:none}
+.report-print-definitions,.report-print-note{display:none}
+.report-hero::after{content:"";display:table;clear:both}
+@media(max-width:520px){.report-export-controls{float:none;display:flex;justify-content:flex-end;margin:0 0 12px}}
+
+/* Loaded after the screen styles. Report export opens details before printing. */
+@page {
+  size: A4;
+  margin: 13mm 12mm 15mm;
+}
+
+@media print {
+  :root {
+    color-scheme: light;
+    background: #fff;
+    scroll-behavior: auto;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  *, *::before, *::after {
+    box-sizing: border-box;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    animation: none !important;
+    transition: none !important;
+  }
+
+  html, body {
+    min-width: 0;
+    overflow: visible;
+  }
+
+  body {
+    width: auto;
+    max-width: none;
+    margin: 0;
+    /* Leave room inside the printable area for border strokes and glyph
+       overhangs: paged rendering clips paint at the page's content edge. */
+    padding: 0 1.25mm;
+    background: #fff;
+    color: #24364b;
+    font-size: 9pt;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+  }
+
+  /* Keep scientific notes and captions; omit controls and file-navigation UI. */
+  .report-nav, .custom-controls, #custom-downloads, #metric-tooltip,
+  .report-download-actions, .report-export-controls, .report-export-status,
+  .figure-link, .size-profile-downloads,
+  .info-icon, .metric-tip > b, .download-list, button, input, select,
+  a[download], .report-footer > p,
+  #pairtools > p:last-child, #ligation > p:last-child,
+  #mnase > p:last-child, #spike-screen > p:last-child {
+    display: none !important;
+  }
+
+  [hidden] { display: none !important; }
+  a { color: inherit; text-decoration: none; }
+  a::after { content: none !important; }
+  .metric-tip { border: 0; cursor: auto; }
+
+  h1, h2, h3, h4, summary, figcaption,
+  .section-heading, .library-sublibrary > header {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  h1, .report-hero .sample-name { font-size: 18pt; line-height: 1.25 !important; }
+  h2, .report-section > h2 { font-size: 13pt; margin: 0 0 3mm; padding-bottom: 2mm; }
+  h3, .library-profiles > h3 { font-size: 10.5pt; margin: 4mm 0 2mm; }
+  h4 { font-size: 9pt; }
+  p, li { orphans: 3; widows: 3; }
+  p { margin: 2mm 0; }
+  ul, ol { padding-left: 5mm; }
+  .muted, .report-explanation, .report-footer .report-explanation,
+  .report-section details > p, .note, .trace-comparison-note,
+  .reference-context, .library-umi-summary p {
+    font-size: 8pt;
+    line-height: 1.45;
+  }
+
+  .report-brand { padding: 0 0 3mm; gap: 4mm; }
+  .report-brand .brand-name { font-size: 13pt; gap: 2mm; }
+  .report-brand img { width: 7mm; height: 7mm; }
+  .brand-context { display: block; font-size: 8pt; }
+  .report-hero { padding: 3mm 0; border: 0; border-bottom: 1pt solid #dce5f0; border-radius: 0; }
+  .hero-meta { margin-top: 2mm; gap: 1mm 4mm; }
+  .hero-meta span { font-size: 8pt; }
+
+  /* Long sections must fragment naturally rather than reserve an entire page. */
+  .report-section, .report-footer, .profile-scope, .library-profiles,
+  details, .metric-group, .count-based-details, .library-structure-body,
+  .library-sublibraries, .library-sequence-details, .library-sequence-group {
+    break-inside: auto;
+    page-break-inside: auto;
+    overflow: visible;
+    max-height: none;
+  }
+
+  .report-section { margin: 6mm 0 0; padding: 0; border: 0; border-radius: 0; }
+  .report-footer { margin-top: 5mm; padding: 3mm 0 0; font-size: 8pt; }
+  .profile-scope { margin: 4mm 0 5mm; padding-top: 2mm; }
+  .profile-scope > p { break-after: avoid; page-break-after: avoid; }
+  .pairtools-scope { break-inside: avoid; page-break-inside: avoid; }
+  .library-profiles { margin-top: 5mm; padding-top: 3mm; }
+  .metric-group, .count-based-details, .chromosome-detail {
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    margin: 3mm 0;
+    background: #fff;
+  }
+
+  details { display: block; }
+  details > summary, .report-section details > summary,
+  .metric-group > summary, .count-based-details > summary {
+    display: block;
+    padding: 2mm 0;
+    margin-bottom: 1mm !important;
+    background: none;
+    color: #24364b;
+    font-size: 9pt;
+    font-weight: 600;
+    line-height: 1.4;
+    list-style: none;
+  }
+  summary::marker, summary::-webkit-details-marker { display: none; content: ""; }
+  .count-based-details > p, .count-based-details .report-explanation,
+  .metric-group .table-scroll { padding: 0; }
+  .count-based-details > .report-explanation {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+  .chromosome-detail { break-inside: avoid; page-break-inside: avoid; }
+  .report-explanation p { margin: 2mm 0; }
+  .report-explanation li { margin: 1mm 0; }
+
+  /* Fixed paper width overrides the screen's scrollable tables and min-widths. */
+  .table-scroll, .pair-table-scroll, .library-sequence-table-scroll {
+    width: 100%;
+    max-width: 100%;
+    overflow: visible;
+    border-radius: 0;
+  }
+  table, .table-scroll table, .pair-table, .library-sequence-group table {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    font-size: 8pt;
+  }
+  thead { display: table-header-group; }
+  tfoot { display: table-footer-group; }
+  tr { break-inside: avoid; page-break-inside: avoid; }
+  tr:first-child:has(> th) { break-after: avoid; page-break-after: avoid; }
+  th, td, .table-scroll th, .table-scroll td,
+  .pair-table th, .pair-table td,
+  .library-sequence-group th, .library-sequence-group td {
+    min-width: 0;
+    max-width: none;
+    padding: 1.6mm 1.5mm;
+    font-size: 8pt;
+    line-height: 1.35;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: normal;
+    vertical-align: top;
+  }
+  .table-scroll th:first-child, .table-scroll td:first-child,
+  .qc-metrics th:first-child, .qc-metrics td:first-child {
+    min-width: 0;
+    max-width: none;
+    width: auto;
+  }
+  .qc-metrics th:first-child, .qc-metrics td:first-child { width: 28%; }
+  .metric-cell, .qc-metrics .metric-cell,
+  .reference-interval, .qc-metrics .reference-interval {
+    min-width: 0;
+    max-width: none;
+    font-size: 7.5pt;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .metric-reading { gap: 1.2mm; align-items: baseline; font-weight: 500; }
+  .metric-reading > span:last-child { min-width: 0; }
+  .light { flex: 0 0 1.6mm; width: 1.6mm; height: 1.6mm; }
+  .unavailable-reason { max-width: none; font-size: 7.5pt; }
+
+  .traffic-grid, .identity-panel { display: block; margin: 3mm 0; }
+  .scope-card { padding: 2mm 3mm; margin: 0 0 2mm; border-radius: 1.5mm; }
+  .scope-card h3 { font-size: 9pt; margin: 0 0 1mm; }
+  .traffic { padding: 1mm 0; grid-template-columns: 2mm minmax(0,1fr) auto; }
+  .traffic b, .traffic em { font-size: 8pt; }
+  .traffic em { max-width: none; }
+  .identity-card {
+    min-width: 0;
+    max-width: 100%;
+    margin: 2mm 0;
+    border-radius: 1.5mm;
+    overflow: visible;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .identity-card h3 { padding: 2mm 3mm; font-size: 9pt; }
+  .identity-item { padding: 2mm 3mm; min-width: 0; }
+  .identity-item strong, .identity-item small { font-size: 8pt; overflow-wrap: anywhere; }
+  .mode-badge, .library-mode { font-size: 7.5pt; padding: .5mm 1.5mm; }
+  .cutoff-note { font-size: 7.5pt; padding: 2mm 3mm; }
+
+  /* Use the full line for SVG figures; multi-panel labels remain readable. */
+  .plots, .primary-size-plots, .count-size-plots, .analysis-plots {
+    display: block;
+    max-width: none;
+    margin: 2mm 0;
+    padding: 0 !important;
+  }
+  .plot-card, .extension-figure {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    margin: 2mm 0 3mm;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .plot-card > a { display: block; }
+  .plots img, .plot-card img, .extension-figure img, .summary-plot,
+  .size-plots img, .analysis-plots .plot-card img, .chromosome-detail img,
+  .custom-static, #custom-output > svg {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    height: auto;
+    min-height: 0;
+    max-height: 225mm;
+    object-fit: contain;
+    margin: 2mm auto;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .fragment-caption { padding: 0; font-size: 9pt; }
+  .fragment-caption p { font-size: 8pt; margin: 1mm 0 2mm; line-height: 1.4; }
+  .extension-figure figcaption { font-size: 9pt; margin-bottom: 1mm; }
+
+  /* Preserve physical block positions and short read arrows, including UMIs. */
+  .library-structure-body { padding: 1mm 0; }
+  .library-diagram-scroll { width: 100%; max-width: 100%; overflow: visible; padding: 1mm .75mm; }
+  .library-diagram {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    grid-template-columns: max-content repeat(7, minmax(0,1fr) max-content);
+    justify-content: stretch;
+    gap: 1.5mm .7mm;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .library-block { min-height: 15mm; padding: 1mm .7mm; border-radius: 1mm; overflow-wrap: anywhere; }
+  .library-block strong, .library-block .library-type { font-size: 7.5pt; }
+  .library-block small, .library-unresolved { font-size: 7pt; }
+  .library-block .library-sequence { font-size: 7pt; line-height: 1.3; letter-spacing: 0; }
+  .library-block.umi { min-width: 0; width: 10mm; }
+  .library-block.umi strong { font-size: 7pt; }
+  .library-read-directions { gap: 2mm; }
+  .library-read { font-size: 7pt; flex-basis: 6mm; max-width: 6mm; }
+  .library-end, .library-connector { font-size: 7pt; }
+  .library-end { padding: 0 .5mm; text-align: center; white-space: nowrap; }
+  .library-diagram-note { font-size: 7.5pt; margin: 1mm auto 3mm !important; line-height: 1.4; text-align: center; }
+  .library-sublibraries { margin-top: 3mm; padding-top: 2mm; }
+  .library-sublibrary { padding: 2mm 0; margin: 0; break-inside: avoid; page-break-inside: avoid; }
+  .library-sublibrary > header { margin-bottom: 1mm; }
+  .library-sublibrary h4, .library-sublibraries > h3 { font-size: 9pt; }
+  .library-sublibrary header > span { min-width: 0; font-size: 7.5pt; overflow-wrap: anywhere; }
+  .library-sequence-group code.library-sequence { font-size: 7.5pt; line-height: 1.4; }
+  .library-sequence-group { break-inside: avoid; page-break-inside: avoid; }
+  .library-umi-summary { margin-top: 3mm; padding-top: 2mm; }
+  .library-umi-counts { gap: 4mm; margin: 2mm 0; }
+  .library-umi-counts b { font-size: 11pt; }
+  .library-umi-counts span { font-size: 7.5pt; }
+
+  .adapter-context, .note { padding: 2mm 3mm; margin: 3mm 0; border-radius: 1mm; }
+  #custom-message, #custom-current-source { font-size: 8pt; overflow-wrap: anywhere; }
+  .report-print-note { display: block; margin: 2mm 0; color: #5b6d82; font-size: 8pt; }
+  .report-print-definitions { display: block; margin-top: 5mm; font-size: 8pt; }
+  .report-print-definitions dl > div { break-inside: avoid; page-break-inside: avoid; }
+  .report-print-definitions dt { font-weight: 600; break-after: avoid; }
+  .report-print-definitions dd { margin: 0 0 2mm; }
+}
 </style></head><body>
 <div class="report-brand"><div class="brand-name"><img src="../assets/ont-libqc-mark.svg" width="36" height="36" alt=""><span>ONT<span class="brand-light">-LibQC</span></span></div><span class="brand-context">Example report</span></div>
-<header class='report-hero'><h1 class='sample-name'>HL240</h1><div class='hero-meta'><span>Chromatin</span><span>hg38</span><span>2,936 raw molecules</span><span>ont_native · MAPQ ≥20 · 10 kb bins</span></div></header>
+<header class='report-hero'><div class="report-export-controls"><button type="button" id="report-export-pdf" aria-describedby="report-export-status"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 2v10m-4-4 4 4 4-4M3 13v4h14v-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Export PDF</span></button></div><h1 class='sample-name'>HL240</h1><div class='hero-meta'><span>Chromatin</span><span>hg38</span><span>2,936 raw molecules</span><span>ont_native · MAPQ ≥20 · 10 kb bins</span></div></header><p id="report-export-status" class="report-export-status" role="status" aria-live="polite"></p>
 <nav class='report-nav'><a href='#sequencing'>Sequencing</a><a href='#library-shape'>Library quality</a><a href='#assay-qc'>Assay metrics</a><a href='#custom-regions'>Custom regions</a><a href='#spike-screen'>Candidate screen</a><a href='../index.html'>Example reports</a></nav>
 <div class='traffic-grid'><section class='scope-card'><h3>Total library</h3><div class='traffic' title='Yield screen; inspect read quality and molecule recovery below.'><span class='light green'></span><b>Sequencing</b><em>Pass</em></div><div class='traffic' title='Combined adapter-dimer burden, primary mapping and total-library adapter recovery checks; not a biological enrichment or ligation success certificate.'><span class='light green'></span><b>Library quality</b><em>Pass</em></div></section></div>
 <section class='report-section' id='sequencing'><h2>ONT sequencing</h2><div class='table-scroll' tabindex='0' aria-label='QC metrics; scroll horizontally for additional columns'><table class='qc-metrics'><tr><th>Metric</th><th>Total library</th><th>Reference interval</th></tr><tr><td><span class='metric-tip' tabindex='0' data-tip='ONT molecules supplied to the pipeline before adapter interpretation.'>Raw reads <b>ⓘ</b></span></td><td><div class='metric-cell'><div class='metric-reading metric-tip metric-status' tabindex='0' data-tip='Within range'><span class='light green' aria-hidden='true'></span><span>2,936</span></div></div></td><td class='reference-interval'><span class='metric-tip reference-context' tabindex='0' data-tip='Local screening setting: Numeric range from the effective pipeline configuration, not a universal assay standard. Lower warning boundary: 250.'>≥500</span></td></tr><tr><td><span class='metric-tip' tabindex='0' data-tip='Technical sequencing-yield call based on the configured minimum raw-read and reconstructed-unit requirements.'>ONT sequencing QC <b>ⓘ</b></span></td><td><div class='metric-cell'><div class='metric-reading metric-tip metric-status' tabindex='0' data-tip='Within range'><span class='light green' aria-hidden='true'></span><span>pass</span></div></div></td><td class='reference-interval'><span class='metric-tip reference-context' tabindex='0' data-tip='Local screening rule: Uses minimum raw-read and reconstructed-unit requirements from the effective pipeline configuration. It is not a biological success/failure label.'>Local yield screen</span></td></tr><tr><td><span class='metric-tip' tabindex='0' data-tip='Mean across raw molecules of -10 log10(mean base error probability), using all bases; differs from arithmetic mean base Q and basecaller-specific trimming.'>Mean read Q <b>ⓘ</b></span></td><td><div class='metric-cell'><div class='metric-reading metric-tip metric-status' tabindex='0' data-tip='Descriptive only'><span class='light gray' aria-hidden='true'></span><span>19.46</span></div></div></td><td class='reference-interval'><span class='metric-tip reference-context' tabindex='0' data-tip='Measurement context: No validated ONT mean-read Q cutoff is assigned. Phred Q20 corresponds to an estimated 1% error probability, but chemistry, basecaller calibration and the averaging method matter.'>Chemistry-specific</span></td></tr><tr><td><span class='metric-tip' tabindex='0' data-tip='Median full ONT molecule length before splitting.'>Raw median length <b>ⓘ</b></span></td><td><div class='metric-cell'><div class='metric-reading metric-tip metric-status' tabindex='0' data-tip='Descriptive only'><span class='light gray' aria-hidden='true'></span><span>276 bp</span></div></div></td><td class='reference-interval'><span class='metric-tip reference-context' tabindex='0' data-tip='Structure context: Raw ONT molecule length includes recovered library and adapter structure. Concatemers and incomplete molecules change this distribution; it is not the NGS insert length.'>Library-dependent</span></td></tr><tr><td><span class='metric-tip' tabindex='0' data-tip='Length above which half of all sequenced bases occur.'>Raw read N50 <b>ⓘ</b></span></td><td><div class='metric-cell'><div class='metric-reading metric-tip metric-status' tabindex='0' data-tip='Descriptive only'><span class='light gray' aria-hidden='true'></span><span>294 bp</span></div></div></td><td class='reference-interval'><span class='metric-tip reference-context' tabindex='0' data-tip='Structure context: N50 measures the raw molecule-size distribution. A larger value is not inherently better for a finished short-read library.'>Library-dependent</span></td></tr><tr><td><span class='metric-tip' tabindex='0' data-tip='Total: raw molecules containing both inner adapters; outer P5/P7 handles are not required. Sublibrary: contribution to all sample raw molecules, not a reconstruction success rate.'>Inner-anchor reconstruction rate <b>ⓘ</b></span></td><td><div class='metric-cell'><div class='metric-reading metric-tip metric-status' tabindex='0' data-tip='Within range'><span class='light green' aria-hidden='true'></span><span>87.8%</span></div></div></td><td class='reference-interval'><span class='metric-tip reference-context' tabindex='0' data-tip='Local screening setting: Numeric range from the effective pipeline configuration, not a universal assay standard. Lower warning boundary: 30.0%. The threshold applies to total-library reconstruction. A sublibrary value is its contribution to all sample raw molecules, not a separate reconstruction success rate.'>50.0%–100.0%</span></td></tr></table></div></section>
@@ -319,5 +622,164 @@ runButton.addEventListener('click',async()=>{
   document.addEventListener('click', e => { const t = e.target.closest('.metric-tip'); if (t) show(t); else hide(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') hide(); });
   window.addEventListener('scroll', hide, true); window.addEventListener('resize', hide);
+})();
+</script><script id="report-export-script">/* Native PDF export: keep vector figures, browser-only BED plots, and offline use. */
+(() => {
+  'use strict';
+  const button = document.getElementById('report-export-pdf');
+  const status = document.getElementById('report-export-status');
+  if (!button || !status) return;
+  let snapshot = null;
+  let preparing = false;
+  let printing = false;
+  let restoreTimer = null;
+
+  function glossary() {
+    const entries = new Map();
+    document.querySelectorAll('[data-tip]').forEach(node => {
+      const description = node.getAttribute('data-tip').trim();
+      if (!description || entries.has(description)) return;
+      const row = node.closest('tr');
+      const heading = node.closest('h2,h3,h4,summary');
+      const labelNode = row?.cells[0] || heading || node;
+      const label = labelNode.textContent.replace(/\s+/g, ' ').replace(/\s*[?ⓘ]+\s*$/, '').trim();
+      if (label && label !== '?') entries.set(description, label);
+    });
+    if (!entries.size) return;
+    const section = document.createElement('section');
+    section.className = 'report-print-definitions';
+    section.dataset.exportTemporary = 'true';
+    const title = document.createElement('h2');
+    title.textContent = 'Metric notes';
+    section.append(title);
+    const list = document.createElement('dl');
+    entries.forEach((label, description) => {
+      const item = document.createElement('div');
+      const term = document.createElement('dt');
+      term.textContent = label;
+      const meaning = document.createElement('dd');
+      meaning.textContent = description;
+      item.append(term, meaning);
+      list.append(item);
+    });
+    section.append(list);
+    document.body.append(section);
+  }
+
+  function prepare() {
+    if (snapshot) return;
+    snapshot = {
+      title: document.title,
+      details: Array.from(document.querySelectorAll('details'), node => ({node, open: node.open, name: node.getAttribute('name')})),
+      images: Array.from(document.images, node => ({node, loading: node.getAttribute('loading')})),
+      links: [],
+      headers: [],
+      scroll: [window.scrollX, window.scrollY]
+    };
+    snapshot.details.forEach(({node}) => { node.removeAttribute('name'); node.open = true; });
+    snapshot.images.forEach(({node}) => { node.loading = 'eager'; });
+    document.querySelectorAll('table').forEach(table => {
+      const row = table.rows[0];
+      if (table.tHead || !row || !row.cells.length || !Array.from(row.cells).every(cell => cell.tagName === 'TH')) return;
+      const parent = row.parentNode;
+      const next = row.nextSibling;
+      const head = table.createTHead();
+      head.append(row);
+      snapshot.headers.push({row, parent, next, head});
+    });
+    // Relative links, including fragments, inherit the private page's access grant.
+    // Remove them while printing so PDF annotations cannot expose that grant.
+    document.querySelectorAll('a[href]').forEach(node => {
+      const value = node.getAttribute('href');
+      if (!/^https?:\/\//i.test(value)) {
+        snapshot.links.push({node, value});
+        node.removeAttribute('href');
+      } else if (/[?&]view=/.test(value)) {
+        snapshot.links.push({node, value});
+        node.removeAttribute('href');
+      }
+    });
+    const sample = document.querySelector('.report-hero h1')?.textContent.trim();
+    if (sample) document.title = sample + ' - ONT-LibQC';
+    glossary();
+    document.documentElement.classList.add('report-exporting');
+  }
+
+  function restore() {
+    clearTimeout(restoreTimer);
+    printing = false;
+    if (snapshot) {
+      const saved = snapshot;
+      snapshot = null;
+      document.title = saved.title;
+      saved.details.forEach(({node, open, name}) => { node.open = open; if (name !== null) node.setAttribute('name', name); });
+      saved.images.forEach(({node, loading}) => { if (loading === null) node.removeAttribute('loading'); else node.setAttribute('loading', loading); });
+      saved.links.forEach(({node, value}) => node.setAttribute('href', value));
+      saved.headers.forEach(({row, parent, next, head}) => {
+        parent.insertBefore(row, next?.parentNode === parent ? next : null);
+        head.remove();
+      });
+      document.querySelectorAll('[data-export-temporary]').forEach(node => node.remove());
+      document.documentElement.classList.remove('report-exporting');
+      window.scrollTo({left: saved.scroll[0], top: saved.scroll[1], behavior: 'instant'});
+    }
+    button.disabled = false;
+    button.removeAttribute('aria-busy');
+    button.querySelector('span').textContent = 'Export PDF';
+  }
+
+  async function readyImages() {
+    const images = Array.from(document.images);
+    await Promise.all(images.map(image => {
+      if (image.complete) return Promise.resolve();
+      return new Promise(resolve => {
+        const finish = () => { image.removeEventListener('load', finish); image.removeEventListener('error', finish); resolve(); };
+        image.addEventListener('load', finish, {once: true});
+        image.addEventListener('error', finish, {once: true});
+      });
+    }));
+    if (images.some(image => !image.naturalWidth)) throw new Error('figures');
+    await Promise.all(images.map(image => image.decode ? image.decode().catch(() => {}) : Promise.resolve()));
+    if (document.fonts?.ready) await document.fonts.ready;
+  }
+
+  async function exportPDF() {
+    if (preparing || printing) return;
+    preparing = true;
+    button.disabled = true;
+    button.setAttribute('aria-busy', 'true');
+    button.querySelector('span').textContent = 'Preparing…';
+    status.textContent = 'Preparing all sections and figures…';
+    let timeout;
+    try {
+      prepare();
+      await Promise.race([readyImages(), new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error('timeout')), 20000); })]);
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      status.textContent = 'Choose Save as PDF. Turn off headers and footers for a clean report without the private page URL.';
+      printing = true;
+      button.querySelector('span').textContent = 'Save as PDF…';
+      window.print();
+    } catch (error) {
+      restore();
+      status.textContent = 'Some figures could not be prepared. Reload the report and try Export PDF again.';
+    } finally {
+      clearTimeout(timeout);
+      preparing = false;
+    }
+  }
+
+  button.addEventListener('click', exportPDF);
+  window.addEventListener('beforeprint', prepare);
+  window.addEventListener('afterprint', restore);
+  const media = window.matchMedia('print');
+  const mediaChange = event => { if (event.matches) prepare(); else restore(); };
+  if (media.addEventListener) media.addEventListener('change', mediaChange);
+  else media.addListener(mediaChange);
+  // Some browsers omit afterprint on cancellation; restore when the page regains focus.
+  window.addEventListener('focus', () => {
+    if (printing && !preparing && !media.matches) restoreTimer = setTimeout(restore, 300);
+  });
+  // Also used by automated print-layout checks without opening a native dialog.
+  window.ONTReportExport = Object.freeze({prepare, restore});
 })();
 </script></body></html>
