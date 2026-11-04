@@ -343,7 +343,7 @@ async function binaryUpload(task, file, endpoint, onprogress) {
     }
   }
 }
-const labels = { created: 'Waiting for upload', uploading: 'Uploading', uploaded: 'Upload complete', queued: 'Queued', running: 'Analyzing', succeeded: 'Report ready', failed: 'Analysis failed', cancelling: 'Cancelling', cancelled: 'Cancelled', expired: 'Expired' };
+const labels = { created: 'Waiting for upload', uploading: 'Uploading', uploaded: 'Upload complete', queued: 'Queued', running: 'Analyzing', succeeded: 'Report ready', failed: 'Analysis failed', cancelling: 'Cancelling', cancelled: 'Cancelled', expired: 'Expired', deleted: 'Deleted', deleting: 'Deleting', waiting: 'Waiting to upload', loading: 'Loading' };
 async function followReportLink(event, task, field) {
   if (event.type === 'auxclick' && event.button !== 1) return;
   if (task.job?.report_access_expires > Date.now() / 1000 + 30) return;
@@ -366,20 +366,32 @@ async function followReportLink(event, task, field) {
   }
   renderTasks();
 }
+function taskState(task) {
+  const job = task.job;
+  if (job?.status === 'expired') return job.deletion_reason === 'manual' ? 'deleted' : 'expired';
+  if (task.deletionRequested || job?.deletion_requested) return 'deleting';
+  if (task.waitingForUpload) return 'waiting';
+  if (task.uploading) return 'uploading';
+  return job?.status || 'loading';
+}
 function taskProgress(task) {
-  const job = task.job || { status: 'created' };
+  const job = task.job || {};
+  const state = taskState(task);
   const percent = Math.round(Math.min(100, Math.max(0, (task.uploading ? task.uploadProgress * 100 : job.progress) || 0)));
-  const deletionPending = job.status !== 'expired' && Boolean(task.deletionRequested || job.deletion_requested);
-  const message = deletionPending ? 'Your report is being permanently deleted and is no longer available.' : task.waitingForUpload ? 'Waiting to upload…' : task.uploading ? 'Uploading · ' + percent + '%' : job.status === 'queued' ? (job.queue_ahead ? job.queue_ahead + (job.queue_ahead === 1 ? ' analysis' : ' analyses') + ' ahead of you' : 'Waiting for the analysis worker') : job.status === 'running' ? 'Processing reads and building your report…' : job.status === 'succeeded' ? 'Your interactive report and downloads are ready.' : labels[job.status];
-  return { percent, message };
+  const message = state === 'deleting' ? 'Deletion requested. Report access has been removed.'
+    : state === 'queued' ? (job.queue_ahead ? job.queue_ahead + (job.queue_ahead === 1 ? ' analysis ahead' : ' analyses ahead') : 'Waiting to start')
+    : state === 'running' ? 'Processing reads and preparing the report'
+    : labels[state] || state;
+  return { percent, message, state };
 }
 function taskView(task) {
-  const job = task.job || { status: 'created', sample: task.name || 'Loading task…' };
+  const job = task.job || { status: 'loading', sample: task.name || 'Loading analysis' };
   const expired = job.status === 'expired';
   const deleted = expired && job.deletion_reason === 'manual';
   const deletionPending = !expired && Boolean(task.deletionRequested || job.deletion_requested);
   const card = node('article', { class: 'task-card' });
-  const title = node('div', { class: 'task-title' }, node('h2', { class: !expired && job.sample ? 'task-sample' : '' }, expired ? (deleted ? 'Report deleted' : 'Report expired') : job.sample || 'Analysis'), node('span', { class: 'status ' + (deleted ? 'deleted' : job.status) }, deletionPending ? 'Deletion requested' : deleted ? 'Deleted' : labels[job.status] || job.status));
+  const state = taskState(task);
+  const title = node('div', { class: 'task-title' }, node('h2', { class: !expired && job.sample ? 'task-sample' : '' }, expired ? (deleted ? 'Report deleted' : 'Report expired') : job.sample || 'Analysis'), node('span', { class: 'status ' + state }, labels[state] || state));
   card.append(title, node('p', { class: 'task-meta' }, [job.filename ? node('span', { class: 'task-filename' }, job.filename) : null, job.assay === 'microc' ? 'Micro-C' : job.assay === 'chromatin' ? 'Chromatin' : '', job.reference].filter(Boolean).flatMap((part, index) => index ? [' · ', part] : [part])));
   const { percent, message } = taskProgress(task);
   const bar = node('span'); bar.style.width = percent + '%';
@@ -389,23 +401,26 @@ function taskView(task) {
       ? 'This report was manually deleted. It can no longer be viewed or downloaded.'
       : 'This report was automatically deleted when its retention period ended.' + (retention ? ' Reports are kept for ' + retention + (retention === 1 ? ' day.' : ' days.') : '');
     card.append(node('div', { class: 'report-unavailable', role: 'status' }, node('p', {}, reason), node('p', {}, 'This cannot be undone. Submit the FASTQ again to generate a new report.')));
-  } else {
-    if (!deletionPending) card.append(node('div', { class: 'progress', role: 'progressbar', 'aria-label': 'Analysis progress', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(percent) }, bar));
-    card.append(node('p', { class: 'progress-label' }, message));
+  } else if (deletionPending) {
+    card.append(node('p', { class: 'progress-label deletion-pending' }, message));
+  } else if (['created', 'uploading', 'waiting', 'uploaded', 'queued', 'running'].includes(state)) {
+    card.append(node('div', { class: 'progress', role: 'progressbar', 'aria-label': state === 'uploading' || state === 'waiting' ? 'Upload progress' : 'Analysis progress', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(percent) }, bar));
+    card.append(node('div', { class: 'task-progress-detail' }, node('p', { class: 'progress-label' }, message), node('span', { class: 'task-progress-value', hidden: !['uploading', 'running'].includes(state) }, percent + '%')));
   }
   if (task.failure || task.fetchError || job.error) card.append(node('div', { class: 'error' }, task.failure || task.fetchError || job.error));
   const actions = node('div', { class: 'task-actions' });
   if (job.status === 'succeeded' && !deletionPending && job.report_url && job.download_url) {
     const reportClick = event => followReportLink(event, task, 'report_url');
     const downloadClick = event => followReportLink(event, task, 'download_url');
-    actions.append(node('a', { class: 'primary button', href: job.report_url, target: '_blank', rel: 'noopener', onclick: reportClick, onauxclick: reportClick }, 'Open ' + (job.sample || 'sample') + ' report ↗'), node('a', { class: 'secondary button', href: job.download_url, onclick: downloadClick, onauxclick: downloadClick }, 'Download report ZIP'));
-    card.append(node('p', { class: 'field-note' }, 'Available until ' + new Date(job.expires * 1000).toLocaleString()));
+    actions.append(node('a', { class: 'primary button', href: job.report_url, target: '_blank', rel: 'noopener', 'aria-label': 'Open ' + (job.sample || 'sample') + ' report', title: 'Opens in a new tab', onclick: reportClick, onauxclick: reportClick }, 'Open report'), node('a', { class: 'secondary button', href: job.download_url, 'aria-label': 'Download report ZIP', onclick: downloadClick, onauxclick: downloadClick }, 'Download ZIP'));
+    const expires = new Date(job.expires * 1000);
+    card.append(node('p', { class: 'field-note task-expiry' }, 'Available until ', node('time', { datetime: expires.toISOString() }, expires.toLocaleString())));
   }
-  actions.append(node('button', { type: 'button', class: 'secondary', onclick: async event => { try { await navigator.clipboard.writeText(privateLink(task)); event.target.textContent = 'Link copied'; } catch { saveText('ont-libqc-private-link.txt', privateLink(task)); } } }, 'Copy private link'));
-  if (['created', 'uploaded', 'queued', 'running'].includes(job.status) && !task.uploading) actions.append(node('button', { type: 'button', class: 'secondary', onclick: async () => { try { await api('/api/jobs/' + task.id + '/cancel', 'POST', {}, task.token); await refreshTask(task); } catch (e) { task.failure = e.message; renderTasks(); } } }, 'Cancel analysis'));
+  actions.append(node('button', { type: 'button', class: 'secondary task-utility copy-private-link', onclick: async event => { try { await navigator.clipboard.writeText(privateLink(task)); event.target.textContent = 'Link copied'; } catch { saveText('ont-libqc-private-link.txt', privateLink(task)); } } }, 'Copy private link'));
+  if (['created', 'uploaded', 'queued', 'running'].includes(job.status) && !task.uploading) actions.append(node('button', { type: 'button', class: 'secondary task-utility', onclick: async () => { try { await api('/api/jobs/' + task.id + '/cancel', 'POST', {}, task.token); await refreshTask(task); } catch (e) { task.failure = e.message; renderTasks(); } } }, 'Cancel analysis'));
   if (['succeeded', 'failed', 'cancelled'].includes(job.status)) {
     const warning = node('p', { class: 'deletion-warning', id: 'delete-warning-' + task.id, role: 'status', hidden: true }, 'Permanently deletes this report and its files. This cannot be undone.');
-    const deleteButton = node('button', { type: 'button', class: 'secondary delete-report', onclick: async () => {
+    const deleteButton = node('button', { type: 'button', class: 'secondary task-utility delete-report', onclick: async () => {
       if (task.deleting || task.deletionRequested || job.deletion_requested) return;
       if (!task.confirmDelete) { task.confirmDelete = true; updateDeleteButton(); return; }
       task.deleting = true; task.failure = null; updateDeleteButton();
@@ -419,7 +434,7 @@ function taskView(task) {
       const requested = Boolean(task.deletionRequested || job.deletion_requested);
       const confirming = Boolean(task.confirmDelete && !requested);
       deleteButton.classList.toggle('danger-confirm', confirming);
-      deleteButton.textContent = task.deleting ? 'Requesting deletion…' : requested ? 'Deletion requested' : confirming ? 'Confirm permanent deletion' : 'Delete report now';
+      deleteButton.textContent = task.deleting ? 'Requesting deletion…' : requested ? 'Deletion requested' : confirming ? 'Confirm permanent deletion' : 'Delete report';
       deleteButton.disabled = Boolean(task.deleting || requested);
       warning.hidden = !confirming;
       if (confirming) deleteButton.setAttribute('aria-describedby', warning.id);
@@ -463,33 +478,30 @@ function updateTaskView(task) {
     track.firstElementChild.style.transitionDuration = view.phase === phase ? '' : '0s';
     track.firstElementChild.style.width = percent + '%';
     track.setAttribute('aria-valuenow', String(percent));
+    track.setAttribute('aria-label', task.uploading || task.waitingForUpload ? 'Upload progress' : 'Analysis progress');
   }
   const label = view.card.querySelector('.progress-label');
   if (label && label.textContent !== message) label.textContent = message;
+  const value = view.card.querySelector('.task-progress-value');
+  if (value && value.textContent !== percent + '%') value.textContent = percent + '%';
   view.phase = phase;
   return view.card;
 }
 function renderTasks() {
   $('new-nav').removeAttribute('aria-current');
   const single = tasks.length === 1;
-  const ready = tasks.length > 0 && tasks.every(t => t.job?.status === 'succeeded' && !t.deletionRequested && !t.job.deletion_requested);
   const unavailable = tasks.length > 0 && tasks.every(t => t.job?.status === 'expired');
-  const needsAttention = tasks.some(t => t.deletionRequested || t.job?.deletion_requested || ['failed', 'cancelled', 'expired'].includes(t.job?.status));
-  $('tasks-title').textContent = unavailable
-    ? (single ? 'Your report is no longer available.' : 'These reports are no longer available.')
-    : ready
-    ? (single ? 'Your report is ready.' : 'Your reports are ready.')
-    : needsAttention || !tasks.length
-      ? (single ? 'Your analysis status.' : 'Your submission status.')
-      : (single ? 'Your report is on its way.' : 'Your reports are on their way.');
-  $('tasks-eyebrow').textContent = single ? 'YOUR ANALYSIS' : 'YOUR ANALYSES';
+  $('tasks-title').textContent = single ? 'Analysis' : 'Analyses';
+  const counts = new Map();
+  tasks.forEach(task => { const state = taskState(task); counts.set(state, (counts.get(state) || 0) + 1); });
+  const summaryLabels = { succeeded: 'ready', running: 'analyzing', queued: 'queued', uploading: 'uploading', waiting: 'waiting to upload', created: 'waiting to upload', uploaded: 'uploaded', failed: 'failed', cancelling: 'cancelling', cancelled: 'cancelled', expired: 'expired', deleted: 'deleted', deleting: 'deleting', loading: 'loading' };
+  const summary = [...counts].map(([state, count]) => count + ' ' + (summaryLabels[state] || state)).join(' · ');
+  if ($('tasks-summary').textContent !== summary) $('tasks-summary').textContent = summary;
+  $('tasks-summary').hidden = tasks.length < 2;
   $('tasks-description').textContent = unavailable
-    ? 'The reason for removal is shown below. Submit the FASTQ again to generate ' + (single ? 'a new report.' : 'new reports.')
-    : tasks.length && tasks.every(t => t.job?.mail_status === 'disabled')
-    ? 'No email will be sent. Save your private task ' + (single ? 'link' : 'links') + ' to check progress and collect your results later.'
-    : single
-    ? 'Track your analysis below. Save your private task link to return later.'
-    : 'Track each analysis below. Save your private task links to return later.';
+    ? 'Reports cannot be restored after deletion. The removal reason is shown below.'
+    : (tasks.length && tasks.every(t => t.job?.mail_status === 'disabled') ? 'No email will be sent. ' : '')
+      + (single ? 'Save your private link to return to this analysis.' : 'Save your private links to return to these analyses.');
   $('save-links').textContent = single ? 'Save private link' : 'Save private links';
   $('submission-view').hidden = true; $('tasks-view').hidden = false;
   syncChildren($('task-list'), tasks.map(updateTaskView));
@@ -595,7 +607,6 @@ async function loadExample(id) {
 async function init() {
   try {
     catalog = await api('/api/catalog');
-    $('availability').textContent = catalog.worker_online ? 'Ready for analysis' : 'Worker offline'; $('availability').classList.toggle('online', catalog.worker_online);
     $('upload-limit').textContent = 'FASTQ / FASTQ.gz · ' + bytes(catalog.max_upload_bytes) + ' per file · up to ' + catalog.max_files + ' files';
     $('pipeline-link').href = catalog.pipeline_url;
     $('large-file-note').textContent = 'Larger than ' + bytes(catalog.max_upload_bytes) + '? Run the pipeline locally. Gzip files must also expand to at most ' + bytes(catalog.max_expanded_bytes) + '. Online analyses are limited to ' + catalog.max_reads.toLocaleString() + ' reads per file.';

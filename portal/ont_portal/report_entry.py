@@ -56,5 +56,6 @@ def direct_report(root, sample):
         downloads.write_text(text)
     (root / 'README.md').write_text('# ONT-LibQC report: ' + sample + '\n\nOpen `index.html` or `' + entry
         + '` in a browser. The entry point opens the sample report directly.\n\n'
+        'Choose Export PDF in the report, then Save as PDF in the browser print dialog. Turn off headers and footers. Expanded details and any custom BED plot currently drawn are included.\n\n'
         'Keep this folder together: `assets/` contains figures; `data/` and `downloads.html` contain report evidence and settings.\n')
     return entry

@@ -16,7 +16,9 @@ from .store import Store, ACTIVE, token_for, client_key, report_grant, valid_rep
 
 JOB_ID = re.compile(r'^[0-9a-f]{32}$')
 APP_CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
-REPORT_CSP = "sandbox allow-scripts allow-downloads allow-popups; default-src 'none'; script-src 'unsafe-inline' 'self'; style-src 'unsafe-inline' 'self'; img-src 'self' data: blob:; object-src 'self'; font-src data:; connect-src 'none'; frame-ancestors 'none'; form-action 'none'; base-uri 'none'"
+# Native Print / Save PDF needs allow-modals; the report remains an opaque origin
+# without cookies/storage, network requests, forms, or parent-page access.
+REPORT_CSP = "sandbox allow-scripts allow-downloads allow-popups allow-modals; default-src 'none'; script-src 'unsafe-inline' 'self'; style-src 'unsafe-inline' 'self'; img-src 'self' data: blob:; object-src 'self'; font-src data:; connect-src 'none'; frame-ancestors 'none'; form-action 'none'; base-uri 'none'"
 # Auto-injected Web Analytics posts to the existing same-origin /cdn-cgi/rum
 # endpoint. Keep it out of private task pages and sandboxed report documents.
 PUBLIC_CSP = APP_CSP.replace("script-src 'self'", "script-src 'self' https://static.cloudflareinsights.com")

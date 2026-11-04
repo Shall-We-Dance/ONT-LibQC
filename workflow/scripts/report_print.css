@@ -1,0 +1,291 @@
+/* Loaded after the screen styles. Report export opens details before printing. */
+@page {
+  size: A4;
+  margin: 13mm 12mm 15mm;
+}
+
+@media print {
+  :root {
+    color-scheme: light;
+    background: #fff;
+    scroll-behavior: auto;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  *, *::before, *::after {
+    box-sizing: border-box;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    animation: none !important;
+    transition: none !important;
+  }
+
+  html, body {
+    min-width: 0;
+    overflow: visible;
+  }
+
+  body {
+    width: auto;
+    max-width: none;
+    margin: 0;
+    /* Leave room inside the printable area for border strokes and glyph
+       overhangs: paged rendering clips paint at the page's content edge. */
+    padding: 0 1.25mm;
+    background: #fff;
+    color: #24364b;
+    font-size: 9pt;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+  }
+
+  /* Keep scientific notes and captions; omit controls and file-navigation UI. */
+  .report-nav, .custom-controls, #custom-downloads, #metric-tooltip,
+  .report-download-actions, .report-export-controls, .report-export-status,
+  .figure-link, .size-profile-downloads,
+  .info-icon, .metric-tip > b, .download-list, button, input, select,
+  a[download], .report-footer > p,
+  #pairtools > p:last-child, #ligation > p:last-child,
+  #mnase > p:last-child, #spike-screen > p:last-child {
+    display: none !important;
+  }
+
+  [hidden] { display: none !important; }
+  a { color: inherit; text-decoration: none; }
+  a::after { content: none !important; }
+  .metric-tip { border: 0; cursor: auto; }
+
+  h1, h2, h3, h4, summary, figcaption,
+  .section-heading, .library-sublibrary > header {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  h1, .report-hero .sample-name { font-size: 18pt; line-height: 1.25 !important; }
+  h2, .report-section > h2 { font-size: 13pt; margin: 0 0 3mm; padding-bottom: 2mm; }
+  h3, .library-profiles > h3 { font-size: 10.5pt; margin: 4mm 0 2mm; }
+  h4 { font-size: 9pt; }
+  p, li { orphans: 3; widows: 3; }
+  p { margin: 2mm 0; }
+  ul, ol { padding-left: 5mm; }
+  .muted, .report-explanation, .report-footer .report-explanation,
+  .report-section details > p, .note, .trace-comparison-note,
+  .reference-context, .library-umi-summary p {
+    font-size: 8pt;
+    line-height: 1.45;
+  }
+
+  .report-brand { padding: 0 0 3mm; gap: 4mm; }
+  .report-brand .brand-name { font-size: 13pt; gap: 2mm; }
+  .report-brand img { width: 7mm; height: 7mm; }
+  .brand-context { display: block; font-size: 8pt; }
+  .report-hero { padding: 3mm 0; border: 0; border-bottom: 1pt solid #dce5f0; border-radius: 0; }
+  .hero-meta { margin-top: 2mm; gap: 1mm 4mm; }
+  .hero-meta span { font-size: 8pt; }
+
+  /* Long sections must fragment naturally rather than reserve an entire page. */
+  .report-section, .report-footer, .profile-scope, .library-profiles,
+  details, .metric-group, .count-based-details, .library-structure-body,
+  .library-sublibraries, .library-sequence-details, .library-sequence-group {
+    break-inside: auto;
+    page-break-inside: auto;
+    overflow: visible;
+    max-height: none;
+  }
+
+  .report-section { margin: 6mm 0 0; padding: 0; border: 0; border-radius: 0; }
+  .report-footer { margin-top: 5mm; padding: 3mm 0 0; font-size: 8pt; }
+  .profile-scope { margin: 4mm 0 5mm; padding-top: 2mm; }
+  .profile-scope > p { break-after: avoid; page-break-after: avoid; }
+  .pairtools-scope { break-inside: avoid; page-break-inside: avoid; }
+  .library-profiles { margin-top: 5mm; padding-top: 3mm; }
+  .metric-group, .count-based-details, .chromosome-detail {
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    margin: 3mm 0;
+    background: #fff;
+  }
+
+  details { display: block; }
+  details > summary, .report-section details > summary,
+  .metric-group > summary, .count-based-details > summary {
+    display: block;
+    padding: 2mm 0;
+    margin-bottom: 1mm !important;
+    background: none;
+    color: #24364b;
+    font-size: 9pt;
+    font-weight: 600;
+    line-height: 1.4;
+    list-style: none;
+  }
+  summary::marker, summary::-webkit-details-marker { display: none; content: ""; }
+  .count-based-details > p, .count-based-details .report-explanation,
+  .metric-group .table-scroll { padding: 0; }
+  .count-based-details > .report-explanation {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+  .chromosome-detail { break-inside: avoid; page-break-inside: avoid; }
+  .report-explanation p { margin: 2mm 0; }
+  .report-explanation li { margin: 1mm 0; }
+
+  /* Fixed paper width overrides the screen's scrollable tables and min-widths. */
+  .table-scroll, .pair-table-scroll, .library-sequence-table-scroll {
+    width: 100%;
+    max-width: 100%;
+    overflow: visible;
+    border-radius: 0;
+  }
+  table, .table-scroll table, .pair-table, .library-sequence-group table {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    font-size: 8pt;
+  }
+  thead { display: table-header-group; }
+  tfoot { display: table-footer-group; }
+  tr { break-inside: avoid; page-break-inside: avoid; }
+  tr:first-child:has(> th) { break-after: avoid; page-break-after: avoid; }
+  th, td, .table-scroll th, .table-scroll td,
+  .pair-table th, .pair-table td,
+  .library-sequence-group th, .library-sequence-group td {
+    min-width: 0;
+    max-width: none;
+    padding: 1.6mm 1.5mm;
+    font-size: 8pt;
+    line-height: 1.35;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: normal;
+    vertical-align: top;
+  }
+  .table-scroll th:first-child, .table-scroll td:first-child,
+  .qc-metrics th:first-child, .qc-metrics td:first-child {
+    min-width: 0;
+    max-width: none;
+    width: auto;
+  }
+  .qc-metrics th:first-child, .qc-metrics td:first-child { width: 28%; }
+  .metric-cell, .qc-metrics .metric-cell,
+  .reference-interval, .qc-metrics .reference-interval {
+    min-width: 0;
+    max-width: none;
+    font-size: 7.5pt;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .metric-reading { gap: 1.2mm; align-items: baseline; font-weight: 500; }
+  .metric-reading > span:last-child { min-width: 0; }
+  .light { flex: 0 0 1.6mm; width: 1.6mm; height: 1.6mm; }
+  .unavailable-reason { max-width: none; font-size: 7.5pt; }
+
+  .traffic-grid, .identity-panel { display: block; margin: 3mm 0; }
+  .scope-card { padding: 2mm 3mm; margin: 0 0 2mm; border-radius: 1.5mm; }
+  .scope-card h3 { font-size: 9pt; margin: 0 0 1mm; }
+  .traffic { padding: 1mm 0; grid-template-columns: 2mm minmax(0,1fr) auto; }
+  .traffic b, .traffic em { font-size: 8pt; }
+  .traffic em { max-width: none; }
+  .identity-card {
+    min-width: 0;
+    max-width: 100%;
+    margin: 2mm 0;
+    border-radius: 1.5mm;
+    overflow: visible;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .identity-card h3 { padding: 2mm 3mm; font-size: 9pt; }
+  .identity-item { padding: 2mm 3mm; min-width: 0; }
+  .identity-item strong, .identity-item small { font-size: 8pt; overflow-wrap: anywhere; }
+  .mode-badge, .library-mode { font-size: 7.5pt; padding: .5mm 1.5mm; }
+  .cutoff-note { font-size: 7.5pt; padding: 2mm 3mm; }
+
+  /* Use the full line for SVG figures; multi-panel labels remain readable. */
+  .plots, .primary-size-plots, .count-size-plots, .analysis-plots {
+    display: block;
+    max-width: none;
+    margin: 2mm 0;
+    padding: 0 !important;
+  }
+  .plot-card, .extension-figure {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    margin: 2mm 0 3mm;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .plot-card > a { display: block; }
+  .plots img, .plot-card img, .extension-figure img, .summary-plot,
+  .size-plots img, .analysis-plots .plot-card img, .chromosome-detail img,
+  .custom-static, #custom-output > svg {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    height: auto;
+    min-height: 0;
+    max-height: 225mm;
+    object-fit: contain;
+    margin: 2mm auto;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .fragment-caption { padding: 0; font-size: 9pt; }
+  .fragment-caption p { font-size: 8pt; margin: 1mm 0 2mm; line-height: 1.4; }
+  .extension-figure figcaption { font-size: 9pt; margin-bottom: 1mm; }
+
+  /* Preserve physical block positions and short read arrows, including UMIs. */
+  .library-structure-body { padding: 1mm 0; }
+  .library-diagram-scroll { width: 100%; max-width: 100%; overflow: visible; padding: 1mm .75mm; }
+  .library-diagram {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    grid-template-columns: max-content repeat(7, minmax(0,1fr) max-content);
+    justify-content: stretch;
+    gap: 1.5mm .7mm;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .library-block { min-height: 15mm; padding: 1mm .7mm; border-radius: 1mm; overflow-wrap: anywhere; }
+  .library-block strong, .library-block .library-type { font-size: 7.5pt; }
+  .library-block small, .library-unresolved { font-size: 7pt; }
+  .library-block .library-sequence { font-size: 7pt; line-height: 1.3; letter-spacing: 0; }
+  .library-block.umi { min-width: 0; width: 10mm; }
+  .library-block.umi strong { font-size: 7pt; }
+  .library-read-directions { gap: 2mm; }
+  .library-read { font-size: 7pt; flex-basis: 6mm; max-width: 6mm; }
+  .library-end, .library-connector { font-size: 7pt; }
+  .library-end { padding: 0 .5mm; text-align: center; white-space: nowrap; }
+  .library-diagram-note { font-size: 7.5pt; margin: 1mm auto 3mm !important; line-height: 1.4; text-align: center; }
+  .library-sublibraries { margin-top: 3mm; padding-top: 2mm; }
+  .library-sublibrary { padding: 2mm 0; margin: 0; break-inside: avoid; page-break-inside: avoid; }
+  .library-sublibrary > header { margin-bottom: 1mm; }
+  .library-sublibrary h4, .library-sublibraries > h3 { font-size: 9pt; }
+  .library-sublibrary header > span { min-width: 0; font-size: 7.5pt; overflow-wrap: anywhere; }
+  .library-sequence-group code.library-sequence { font-size: 7.5pt; line-height: 1.4; }
+  .library-sequence-group { break-inside: avoid; page-break-inside: avoid; }
+  .library-umi-summary { margin-top: 3mm; padding-top: 2mm; }
+  .library-umi-counts { gap: 4mm; margin: 2mm 0; }
+  .library-umi-counts b { font-size: 11pt; }
+  .library-umi-counts span { font-size: 7.5pt; }
+
+  .adapter-context, .note { padding: 2mm 3mm; margin: 3mm 0; border-radius: 1mm; }
+  #custom-message, #custom-current-source { font-size: 8pt; overflow-wrap: anywhere; }
+  .report-print-note { display: block; margin: 2mm 0; color: #5b6d82; font-size: 8pt; }
+  .report-print-definitions { display: block; margin-top: 5mm; font-size: 8pt; }
+  .report-print-definitions dl > div { break-inside: avoid; page-break-inside: avoid; }
+  .report-print-definitions dt { font-weight: 600; break-after: avoid; }
+  .report-print-definitions dd { margin: 0 0 2mm; }
+}

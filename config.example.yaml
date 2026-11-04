@@ -7,7 +7,7 @@ default_reference: hg38
 references:
   hg38:
     assembly: hg38  # displayed in every report
-    primary_chromosomes: [chr1, chr2, chr3, chr4, chr5, chr6, chr7, chr8, chr9, chr10, chr11, chr12, chr13, chr14, chr15, chr16, chr17, chr18, chr19, chr20, chr21, chr22, chrX]
+    primary_chromosomes: [chr1, chr2, chr3, chr4, chr5, chr6, chr7, chr8, chr9, chr10, chr11, chr12, chr13, chr14, chr15, chr16, chr17, chr18, chr19, chr20, chr21, chr22, chrX, chrY]
     fasta: /path/to/hg38.fa
     chrom_sizes: /path/to/hg38.chrom.sizes
     annotation: /path/to/hg38.ncbiRefSeq.gtf
@@ -17,7 +17,7 @@ references:
     # mycoplasma_index: /path/to/hg38_mollicutes/index
   dm6:
     assembly: dm6
-    primary_chromosomes: [chr2L, chr2R, chr3L, chr3R, chr4, chrX]
+    primary_chromosomes: [chr2L, chr2R, chr3L, chr3R, chr4, chrX, chrY]
     fasta: /path/to/dm6.fa
     chrom_sizes: /path/to/dm6.chrom.sizes
     annotation: /path/to/dm6.ncbiRefSeq.gtf
