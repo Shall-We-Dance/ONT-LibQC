@@ -607,7 +607,6 @@ async function loadExample(id) {
 async function init() {
   try {
     catalog = await api('/api/catalog');
-    $('availability').textContent = catalog.worker_online ? 'Ready for analysis' : 'Worker offline'; $('availability').classList.toggle('online', catalog.worker_online);
     $('upload-limit').textContent = 'FASTQ / FASTQ.gz · ' + bytes(catalog.max_upload_bytes) + ' per file · up to ' + catalog.max_files + ' files';
     $('pipeline-link').href = catalog.pipeline_url;
     $('large-file-note').textContent = 'Larger than ' + bytes(catalog.max_upload_bytes) + '? Run the pipeline locally. Gzip files must also expand to at most ' + bytes(catalog.max_expanded_bytes) + '. Online analyses are limited to ' + catalog.max_reads.toLocaleString() + ' reads per file.';
