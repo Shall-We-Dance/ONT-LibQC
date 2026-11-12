@@ -79,6 +79,36 @@ def draw_custom_bed(page):
     return page.locator('#custom-output').inner_html()
 
 
+def check_wide_table(page):
+    # Six sublibraries exceed the paper width: every original value must occur
+    # exactly once across the printed column groups, with labels repeated.
+    page.evaluate("""() => {
+        const table = document.createElement('table');
+        table.id = 'wide-print-fixture'; table.className = 'qc-metrics';
+        for (let r = 0; r < 3; r++) {
+            const row = table.insertRow();
+            for (let c = 0; c < 9; c++) {
+                const cell = document.createElement(r ? 'td' : 'th');
+                cell.textContent = r + ':' + c; row.append(cell);
+            }
+        }
+        document.body.append(table);
+    }""")
+    before = snapshot(page)
+    page.evaluate('window.ONTReportExport.prepare()')
+    assert page.evaluate("""() => {
+        const source = document.getElementById('wide-print-fixture');
+        const copies = [...source.nextElementSibling.querySelectorAll('table')];
+        return copies.length === 2 && [...source.rows].every((row, index) => {
+            const parts = copies.map(copy => [...copy.rows[index].cells].map(c => c.textContent));
+            return parts.every(p => p[0] === row.cells[0].textContent && p.at(-1) === row.cells[8].textContent)
+                && parts.flatMap(p => p.slice(1,-1)).join('|') === [...row.cells].slice(1,-1).map(c => c.textContent).join('|');
+        });
+    }""")
+    restore_and_check(page, before)
+    page.locator('#wide-print-fixture').evaluate('(node) => node.remove()')
+
+
 def check_report(browser, origin, sample, engine):
     context = browser.new_context(viewport={'width': 1440, 'height': 1000})
     page = context.new_page()
@@ -111,6 +141,8 @@ def check_report(browser, origin, sample, engine):
         assert page.locator('details:not([open])').count() > 0
         assert page.locator('a[href^="#"]').count() > 0
         assert page.evaluate("Array.from(document.querySelectorAll('a[href^=\"#\"]')).some(a => a.href.includes('view='))")
+        assert page.locator('#report-export-content').input_value() == 'overview'
+        page.select_option('#report-export-content', 'full')
         before = snapshot(page)
         page.evaluate("""() => {
             window.printCalls = 0;
@@ -126,6 +158,22 @@ def check_report(browser, origin, sample, engine):
         assert page.evaluate('Array.from(document.images).every(i => i.complete && i.naturalWidth > 0)')
         assert_prepared(page)
         restore_and_check(page, before)
+
+        # The default overview retains the user's expanded sections, excludes
+        # unopened details, and does not append a long metric glossary.
+        page.select_option('#report-export-content', 'overview')
+        before = snapshot(page)
+        page.evaluate('window.ONTReportExport.prepare()')
+        assert page.evaluate("Array.from(document.querySelectorAll('details:not([open])')).every(d => d.classList.contains('report-print-omit'))")
+        assert page.locator('.report-print-definitions').count() == 0
+        assert page.locator('#custom-regions.report-print-omit').count() == (1 if sample == 'HL240' else 0)
+        page.emulate_media(media='print')
+        assert page.evaluate("Array.from(document.querySelectorAll('.report-print-omit')).every(d => getComputedStyle(d).display === 'none')")
+        if engine == 'chromium':
+            page.pdf(path=str(OUTPUT / f'{sample}-overview.pdf'), prefer_css_page_size=True,
+                     print_background=True, display_header_footer=False)
+        restore_and_check(page, before)
+        page.select_option('#report-export-content', 'full')
 
         custom = draw_custom_bed(page) if sample == 'HL240' else None
         before = snapshot(page)
@@ -158,6 +206,7 @@ def check_report(browser, origin, sample, engine):
         if custom is not None:
             assert page.locator('#custom-output svg').is_visible()
             assert page.locator('#custom-output').inner_html() == custom
+        check_wide_table(page)
         assert not errors and not failed_requests, (errors, failed_requests)
         assert not external and not posts, (external, posts)
         assert not context.cookies()

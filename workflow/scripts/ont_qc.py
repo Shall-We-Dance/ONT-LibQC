@@ -2053,8 +2053,15 @@ def traffic_html(scope, ranges=None):
 
 
 def metric_reading_html(rendered, light, state):
-    return (f"<div class='metric-cell'><div class='metric-reading metric-tip metric-status' tabindex='0' data-tip='{html.escape(state, quote=True)}'>"
-            f"<span class='light {light}' aria-hidden='true'></span><span>{html.escape(rendered)}</span></div></div>")
+    unavailable = rendered in {"Not attributable", "Sample-level"}
+    classes = " metric-unavailable" if unavailable else ""
+    marker = "" if light == "gray" else f"<span class='light {light}' aria-hidden='true'></span>"
+    value = "—" if unavailable else rendered.replace("NOT_CONFIGURED", "Not configured")
+    if "_" in value and value.isupper():
+        value = value.replace("_", " ").capitalize()
+    return (f"<div class='metric-cell'><div class='metric-reading metric-tip metric-status{classes}' tabindex='0' data-tip='{html.escape(state, quote=True)}'"
+            f" aria-label='{html.escape(rendered + ': ' + state, quote=True)}'>"
+            f"{marker}<span>{html.escape(value)}</span></div></div>")
 
 
 def scoped_value_html(key, value, ranges, descriptive=False):
@@ -2186,7 +2193,8 @@ def identity_panel_html(metric, pairing, pairs, unit_rows=None):
             f"<div class='identity-item'><small>Assay</small><strong>{html.escape({'chromatin':'Chromatin','microc':'Micro-C'}.get(metric.get('assay'),str(metric.get('assay','unknown'))))}</strong></div>"
             f"<div class='identity-item'><small>Library mode</small><span class='mode-badge'>{html.escape(mode_label)}</span></div>"
             f"<div class='identity-item'><small>Top-pair percentage</small><strong>{html.escape(top_text)}</strong></div></div>"
-            f"<div class='cutoff-note'>A dominant i5–i7 pair is single_library at ≥{pairing.get('single_library_fraction', .9):.0%} of index-informative units, or when it is the only resolved pair. Pair percentages use index-informative units; inspect overall assignment and ambiguous/unassigned fractions below.</div></section>"
+            "<div class='cutoff-note'>Percentages are among index-informative units."
+            f"<details><summary>Library classification</summary><p>A dominant i5–i7 pair is single_library at ≥{pairing.get('single_library_fraction', .9):.0%}, or when it is the only resolved pair. See overall assignment and ambiguous/unassigned fractions below.</p></details></div></section>"
             "<section class='identity-card'><h3>Physical index pairs</h3><div class='pair-table-scroll' tabindex='0' aria-label='Physical index pairs'><table class='pair-table'><tr><th>Library</th><th>Adapter</th><th>i5 (P5 side)</th><th>i7 (P7 side)</th><th title='Among index-informative units'>Percentage</th></tr>"
             + "".join(pair_rows) + "</table></div></section></div>")
 
