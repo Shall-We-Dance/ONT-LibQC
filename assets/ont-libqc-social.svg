@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600" role="img" aria-labelledby="title description">
   <title id="title">ONT-LibQC</title>
   <desc id="description">The blue ONT-LibQC logo, centered on a light background.</desc>
-  <!-- Source for portal/static/social-card-v2.png. Keep the mark inside the center two thirds for compact previews. -->
+  <!-- Source for portal/static/social-card.png. Keep the mark inside the center two thirds for compact previews. -->
   <rect width="600" height="600" fill="#f5f8fc"/>
   <g transform="translate(100 100) scale(10)">
     <rect width="40" height="40" rx="10" fill="#2b5689"/>
