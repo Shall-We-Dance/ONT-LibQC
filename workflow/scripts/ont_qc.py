@@ -2159,27 +2159,35 @@ def pair_label(pair):
     return f"{pair.get('name',pair.get('scope_id','library'))}: i5 {pair.get('i5') or '∅'} / i7 {pair.get('i7') or '∅'} ({(pair.get('support_fraction') or 0):.1%})"
 
 
-def identity_panel_html(metric, pairing, pairs):
+def identity_panel_html(metric, pairing, pairs, unit_rows=None):
+    from report_library_structure import family_label
+    families = collections.defaultdict(collections.Counter)
+    for row in unit_rows or []:
+        if row.get('assignment_status') == 'assigned' and row.get('scope_id') and row.get('family'):
+            families[row['scope_id']][row['family']] += 1
     mode=str(pairing.get("mode","unresolved"))
     mode_label=mode.replace("_"," ").title()
     top=pairing.get("top_pair_fraction")
     top_text="NA" if top is None else f"{top:.1%}"
     pair_rows=[]
     for pair in pairs:
+        matched = families.get(pair.get('scope_id'), {})
+        adapter = ' / '.join(family_label(name) for name in sorted(matched, key=lambda name: (-matched[name], name))) or 'Unresolved'
         pair_rows.append("<tr>" + "".join([
             f"<td><strong>{html.escape(str(pair.get('name',pair.get('scope_id','library'))))}</strong></td>",
+            f"<td>{html.escape(adapter)}</td>",
             f"<td><code>{html.escape(str(pair.get('i5') or '∅'))}</code></td>",
             f"<td><code>{html.escape(str(pair.get('i7') or '∅'))}</code></td>",
             f"<td>{(pair.get('support_fraction') or 0):.1%}</td>"]) + "</tr>")
     if not pair_rows:
-        pair_rows=["<tr><td colspan='4'>No confident i5–i7 pair resolved</td></tr>"]
+        pair_rows=["<tr><td colspan='5'>No confident i5–i7 pair resolved</td></tr>"]
     return ("<div class='identity-panel'><section class='identity-card'><h3>Library identity</h3><div class='identity-grid'>"
             f"<div class='identity-item'><small>Reference assembly</small><strong>{html.escape(str(metric.get('reference_assembly','unspecified')))}</strong></div>"
             f"<div class='identity-item'><small>Assay</small><strong>{html.escape({'chromatin':'Chromatin','microc':'Micro-C'}.get(metric.get('assay'),str(metric.get('assay','unknown'))))}</strong></div>"
             f"<div class='identity-item'><small>Library mode</small><span class='mode-badge'>{html.escape(mode_label)}</span></div>"
-            f"<div class='identity-item'><small>Top-pair support</small><strong>{html.escape(top_text)}</strong></div></div>"
-            f"<div class='cutoff-note'>A dominant i5–i7 pair is single_library at ≥{pairing.get('single_library_fraction', .9):.0%} informative support, or when it is the only supported pair. Pair support is conditional on index-informative units; inspect overall assignment and ambiguous/unassigned fractions below.</div></section>"
-            "<section class='identity-card'><h3>Physical index pairs</h3><div class='pair-table-scroll' tabindex='0' aria-label='Physical index pairs'><table class='pair-table'><tr><th>Library</th><th>i5 (P5 side)</th><th>i7 (P7 side)</th><th>Support</th></tr>"
+            f"<div class='identity-item'><small>Top-pair percentage</small><strong>{html.escape(top_text)}</strong></div></div>"
+            f"<div class='cutoff-note'>A dominant i5–i7 pair is single_library at ≥{pairing.get('single_library_fraction', .9):.0%} of index-informative units, or when it is the only resolved pair. Pair percentages use index-informative units; inspect overall assignment and ambiguous/unassigned fractions below.</div></section>"
+            "<section class='identity-card'><h3>Physical index pairs</h3><div class='pair-table-scroll' tabindex='0' aria-label='Physical index pairs'><table class='pair-table'><tr><th>Library</th><th>Adapter</th><th>i5 (P5 side)</th><th>i7 (P7 side)</th><th title='Among index-informative units'>Percentage</th></tr>"
             + "".join(pair_rows) + "</table></div></section></div>")
 
 
@@ -2485,7 +2493,7 @@ def cmd_report(args):
 <div class='traffic-grid'>{top}</div>
 {mixture_html}
 <section class='report-section' id='sequencing'><h2>ONT sequencing</h2>{ont_table}</section>
-<section class='report-section' id='library-shape'><h2>Library quality</h2>{identity_panel_html(metric,pairing,pairs)}
+<section class='report-section' id='library-shape'><h2>Library quality</h2>{identity_panel_html(metric,pairing,pairs,scope_profiles.get("total", {}).get("unit_rows", []))}
 {library_structure_html(metric, adapter_summary, scope_profiles.get("total", {}).get("unit_rows", []), rna_summary)}
 <div id='library-key-metrics'>{library_primary_table}</div>
 <details class='metric-group' id='library-extra-metrics'><summary>All structure and index metrics</summary>{library_table}</details>
