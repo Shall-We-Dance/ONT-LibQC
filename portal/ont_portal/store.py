@@ -59,6 +59,12 @@ class Store:
             c.execute('CREATE UNIQUE INDEX IF NOT EXISTS jobs_short_link ON jobs(short_link_hash)')
             c.execute('CREATE TABLE IF NOT EXISTS batch_links (batch_id TEXT PRIMARY KEY, key_hash TEXT UNIQUE NOT NULL)')
             c.execute('CREATE TABLE IF NOT EXISTS saved_links (key_hash TEXT PRIMARY KEY, job_ids TEXT NOT NULL)')
+            c.execute('CREATE TABLE IF NOT EXISTS report_links (key_hash TEXT PRIMARY KEY, job_id TEXT NOT NULL, file TEXT NOT NULL, expires INTEGER NOT NULL)')
+            c.execute('CREATE INDEX IF NOT EXISTS report_links_job ON report_links(job_id)')
+            c.execute('CREATE INDEX IF NOT EXISTS report_links_expires ON report_links(expires)')
+            c.execute("""CREATE TRIGGER IF NOT EXISTS report_links_cleanup AFTER UPDATE OF status,expires ON jobs
+                WHEN NEW.status='expired' OR NEW.expires<=strftime('%s','now')
+                BEGIN DELETE FROM report_links WHERE job_id=NEW.id; END""")
             c.execute("UPDATE jobs SET outcome=status WHERE outcome IS NULL AND status IN ('succeeded','failed','cancelled')")
             # Preserve anonymous outcome counts when retention erases task metadata.
             c.execute("""CREATE TRIGGER IF NOT EXISTS jobs_outcome_update AFTER UPDATE OF status ON jobs

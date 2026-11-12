@@ -19,6 +19,7 @@ from ont_portal.report_entry import direct_report
 from ont_portal.schema import Options
 from ont_portal.settings import Settings
 from ont_portal.store import report_grant, token_for, valid_report_grant
+from ont_portal.short_links import key_hash
 from ont_portal.worker import publish_report
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'workflow/scripts'))
 from custom_regions_ui import render_section, upgrade_html
@@ -55,86 +56,98 @@ class ReportAccessTests(unittest.TestCase):
         self.assertNotIn('set-cookie',response.headers)
         return response.json()
 
-    def grant(self,url):
-        return parse_qs(urlsplit(url).query)['view'][0]
+    def link_record(self,url):
+        self.assertRegex(url,r'^/r/[A-Za-z0-9_-]{22}$')
+        with self.store.connect() as db:
+            row=db.execute('SELECT * FROM report_links WHERE key_hash=?',(key_hash(url.rsplit('/',1)[1]),)).fetchone()
+        return dict(row) if row else None
 
-    def test_private_task_issues_cookie_free_report_and_download_links(self):
+    def test_private_task_issues_cookie_free_short_report_and_download_links(self):
         job=self.task()
-        self.assertGreater(job['report_access_expires'],self.now+3500)
-        self.assertLessEqual(job['report_access_expires'],self.now+3600)
+        self.assertEqual(job['report_access_expires'],int(self.now+7*86400))
         for field in ['report_url','download_url']:
             url=job[field]
-            self.assertNotIn(self.owner,url)
-            self.assertTrue(valid_report_grant(self.settings.secret,JID,self.grant(url)))
+            self.assertNotIn(self.owner,url);self.assertNotIn(JID,url)
+            self.assertEqual(self.link_record(url)['expires'],job['report_access_expires'])
             response=self.client.get(url)
             self.assertEqual(response.status_code,200)
             self.assertNotIn('set-cookie',response.headers)
         self.assertFalse(self.client.cookies)
-        # Merely visiting a report does not authorize later unsigned requests.
         self.assertEqual(self.client.get(self.page).status_code,404)
+        with patch('time.time',return_value=self.now+3700):
+            self.assertEqual(self.task()['report_url'],job['report_url'])
+            self.assertEqual(self.client.get(job['report_url']).status_code,200)
 
-    def test_read_only_grants_cannot_access_or_change_tasks(self):
-        grant=self.grant(self.task()['report_url'])
-        for method,path in [('GET',f'/api/jobs/{JID}'),('DELETE',f'/api/jobs/{JID}'),('POST',f'/api/jobs/{JID}/cancel')]:
-            for headers in [{},{'Authorization':'Bearer '+grant}]:
-                with self.subTest(method=method,headers=bool(headers)):
-                    response=self.client.request(method,path,params={'view':grant},headers=headers)
-                    self.assertEqual(response.status_code,404)
+    def test_read_only_capabilities_cannot_access_or_change_tasks(self):
+        key=self.task()['report_url'].rsplit('/',1)[1]
+        grant=report_grant(self.settings.secret,JID,int(self.now)+100)
+        for credential in [key,grant]:
+            for method,path in [('GET',f'/api/jobs/{JID}'),('DELETE',f'/api/jobs/{JID}'),('POST',f'/api/jobs/{JID}/cancel')]:
+                response=self.client.request(method,path,params={'view':credential},headers={'Authorization':'Bearer '+credential})
+                self.assertEqual(response.status_code,404)
+        self.assertEqual(self.client.post('/api/links/resolve',json={'key':key}).status_code,404)
         self.assertGreater(self.store.get(JID)['expires'],self.now)
 
-    def test_expired_grants_require_reopening_original_private_task_link(self):
-        original=self.task()['report_url'];old=self.grant(original)
-        with patch('time.time',return_value=self.now+3700):
-            for path in [self.page,f'/reports/{JID}/assets/figure.svg',f'/reports/{JID}/report.zip']:
-                self.assertEqual(self.client.get(path,params={'view':old}).status_code,404)
-            fresh=self.task()['report_url']
-            self.assertNotEqual(fresh,original)
-            self.assertEqual(self.client.get(fresh).status_code,200)
-            self.assertFalse(self.client.cookies)
-
-    def test_valid_view_grant_refreshes_local_links_without_cookies(self):
+    def test_legacy_navigation_redirects_without_extending_grant_lifetime(self):
         old=report_grant(self.settings.secret,JID,int(self.now)+100)
-        response=self.client.get(self.page,params={'view':old})
-        self.assertEqual(response.status_code,200)
-        self.assertNotIn('set-cookie',response.headers)
-        fresh=re.search(r'view=(\d+\.[a-f0-9]{64})',response.text)[1]
-        self.assertGreater(int(fresh.split('.')[0]),int(old.split('.')[0]))
-        self.assertEqual(self.client.get(f'/reports/{JID}/assets/figure.svg',params={'view':fresh}).status_code,200)
-        self.assertEqual(self.client.get(f'/api/jobs/{JID}').status_code,404)
-        self.assertFalse(self.client.cookies)
+        for headers in ({},{'Authorization':'Bearer invalid'}):
+            response=self.client.get(self.page,params={'view':old},headers=headers,follow_redirects=False)
+            self.assertEqual(response.status_code,303)
+            link=response.headers['location'];record=self.link_record(link)
+            self.assertEqual(record['file'],'samples/example.html')
+            self.assertEqual(record['expires'],int(self.now)+100)
+            page=self.client.get(link)
+            self.assertEqual(page.status_code,200)
+            self.assertNotIn('?view=',page.text)
+            children=re.findall(r'href="(/r/[A-Za-z0-9_-]{22})"',page.text)
+            self.assertTrue(children)
+            for child in children:
+                self.assertEqual(self.link_record(child)['expires'],record['expires'])
+                self.assertEqual(self.client.get(child).status_code,200)
+            with patch('time.time',return_value=self.now+110):
+                self.assertEqual(self.client.get(link).status_code,404)
+                self.assertEqual(self.client.get(self.page,params={'view':old}).status_code,404)
+                self.assertEqual(self.client.get(self.task()['report_url']).status_code,200)
 
-    def test_browser_missing_access_gets_private_link_guidance(self):
+    def test_browser_missing_access_gets_short_private_link_guidance(self):
         response=self.client.get(self.page,headers={'Accept':'text/html','Sec-Fetch-Dest':'document'},follow_redirects=False)
-        self.assertEqual(response.status_code,303);self.assertEqual(response.headers['location'],f'/jobs/{JID}?report=1')
+        self.assertEqual(response.status_code,303);self.assertEqual(response.headers['location'],'/r/')
+        self.assertIn('private analysis link',self.client.get('/r/').text)
         self.assertNotIn('set-cookie',response.headers)
         self.assertEqual(self.client.get(self.page).status_code,404)
         self.assertEqual(self.client.get(f'/reports/{JID}/assets/figure.svg',headers={'Accept':'image/svg+xml','Sec-Fetch-Dest':'image'}).status_code,404)
 
     def test_tampered_and_other_report_credentials_are_rejected(self):
-        grant=self.grant(self.task()['report_url'])
+        grant=report_grant(self.settings.secret,JID,int(self.now)+100)
         other=report_grant(self.settings.secret,'d'*32,int(self.now)+300)
         tampered=grant[:-1]+('1' if grant[-1]!='1' else '2')
         for invalid in [other,tampered,self.owner,'bad',report_grant(self.settings.secret,JID,int(self.now)+7200)]:
-            with self.subTest(invalid=invalid[:12]):
-                self.assertEqual(self.client.get(self.page,params={'view':invalid}).status_code,404)
+            self.assertEqual(self.client.get(self.page,params={'view':invalid}).status_code,404)
+        link=self.task()['report_url'];tampered=link[:-1]+('1' if link[-1]!='1' else '2')
+        self.assertEqual(self.client.get(tampered).status_code,404)
+        self.assertEqual(self.client.get(link+'/other-file').status_code,404)
+        for file in ['../secret.json','.hidden.json','assets/../data.tsv']:
+            response=self.client.get(f'/reports/{JID}/'+file.replace('/','%2F'),params={'view':grant})
+            self.assertEqual(response.status_code,404)
 
-    def test_deletion_and_retention_revoke_links_before_cleanup(self):
+    def test_deletion_and_retention_revoke_links_and_erase_alias_metadata(self):
         url=self.task()['report_url']
         for expires in [0,self.now-1]:
-            with self.subTest(expires=expires):
-                self.store.update(JID,expires=expires)
-                self.assertEqual(self.client.get(url).status_code,410)
-                job=self.task()
-                for field in ['report_url','download_url','report_access_expires']:
-                    self.assertIsNone(job[field])
+            self.store.update(JID,expires=expires)
+            self.assertEqual(self.client.get(url).status_code,404)
+            self.assertIsNone(self.link_record(url))
+            job=self.task()
+            for field in ['report_url','download_url','report_access_expires']:self.assertIsNone(job[field])
 
-    def test_grant_expiry_never_exceeds_report_retention(self):
+    def test_alias_expiry_never_exceeds_report_retention(self):
         self.store.update(JID,expires=int(self.now)+90)
         job=self.task()
         self.assertEqual(job['report_access_expires'],int(self.now)+90)
         page=self.client.get(job['report_url'])
-        fresh=re.search(r'view=(\d+\.[a-f0-9]{64})',page.text)[1]
-        self.assertEqual(int(fresh.split('.')[0]),int(self.now)+90)
+        for child in re.findall(r'href="(/r/[A-Za-z0-9_-]{22})"',page.text):
+            self.assertEqual(self.link_record(child)['expires'],int(self.now)+90)
+        self.store.update(JID,status='expired',options='{}',filename='')
+        self.assertIsNone(self.link_record(job['report_url']))
 
     def test_old_cookies_are_ignored_and_session_endpoint_is_removed(self):
         self.client.cookies.set('ont_report_'+JID,self.owner)
@@ -154,12 +167,13 @@ class ReportAccessTests(unittest.TestCase):
         self.assertIn('max-age=',response.headers['strict-transport-security'])
         self.assertNotIn('set-cookie',response.headers)
 
-    def test_bundle_buttons_include_report_and_preserve_offline_paths(self):
-        job=self.task();grant=self.grant(job['report_url'])
+    def test_bundle_buttons_are_short_and_preserve_offline_paths(self):
+        job=self.task();grant=report_grant(self.settings.secret,JID,int(self.now)+100)
         for url in [self.page,f'/reports/{JID}/downloads.html',f'/reports/{JID}/index.html']:
             response=self.client.get(url,params={'view':grant});self.assertEqual(response.status_code,200)
+            self.assertRegex(urlsplit(str(response.url)).path,r'^/r/[A-Za-z0-9_-]{22}$')
             self.assertIn('Download complete report (ZIP)',response.text)
-            self.assertIn('report.zip?view=',response.text)
+            self.assertNotIn('?view=',response.text)
             self.assertNotIn('set-cookie',response.headers)
         with zipfile.ZipFile(io.BytesIO(self.client.get(job['download_url']).content)) as archive:
             for name in ['index.html','samples/example.html','assets/figure.svg','data.tsv','downloads.html']:

@@ -77,7 +77,7 @@ class RequestGate:
 
     async def __call__(self, scope, receive, send):
         resource = (scope['type'] == 'http' and scope['method'] in {'GET', 'HEAD'}
-                    and scope['path'].startswith(('/reports/', '/example/', '/static/', '/example-inputs/')))
+                    and scope['path'].startswith(('/reports/', '/r/', '/example/', '/static/', '/example-inputs/')))
         await (self.resources if resource else self.api)(scope, receive, send)
 
 
@@ -97,8 +97,8 @@ class RequestSecurity:
         s = self.settings
         path, method = scope['path'], scope['method']
         example_index = path in {'/example/', '/example/index.html'}
-        report = path.startswith('/reports/') or (path.startswith('/example/') and not example_index)
-        private_task = path.startswith(('/jobs/', '/api/links/')) or path in {'/j/', '/b/'}
+        report = path.startswith(('/reports/', '/r/')) and path!='/r/' or (path.startswith('/example/') and not example_index)
+        private_task = path.startswith(('/jobs/', '/api/links/')) or path in {'/j/', '/b/', '/r/'}
         headers = Headers(scope=scope)
         started = False
         async def secured_send(message):
