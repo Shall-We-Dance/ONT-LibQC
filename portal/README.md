@@ -13,7 +13,9 @@ A self-hosted interface for uploading FASTQ files, running ONT-LibQC and sharing
 3. Leave the library structure on **Auto**, or customize adapters and fixed-length UMIs below.
 4. Add an email address if you want notification, accept the data declarations and submit. Save the private task links.
 
-Mycoplasma and foreign-sequence screens start enabled when the selected reference has a prepared panel. Users can switch them off; unavailable panels stay disabled. Declaring an intentional spike-in is a separate choice.
+RNA-seq and CLIP-seq are marked **Beta**. They use a validated STARlong reference and infer RNA composition, splice evidence and strand bias from completed NGS library inserts without requiring protocol metadata. References without a prepared RNA index keep their existing chromatin/Micro-C support. When several completed RNA/CLIP tasks are open together, the task page compares gene-count profiles locally in the browser using each task’s existing private authorization. Comparisons require the same assay, genome assembly and annotation SHA, at least 200 gene-assigned inserts per library and at least 20 jointly detected genes. This descriptive correlation does not establish replicate identity.
+
+Mycoplasma and foreign-sequence screens start enabled for all assays when the selected reference has a prepared panel. For RNA/CLIP these screens are opportunistic and do not measure RNA source fractions. Users can switch them off; unavailable panels stay disabled. Declaring an intentional spike-in is a separate choice.
 
 **Do not upload human patient data, including de-identified patient data, or other sensitive personal data.** This applies to reads, BED files, filenames and sample names. The upload form requires separate permission and data-policy acknowledgments; these are user declarations, not automatic data screening.
 

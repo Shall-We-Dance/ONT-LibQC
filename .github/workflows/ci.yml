@@ -56,6 +56,11 @@ jobs:
       - run: python -m playwright install --with-deps ${{ matrix.browser }}
       - name: Desktop and mobile portal interactions
         run: python tests/browser.py ${{ matrix.browser }}
+      - name: RNA and CLIP portal controls
+        run: python -m unittest test_rna_beta.RnaBetaBrowserTests -v
+        env:
+          PYTHONPATH: portal:tests/portal
+          ONT_TEST_BROWSER: ${{ matrix.browser }}
       - name: Public pages and complete example reports
         run: python tests/portal/check_public_pages_browser.py test-results/public-pages ${{ matrix.browser }}
         env:

@@ -12,6 +12,7 @@ from .report_files import REPORT_FILE_SUFFIXES
 from .store import Store, ACTIVE, TERMINAL, token_for
 from .catalog import job_config, public_catalog
 from .mappers import BWA_INDEX_KEYS, resolve_mapper, microc_bwa_mapper
+from .star_resources import star_memory_bytes
 
 LOG=logging.getLogger('ont-worker')
 STOP=False
@@ -98,6 +99,35 @@ def available_memory():
     return 0
 
 
+def total_memory():
+    for line in Path('/proc/meminfo').read_text().splitlines():
+        if line.startswith('MemTotal:'):return int(line.split()[1])*1024
+    return 0
+
+
+def allocated_job_memory(jid):
+    """Only credit anonymous RAM already charged to this job's cgroup.
+
+    MemAvailable can include reclaimable file cache, so crediting memory.current
+    would overstate free RAM. A not-yet-started container or unreadable cgroup
+    gets no credit and retains its full reservation.
+    """
+    if not valid_id(jid):return 0
+    try:
+        result=subprocess.run(['docker','inspect','--format','{{.Id}} {{.State.Pid}}',
+            'ont-qc-job-'+jid],check=True,capture_output=True,text=True,timeout=2)
+        container,pid=result.stdout.strip().split()
+        if not re.fullmatch(r'[0-9a-f]{64}',container) or not pid.isdigit() or int(pid)<=0:return 0
+        for line in Path('/proc/'+pid+'/cgroup').read_text().splitlines():
+            if not line.startswith('0::/'):continue
+            relative=Path(line[4:])
+            if '..' in relative.parts or not ({container,'docker-'+container+'.scope'}&set(relative.parts)):continue
+            values=dict(line.split() for line in (Path('/sys/fs/cgroup')/relative/'memory.stat').read_text().splitlines())
+            return max(0,int(values.get('anon',0)))
+    except (OSError,ValueError,subprocess.SubprocessError):pass
+    return 0
+
+
 class Worker:
     def __init__(self,config):
         # Older deployments may have a flat memory limit above the new default cap.
@@ -136,25 +166,31 @@ class Worker:
             prefix=self.catalog['references'][options.reference].get('minimap2_index')
             if not prefix:raise ValueError('Minimap2 needs an administrator-prepared index')
             required=max(required,math.ceil((Path(prefix).stat().st_size+3*1024**3)/1024**3)*1024**3)
+        if mapper=='starlong':
+            required=max(required,star_memory_bytes(ref))
         if required>memory_bytes(self.cfg['max_memory']):
             raise ValueError('This reference index exceeds the online memory budget; run the pipeline locally')
         return required
 
     def claim(self):
         with self.store.connect(immediate=True) as c:
-            active=c.execute("SELECT options FROM jobs WHERE status IN ('running','cancelling')").fetchall()
+            active=c.execute("SELECT id,options FROM jobs WHERE status IN ('running','cancelling')").fetchall()
             if len(active)>=self.max_jobs:return None
-            reserved=0
+            reserved=allocated=0
             for running in active:
-                try:reserved+=self.memory_for(Options.model_validate_json(running['options']).check_catalog(self.public))
-                except (ValueError,KeyError,OSError):reserved+=memory_bytes(self.cfg['max_memory'])
+                try:reservation=self.memory_for(Options.model_validate_json(running['options']).check_catalog(self.public))
+                except (ValueError,KeyError,OSError):reservation=memory_bytes(self.cfg['max_memory'])
+                reserved+=reservation
+                allocated+=min(reservation,allocated_job_memory(running['id']))
             row=c.execute("SELECT * FROM jobs WHERE status='queued' ORDER BY created,rowid LIMIT 1").fetchone()
             if row and not valid_id(row['id']):
                 c.execute('DELETE FROM jobs WHERE id=?',(row['id'],));row=None
             if row:
                 try: budget=self.memory_for(Options.model_validate_json(row['options']).check_catalog(self.public))
                 except (ValueError,KeyError,OSError): budget=memory_bytes(self.memory)
-                if available_memory()<reserved+budget+self.cfg['min_free_memory_bytes']:return None
+                headroom=self.cfg['min_free_memory_bytes']
+                if reserved+budget+headroom>total_memory():return None
+                if available_memory()<reserved-allocated+budget+headroom:return None
                 if shutil.disk_usage(self.state).free<self.cfg['min_free_bytes']+(len(active)+1)*self.cfg['max_work_bytes']:return None
                 if tree_size(self.state/'reports')+2*(len(active)+1)*self.cfg['max_report_bytes']>self.cfg['max_report_total_bytes']:return None
                 c.execute("UPDATE jobs SET status='running',updated=?,progress=5 WHERE id=?",(time.time(),row['id']))

@@ -60,7 +60,7 @@ class StructureOptionsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);ref={key:str(root/key) for key in ['fasta','annotation','chrom_sizes','bowtie2_index','bwa_mem2_index']};ref.update(assembly='dm6',primary_chromosomes=['chr2L'])
             for layout in [{'mode':'auto'},CUSTOM]:
-                options=Options(**BASE,library_structure=layout)
+                options=Options(**BASE,library_structure=layout).check_catalog(PUBLIC)
                 saved=Options.model_validate_json(options.model_dump_json())
                 config,_=job_config(saved,{'references':{'dm6':ref}},root,2)
                 self.assertEqual(config['samples']['umi_test']['library_structure'],normalize_structure(layout))

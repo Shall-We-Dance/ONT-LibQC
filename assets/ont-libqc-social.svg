@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600" role="img" aria-labelledby="title description">
+  <title id="title">ONT-LibQC</title>
+  <desc id="description">The blue ONT-LibQC logo, centered on a light background.</desc>
+  <!-- Source for portal/static/social-card-v2.png. Keep the mark inside the center two thirds for compact previews. -->
+  <rect width="600" height="600" fill="#f5f8fc"/>
+  <g transform="translate(100 100) scale(10)">
+    <rect width="40" height="40" rx="10" fill="#2b5689"/>
+    <path d="M10 12h12m-5 8h13M10 28h14" stroke="#d9eaff" stroke-width="4" stroke-linecap="round"/>
+    <g fill="#fff">
+      <circle cx="29" cy="12" r="2"/>
+      <circle cx="10" cy="20" r="2"/>
+      <circle cx="30" cy="28" r="2"/>
+    </g>
+  </g>
+</svg>

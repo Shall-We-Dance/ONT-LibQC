@@ -11,6 +11,8 @@ references:
     fasta: /path/to/hg38.fa
     chrom_sizes: /path/to/hg38.chrom.sizes
     annotation: /path/to/hg38.ncbiRefSeq.gtf
+    # RNA-seq / CLIP beta: administrator-prepared STARlong sparse index (docs/RNA_BETA.md).
+    # star_index: /path/to/star-sparse4/hg38
     bowtie2_index: /path/to/bowtie2/hg38/index_prefix
     bwa_mem2_index: /path/to/bwa-mem2/hg38/reference.fa
     # Optional host+Mollicutes competitive Bowtie2 index for this assembly:
@@ -54,6 +56,11 @@ alignment:
 # mode: auto selects reference_point for 1-bp intervals, otherwise region (scaled).
 # The report retains the BED basename; optional bed_name overrides its display name.
 samples:
+  # RNA beta example; requires references.hg38.star_index and STARlong on PATH:
+  # rna_sample:
+  #   fastq: [/path/to/rna_sample.fastq.gz]
+  #   type: rnaseq  # use clip for CLIP-like exploratory sequence preferences
+  #   reference: hg38
   inputA:
     fastq:
       - /path/to/inputA.fastq.gz
@@ -120,6 +127,8 @@ qc_reference_ranges:
   mean_read_q: null  # All-base error-probability Q; calibrate for this ONT chemistry/basecaller.
   complete_read_rate: {min: 0.50, max: 1.00, warning_min: 0.30, type: percent}
   adapter_dimer_rate: {min: 0.00, max: 0.05, warning_max: 0.10, type: percent}
+  # For RNA/CLIP, omit the following three DNA reference ranges or set them to null.
+  # RNA composition and shallow depth do not have universal pass/fail thresholds.
   primary_mapping_rate: {min: 0.50, max: 1.00, warning_min: 0.30, type: percent}
   usable_fragment_rate: {min: 0.30, max: 1.00, warning_min: 0.15, type: percent}
   mitochondrial_fraction: {min: 0.00, max: 0.20, warning_max: 0.40, type: percent}
@@ -130,6 +139,7 @@ qc_reference_ranges:
   # long_range_cis_fraction: {min: 0.10, warning_min: 0.05, type: percent}
 
 # tools:
+#   starlong: STARlong  # 2.7.11b; required for RNA/CLIP beta
 #   python: python3
 #   bowtie2: bowtie2
 #   bwa_mem2: bwa-mem2

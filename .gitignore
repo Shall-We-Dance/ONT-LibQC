@@ -100,3 +100,6 @@ release-manifest.json
 !/portal/example_inputs/HL240.fastq.gz
 
 /test-results/
+
+# Public reference panel; provenance and checksums are versioned beside it.
+!/workflow/resources/rna_sources/panel.fa

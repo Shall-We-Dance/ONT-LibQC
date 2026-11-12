@@ -20,11 +20,17 @@ def _positive(value):
     return value is True or str(value).lower() in {'1', 'true'}
 
 
-def library_structure_html(metric, adapter_summary=None, unit_rows=None, *, adapter_templates):
+def library_structure_html(metric, adapter_summary=None, unit_rows=None, *, adapter_templates, rna_summary=None):
     summary = adapter_summary or {}
     structure = normalize_structure(metric.get('library_structure') or summary.get('library_structure'))
     adapter_templates = adapter_families(structure, adapter_templates)
     lengths = umi_lengths(structure)
+    rna = rna_summary or {}
+    preparation = rna.get('preparation') or {}
+    grip = preparation.get('auto_grip') or {}
+    grip_scopes = grip.get('scope_evidence') or {}
+    show_grip = (preparation.get('mode') == 'auto_grip' and not grip.get('bypass_reason') and not lengths
+                 and (metric.get('assay') == 'clip' or any(x.get('supported') for x in grip_scopes.values())))
     p5, p7 = handles(structure)
     rows = list(unit_rows) if unit_rows is not None else None
     pairing = metric.get('index_pairing') or summary.get('index_pairing', {})
@@ -66,6 +72,12 @@ def library_structure_html(metric, adapter_summary=None, unit_rows=None, *, adap
 
     def diagram(scope_rows, pair=None, scope_name='Total library'):
         records = []
+        scope_id = (pair or {}).get('scope_id') or 'total'
+        rna_metrics = (rna.get('scopes') or {}).get(scope_id, {})
+        umi_recovered = (rna_metrics.get('umi') or {}).get('auto_grip_p7_complete_units', 0)
+        supported = (any(x.get('supported') for x in grip_scopes.values()) if scope_id == 'total'
+                     else bool(grip_scopes.get(scope_id, {}).get('supported')))
+        grip_observed = supported and umi_recovered > 0
         if scope_rows is not None:
             families = Counter(row.get('family') for row in scope_rows if row.get('family') in adapter_templates)
         elif pair is None:
@@ -113,7 +125,7 @@ def library_structure_html(metric, adapter_summary=None, unit_rows=None, *, adap
             return compact(' / '.join(dict.fromkeys(label for label, motif in motifs)))
         blocks = [('P5', 'handle', handle_content('P5', p5)), ('i5', 'index', index_content('i5', pair)),
                   ('Adapter', 'adapter', "<small>i5 side</small>" + adapter_content(0)),
-                  ('Insert', 'insert', "<small>Sample DNA</small>"),
+                  ('Insert', 'insert', "<small>RNA-derived DNA</small>" if metric.get('assay') in {'rnaseq', 'clip'} else "<small>Sample DNA</small>"),
                   ('Adapter', 'adapter', "<small>i7 side</small>" + adapter_content(1)),
                   ('i7', 'index', index_content('i7', pair)), ('P7', 'handle', handle_content('P7', p7))]
         parts = ["<span class='library-end' style='grid-column:1'>5′</span>"]
@@ -121,20 +133,35 @@ def library_structure_html(metric, adapter_summary=None, unit_rows=None, *, adap
         for i, (label, kind, content) in enumerate(blocks):
             parts.append(f"<span class='library-block {kind}' style='grid-column:{2 + 2 * i}'><strong>{label}</strong>{content}</span>")
             if i < len(POSITIONS):
-                if POSITIONS[i] in lengths:
+                if show_grip and POSITIONS[i] == 'after_insert':
+                    state = 'detected' if grip_observed else 'expected'
+                    parts.append(f"<span class='library-block umi grip-umi {state}' data-position='after_insert' data-evidence='{state}' style='grid-column:9'><strong>UMI · N10</strong><small>10 nt · P7 side</small><small>{'Detected' if grip_observed else 'Expected'}</small></span>")
+                    records.append(('GRIP UMI', 'P7 N10', f'Recovered · {umi_recovered:,} units' if grip_observed else 'Protocol model · not confirmed', 'N' * 10))
+                elif show_grip and POSITIONS[i] == 'before_insert':
+                    parts.append("<span class='library-block grip-tag' data-position='before_insert' style='grid-column:7' title='GRIP protocol model: P5 random tag plus fixed barcode; not a second validated UMI'><strong>P5 tag</strong><small>N5 + barcode</small><small>7 nt fixed</small></span>")
+                elif POSITIONS[i] in lengths:
                     number += 1
                     parts.append(f"<span class='library-block umi' data-position='{POSITIONS[i]}' style='grid-column:{3 + 2 * i}'><strong>UMI {number}</strong><small>{lengths[POSITIONS[i]]} bp</small></span>")
                 else:
                     parts.append(f"<span class='library-connector' aria-hidden='true' style='grid-column:{3 + 2 * i}'>—</span>")
         parts.append("<span class='library-end' style='grid-column:15'>3′</span>")
-        start, end = (7 if 'before_insert' in lengths else 8), (10 if 'after_insert' in lengths else 9)
-        first = 'the i5-side UMI' if 'before_insert' in lengths else 'the left end of the insert'
-        second = 'the i7-side UMI' if 'after_insert' in lengths else 'the right end of the insert on the opposite strand'
+        start, end = (7 if show_grip or 'before_insert' in lengths else 8), (10 if show_grip or 'after_insert' in lengths else 9)
+        first = 'the P5 random tag' if show_grip else 'the i5-side UMI' if 'before_insert' in lengths else 'the left end of the insert'
+        second = 'the i7-side UMI' if show_grip or 'after_insert' in lengths else 'the right end of the insert on the opposite strand'
         parts.append(f"<div class='library-read-directions' role='group' aria-label='NGS read starts and directions' style='grid-column:{start}/{end}'>"
                      f"<span class='library-read forward' title='Read 1 starts at {first}'>R1<i aria-hidden='true'></i></span>"
                      f"<span class='library-read reverse' title='Read 2 starts at {second}'>R2<i aria-hidden='true'></i></span></div>")
         sequence_groups.append(((pair or {}).get('scope_id') or 'total', scope_name, records))
-        return "<div class='library-diagram-scroll' tabindex='0' aria-label='Library sequences; scroll horizontally to view the full diagram'><div class='library-diagram'>" + ''.join(parts) + "</div></div>"
+        grip_note = ''
+        if show_grip:
+            if grip_observed:
+                total = rna_metrics.get('units', 0)
+                fraction = f' ({umi_recovered / total:.1%})' if total else ''
+                evidence = f'{umi_recovered:,} / {total:,} recovered units{fraction}'
+            else:
+                evidence = 'expected position; not confirmed in this ' + ('sample' if scope_id == 'total' else 'sublibrary')
+            grip_note = f"<p class='library-grip-note' data-scope='{_escape(scope_id)}'><strong>GRIP UMI · P7 N10</strong> — {evidence}. P5 N5 is a random tag.</p>"
+        return "<div class='library-diagram-scroll' tabindex='0' aria-label='Library sequences; scroll horizontally to view the full diagram'><div class='library-diagram'>" + ''.join(parts) + "</div></div>" + grip_note
 
     mode = 'Auto detection' if structure['mode'] == 'auto' else 'Customized'
     sections = ["<details class='metric-group library-structure-report' open><summary>Library structure "

@@ -1,5 +1,28 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ONT-LibQC · Library analysis</title><meta name="description" content="Upload ONT FASTQ files, configure your chromatin or Micro-C analysis, and receive a private interactive QC report."><meta name="theme-color" content="#2b5689"><link rel="icon" href="/favicon.ico?v=5" sizes="any"><link rel="icon" href="/static/favicon-32.png?v=5" type="image/png" sizes="32x32"><link rel="icon" href="/static/mark.svg?v=5" type="image/svg+xml" sizes="any"><link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v=5" sizes="180x180"><link rel="stylesheet" href="/static/style.css?v=41"><script src="/static/library-structure.js?v=7" defer></script><script src="/static/app.js?v=37" defer></script></head>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ONT-LibQC - Library QC from ONT reads</title>
+<meta name="description" content="Chromatin, Micro-C and RNA/CLIP beta QC from ONT library reads.">
+<link rel="canonical" href="https://ontlibqc.org/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ontlibqc.org">
+<meta property="og:locale" content="en_US">
+<meta property="og:url" content="https://ontlibqc.org/">
+<meta property="og:title" content="ONT-LibQC">
+<meta property="og:description" content="Chromatin, Micro-C and RNA/CLIP beta QC from ONT library reads.">
+<meta property="og:image" content="https://ontlibqc.org/static/social-card-v2.png">
+<meta property="og:image:secure_url" content="https://ontlibqc.org/static/social-card-v2.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="600">
+<meta property="og:image:height" content="600">
+<meta property="og:image:alt" content="ONT-LibQC logo">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="ONT-LibQC">
+<meta name="twitter:description" content="Chromatin, Micro-C and RNA/CLIP beta QC from ONT library reads.">
+<meta name="twitter:image" content="https://ontlibqc.org/static/social-card-v2.png">
+<meta name="twitter:image:alt" content="ONT-LibQC logo">
+<meta name="theme-color" content="#2b5689"><link rel="icon" href="/favicon.ico?v=5" sizes="any"><link rel="icon" href="/static/favicon-32.png?v=5" type="image/png" sizes="32x32"><link rel="icon" href="/static/mark.svg?v=5" type="image/svg+xml" sizes="any"><link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v=5" sizes="180x180"><link rel="stylesheet" href="/static/style.css?v=45"><script src="/static/library-structure.js?v=7" defer></script><script src="/static/app.js?v=41" defer></script></head>
 <body>
 <header class="topbar"><a class="brand" href="/"><img src="/static/mark.svg" width="34" height="34" alt=""><span>ONT<span class="brand-light">-LibQC</span></span></a><nav aria-label="Main navigation"><a href="/" id="new-nav" aria-current="page">New analysis</a><a href="/example/index.html">Example reports</a><a href="/help">Help</a><a href="https://github.com/Shall-We-Dance/ONT-LibQC" target="_blank" rel="noopener noreferrer" aria-label="GitHub repository (opens in a new tab)">GitHub <span aria-hidden="true">↗</span></a></nav><a class="lab-button" href="https://jongminkimlab.org/" target="_blank" rel="noopener noreferrer" aria-label="Jongmin Kim Lab (opens in a new tab)"><span class="lab-name-long">Jongmin Kim Lab</span><span class="lab-name-short" aria-hidden="true">Kim Lab</span><span aria-hidden="true">↗</span></a></header>
 <main>
@@ -11,7 +34,7 @@
 <p class="field-note"><span id="large-file-note">Run larger files locally.</span> <a id="pipeline-link" href="https://github.com/Shall-We-Dance/ONT-LibQC" target="_blank" rel="noopener noreferrer">Download pipeline from GitHub ↗</a></p>
 <p id="example-status" class="field-note example-status" role="status" aria-live="polite"></p>
 <div id="upload-error" class="error upload-errors" role="alert" hidden></div>
-<div id="file-list" class="file-list"></div><p id="empty-hint" class="muted">Each file runs as a separate analysis, with its own settings and private report.</p>
+<div id="file-list" class="file-list"></div>
 </section>
 <section class="panel"><div class="section-heading"><span class="step">02</span><h2>Contact & delivery</h2></div><label for="email">Email address (optional)</label><input id="email" name="email" type="email" autocomplete="email" maxlength="254" placeholder="you@institute.edu" aria-describedby="email-note"><p id="email-note" class="field-note">Receive one summary when all files finish, or leave blank and use your private task links.</p>
 <div id="code-field" hidden><label for="submission-code">Submission code</label><input id="submission-code" type="password" autocomplete="off" maxlength="128"><p class="field-note">Use the code provided by the service operator.</p></div>
@@ -24,7 +47,13 @@
 <div id="form-error" role="alert" class="error" hidden></div>
 </section>
 </form>
-<aside class="side-column"><section class="info-panel"><h2>Inside your report</h2><ul class="deliverables"><li><span>01</span><div><strong>Library structure</strong><p>Adapter completeness, insert sizes and i5/i7 pairs.</p></div></li><li><span>02</span><div><strong>Assay-specific QC</strong><p>Chromatin coverage or Micro-C contacts, ligation and MNase profiles.</p></div></li><li><span>03</span><div><strong>Portable results</strong><p>Interactive reports, figures and data tables in one download.</p></div></li></ul><a class="text-link" href="/example/index.html">Example reports</a></section>
+<aside class="side-column"><section class="info-panel"><h2>Inside your report</h2><ul class="deliverables"><li><span>01</span><div><strong>Library structure</strong><p>Adapter completeness, insert sizes and i5/i7 pairs.</p></div></li><li><span>02</span><div><strong>Assay-specific QC</strong><p>Chromatin coverage; Micro-C contacts and ligation; RNA-seq and CLIP-seq QC (Beta).</p></div></li><li><span>03</span><div><strong>Portable results</strong><p>Interactive reports, figures and tables in one download.</p></div></li></ul><a class="text-link" href="/example/index.html">Example reports</a></section>
+<section class="preprint-panel" aria-labelledby="preprint-title">
+<p class="preprint-label">bioRxiv preprint</p>
+<h2 id="preprint-title">ONT-LibQC: rapid quality control of chromatin assay libraries using shallow nanopore sequencing</h2>
+<p class="preprint-authors">Hongjiang Liu &amp; Jongmin J. Kim</p>
+<div class="preprint-links"><a class="preprint-read" href="https://doi.org/10.64898/2026.10.19.760194" target="_blank" rel="noopener noreferrer" aria-label="Read the preprint on bioRxiv (opens in a new tab)">Read on bioRxiv <span aria-hidden="true">↗</span></a><a class="preprint-cite" href="/help#cite">Citation</a></div>
+</section>
 <section class="privacy-panel"><h3>Access & retention</h3><p>Reports require your private task link. Uploaded reads and calculation files are removed after processing. Reports are kept for <strong id="retention">7 days</strong>, then deleted automatically.</p><p id="privacy-delivery-note" class="field-note">Save your private task links before leaving.</p></section></aside></div>
 </section>
 <section id="tasks-view" hidden>

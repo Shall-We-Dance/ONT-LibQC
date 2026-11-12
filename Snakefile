@@ -10,6 +10,7 @@ include: "workflow/rules/mycoplasma.smk"
 include: "workflow/rules/ligation.smk"
 include: "workflow/rules/pairtools.smk"
 include: "workflow/rules/metrics.smk"
+include: "workflow/rules/rna.smk"
 include: "workflow/rules/tracks.smk"
 include: "workflow/rules/reports.smk"
 

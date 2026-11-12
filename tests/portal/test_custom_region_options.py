@@ -55,7 +55,7 @@ class CustomRegionOptionsTests(unittest.TestCase):
             ref.update(assembly='dm6', primary_chromosomes=['chr2L'])
             for mode in ('auto', 'reference_point', 'region'):
                 with self.subTest(mode=mode):
-                    options = Options(**BASE, regions_mode=mode, regions_assembly='dm6')
+                    options = Options(**BASE, regions_mode=mode, regions_assembly='dm6').check_catalog(PUBLIC)
                     options = Options.model_validate_json(options.model_dump_json())
                     config, _ = job_config(options, {'references': {'dm6': ref}}, root, 2)
                     self.assertEqual(config['samples']['metaplot_test']['custom_regions'],

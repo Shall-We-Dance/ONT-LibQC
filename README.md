@@ -6,7 +6,9 @@
 
 [Web server](https://ontlibqc.org) · [Example reports](https://ontlibqc.org/example/index.html) · [Run locally](#run-your-data) · [Self-hosting](portal/README.md) · [Citation](#citation)
 
-ONT-LibQC checks completed **Chromatin and Micro-C libraries** using shallow ONT sequencing. It reconstructs adapter-bounded library units, resolves physical i5/i7 index pairs, and reports library size, mapping and assay-specific metrics. Run it in the browser or locally with Snakemake.
+ONT-LibQC checks completed **Chromatin and Micro-C libraries**, with **RNA-seq and CLIP-seq support in beta**, using shallow ONT sequencing. It reconstructs adapter-bounded library units, resolves physical i5/i7 index pairs, and reports library size, mapping and assay-specific metrics. Run it in the browser or locally with Snakemake.
+
+[RNA/CLIP beta](docs/RNA_BETA.md) adds splice-aware STARlong alignment, RNA-family and transcript-region composition, physical strandedness, splice evidence, transcript coverage and observed-gene detection curves. CLIP reports include HOMER motif discovery. Library characteristics are inferred from observed evidence with explicit depth and annotation limits; no additional protocol questionnaire is required. Local RNA runs require STARlong and a prepared sparse index, as described in the guide.
 
 ## Try it online
 
@@ -38,7 +40,7 @@ The default target is `all`. Start with [config.example.yaml](config.example.yam
 | Setting | What to provide |
 | --- | --- |
 | `samples.<name>.fastq` | One FASTQ path or a list; plain text or gzip |
-| `samples.<name>.type` | `chromatin` or `microc` |
+| `samples.<name>.type` | `chromatin`, `microc`, or beta `rnaseq` / `clip` |
 | `references` | FASTA, chromosome sizes, GTF, mapper indexes and primary chromosome names |
 | `samples.<name>.library_structure` | Optional custom adapters and fixed-length UMIs; [structure guide](portal/README.md#library-structure-and-fixed-length-umis) |
 | `samples.<name>.custom_regions` | Optional BED, assembly, label and plot mode: `auto`, `reference_point` or `region` |
@@ -76,7 +78,7 @@ Chromatin reports accept additional BED files in the browser. Choose a plot mode
 
 Pairtools analyzes overlapping insert ends of at most 150 bp using fastp and the configured BWA aligner. It complements the native contact and full-insert analyses. All parsed pairs, including DD, WW and Other, remain in the denominator; fastp exclusions are listed separately.
 
-DD marks coordinate duplicates at the observed depth. It does **not** estimate PCR duplication or library complexity. Counts, fractions, settings and per-unit pair types are in `report/data/pairtools/`. See the [Pairtools category definitions](https://pairtools.readthedocs.io/en/latest/parsing.html). Promoter/gene/distal pies are shown only for Chromatin libraries.
+DD marks coordinate duplicates at the observed depth. It does **not** estimate PCR duplication or library complexity. Counts, fractions, settings and per-unit pair types are in `report/data/pairtools/`. See the [Pairtools category definitions](https://pairtools.readthedocs.io/en/latest/parsing.html). Promoter/gene-body/distal percentage bars are shown only for Chromatin libraries.
 
 ### Working files
 

@@ -1,7 +1,8 @@
 """Operator-owned reference catalog and read-only container mounts."""
 import copy, json, re, struct
 from pathlib import Path
-from .mappers import resolve_mapper, microc_bwa_mapper, microc_default
+from .mappers import RNA_ASSAYS, resolve_mapper, microc_bwa_mapper, microc_default
+from .star_resources import star_ready, star_memory_bytes
 
 BT2_PARTS=('1','2','3','4','rev.1','rev.2')
 def bt2_ready(prefix):
@@ -40,6 +41,7 @@ def public_catalog(catalog):
         if bt2_ready(r.get('bowtie2_index')): mappers.append('bowtie2')
         if bwa_ready(r.get('bwa_mem2_index')): mappers.append('bwa-mem2')
         if bwa_mem_ready(r.get('bwa_index')): mappers.append('bwa-mem')
+        if star_ready(r.get('star_index')): mappers.append('starlong')
         mappers=[m for m in mappers if m not in r.get('disabled_mappers',[])]
         spike=r.get('spike_in',{})
         if spike.get('mode')=='auto':
@@ -48,8 +50,12 @@ def public_catalog(catalog):
             h=db.get('host_indexes',{}).get(key,{})
             spike_ready=bt2_ready(h.get('index')) and Path(h.get('contigs','/missing')).is_file()
         else: spike_ready=bt2_ready(spike.get('combined_bowtie2_index'))
+        base_ready=all(Path(r.get(k,'/missing')).is_file() for k in ('fasta','chrom_sizes','annotation'))
+        dna_ready=base_ready and 'bowtie2' in mappers and any(m in mappers for m in ('bwa-mem2','bwa-mem'))
+        rna_ready=base_ready and 'starlong' in mappers
         result.append({'id':key,'label':r.get('label',key),'assembly':r.get('assembly',key),
-            'ready':all(Path(r.get(k,'/missing')).is_file() for k in ('fasta','chrom_sizes','annotation')) and 'bowtie2' in mappers and any(m in mappers for m in ('bwa-mem2','bwa-mem')),
+            'ready':dna_ready,'rna_ready':rna_ready,
+            'assays':(['chromatin','microc'] if dna_ready else [])+(['rnaseq','clip'] if rna_ready else []),
             'microc_mapper':microc_default(dict(r,mappers=mappers)),
             'availability_note':r.get('availability_note',''),
             'mappers':mappers,'mycoplasma':bt2_ready(r.get('mycoplasma_index')),'spike_in':spike_ready,
@@ -82,6 +88,9 @@ def job_config(options,catalog,jobdir,cores):
     mapper=resolve_mapper(options.mapper,options.assay,ref)
     reference['microc_mapper']=microc_bwa_mapper(mapper,ref)
     reference.update(assembly=ref.get('assembly',options.reference),primary_chromosomes=options.primary_chromosomes or ref['primary_chromosomes'])
+    if mapper=='starlong':
+        reference['star_index']=mounts.path(ref['star_index'])
+        reference['star_alignment_memory_bytes']=star_memory_bytes(ref)
     if options.mapper=='minimap2': reference['minimap2_index']=mounts.path(ref['minimap2_index'])
     if options.mycoplasma: reference['mycoplasma_index']=mounts.path(ref['mycoplasma_index'],prefix=True)
     spike={'enabled':options.spike_in,'minimum_screened_reads':options.screen_minimum_reads,
@@ -100,6 +109,9 @@ def job_config(options,catalog,jobdir,cores):
     sample['mapper']=mapper
     if options.custom_regions:sample['custom_regions']={'bed':'/job/regions.bed','assembly':reference['assembly'],'label':options.regions_label,'mode':options.regions_mode,**({'bed_name':options.regions_filename} if options.regions_filename else {})}
     ranges=copy.deepcopy(RANGES)
+    if options.assay in RNA_ASSAYS:
+        for key in ('primary_mapping_rate','usable_fragment_rate','mitochondrial_fraction'):
+            ranges[key]=None
     for k,v in options.qc_reference_ranges.items():
         ranges[k]=None if v is None else dict(v,**({'type':'percent'} if k not in {'raw_reads','mean_read_q'} else {}))
     params={k:v[1] for k,v in PARAMS.items()} | options.params

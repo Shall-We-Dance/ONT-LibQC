@@ -175,12 +175,20 @@ def build(work, report, config_path):
                       work / 'qc/mycoplasma' / f'{sample}.json',
                       work / 'qc/spike_in' / f'{sample}.json']
             for category, pattern in [('gene_profile', f'{sample}*.profile.tsv'),
+                                      ('rna_alignment', f'{sample}.json'),
+                                      ('rna_preparation', f'{sample}.json'),
+                                      ('rna_preparation', f'{sample}.units.tsv.gz'),
+                                      ('rna_sources', f'{sample}.json'),
+                                      ('rna_sources', f'{sample}.units.tsv.gz'),
                                       ('custom_regions', f'{sample}.json'),
                                       ('ligation', f'{sample}.json'),
                                       ('pairtools', f'{sample}.json'),
                                       ('pairtools', f'{sample}.summary.tsv'),
                                       ('pairtools', f'{sample}.units.tsv.gz')]:
                 queue.extend((work / 'qc' / category).glob(pattern))
+            rna_dir = work / 'qc/rna' / sample
+            if rna_dir.is_dir():
+                queue.extend(p for p in rna_dir.rglob('*') if p.is_file() and p.name != '.snakemake_timestamp')
             snapshot = work / 'qc/spike_in/database_manifests' / f'{sample}.json'
             if snapshot.is_file(): queue.append(snapshot)
         done = set()

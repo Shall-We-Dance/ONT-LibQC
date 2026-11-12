@@ -282,9 +282,9 @@ def create_app(settings=None):
     @api.get('/favicon.ico',include_in_schema=False)
     async def favicon():return FileResponse(s.static/'favicon.ico',media_type='image/vnd.microsoft.icon')
 
-    @api.get('/static/{file}')
+    @api.api_route('/static/{file}',methods=['GET','HEAD'])
     async def static(file:str):
-        if file not in {'app.js','library-structure.js','cite.js','ont-libqc.bib','style.css','mark.svg','favicon-32.png','apple-touch-icon.png','brand-logo.png','mail-logo.png','mail-logo.svg'}: raise HTTPException(404)
+        if file not in {'app.js','rna-consistency.js','library-structure.js','cite.js','ont-libqc.bib','style.css','mark.svg','favicon-32.png','apple-touch-icon.png','brand-logo.png','mail-logo.png','mail-logo.svg','social-card-v1.png','social-card-v2.png'}: raise HTTPException(404)
         if file=='ont-libqc.bib':
             return FileResponse(s.static/file,media_type='application/x-bibtex',filename='ont-libqc-biorxiv.bib')
         return FileResponse(s.static/file)
