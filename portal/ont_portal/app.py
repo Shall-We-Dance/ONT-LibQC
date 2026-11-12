@@ -71,6 +71,7 @@ def create_app(settings=None):
             'download_url':f"/reports/{row['id']}/report.zip{query}" if available else None,
             'report_access_expires':access_expires,
             'private_link':job_link(s.secret,row),
+            'stage':row.get('stage') if row['status']=='running' else None,
         }
 
     @api.get('/healthz')

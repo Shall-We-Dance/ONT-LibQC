@@ -49,6 +49,12 @@ with tempfile.TemporaryDirectory() as tmp:
        else:raise AssertionError('Private page did not load')
        assert page.url==origin+path
        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+       if path.startswith('/j/'):
+        store.update('1'*32,stage='Plotting sublibrary gene coverage (2 of 6 complete)')
+        page.evaluate('refreshTask(tasks[0])')
+        page.get_by_text('Plotting sublibrary gene coverage (2 of 6 complete)',exact=True).wait_for()
+        assert page.locator('.cancel-analysis').evaluate("el => getComputedStyle(el).backgroundColor")=='rgb(255, 241, 240)'
+        page.screenshot(path=str(OUTPUT/f'{engine}-{width}-progress.png'))
       assert not context.cookies();assert not errors,errors
       for key in [*keys.values(),link_key(cfg.secret,'batch',batch)]:assert all(key not in url for url in urls)
       results.append({'browser':engine,'width':width,'counts_only':True,'short_and_legacy_links':True,'keys_absent_from_http_urls':True})

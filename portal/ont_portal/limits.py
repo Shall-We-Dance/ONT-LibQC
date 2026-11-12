@@ -39,7 +39,7 @@ DEFAULTS = {
     'memory': '8g',
     'max_memory': '20g',
     'min_free_memory_bytes': 2 * 1024**3,
-    'timeout_seconds': 3600,
+    'timeout_seconds': 7200,
     'max_work_bytes': 4 * 1024**3,
     'max_file_bytes': 1024**3,
     'tmp_bytes': 512 * 1024**2,

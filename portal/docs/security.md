@@ -56,7 +56,7 @@ Both services load operator settings from one private `runtime/limits.yaml`. New
 | Web service | 0.5 CPU / 256 MiB RAM |
 | Public edge | 0.25 CPU / 64 MiB RAM; at least 1,024 connections including upstream connections |
 | Dispatcher service | 0.5 CPU / 512 MiB RAM |
-| Runtime per job | 1 hour |
+| Runtime per job | 2 hours |
 | Work files per job | 4 GiB monitored total / 1 GiB hard per-file limit |
 | Job temporary filesystem | 512 MiB |
 | Pending or running tasks | 32 globally; 16 per client address and, when provided, per email |

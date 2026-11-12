@@ -11,6 +11,7 @@ from ont_portal.settings import Settings
 from ont_portal.store import Store, token_for
 from ont_portal.short_links import job_link, batch_link, key_hash
 from ont_portal.mail_template import build_message
+from ont_portal.limits import DEFAULTS
 
 CATALOG={'references':[{'id':'test','ready':True,'mappers':['bowtie2'],'mycoplasma':False,'spike_in':False}]}
 PAYLOAD={'filename':'private_sample.fastq','size':20,'consent':True,'data_policy_acknowledged':True,
@@ -116,6 +117,7 @@ class StatusLinksTests(unittest.TestCase):
         self.assertEqual(self.client.post('/api/links/resolve',json={'key':'x'*22},headers={'Origin':'https://other.example'}).status_code,403)
 
     def test_retention_defaults_to_thirty_days(self):
+        self.assertEqual(DEFAULTS['timeout_seconds'],7200)
         before=time.time();job=self.create()[0];row=self.store.get(job['id'])
         self.assertEqual(self.client.get('/api/catalog').json()['retention_days'],30)
         self.assertGreaterEqual(row['expires'],before+30*86400)

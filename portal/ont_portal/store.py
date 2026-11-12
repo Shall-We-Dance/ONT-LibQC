@@ -54,7 +54,7 @@ class Store:
                 c.execute('ALTER TABLE jobs ADD COLUMN batch_id TEXT')
             c.execute('CREATE INDEX IF NOT EXISTS jobs_batch ON jobs(batch_id)')
             columns = {r['name'] for r in c.execute('PRAGMA table_info(jobs)')}
-            for name in ('short_link_hash', 'outcome'):
+            for name in ('short_link_hash', 'outcome', 'stage'):
                 if name not in columns: c.execute('ALTER TABLE jobs ADD COLUMN ' + name + ' TEXT')
             c.execute('CREATE UNIQUE INDEX IF NOT EXISTS jobs_short_link ON jobs(short_link_hash)')
             c.execute('CREATE TABLE IF NOT EXISTS batch_links (batch_id TEXT PRIMARY KEY, key_hash TEXT UNIQUE NOT NULL)')
@@ -85,7 +85,7 @@ class Store:
             return dict(row) if row else None
 
     def update(self,job_id,**fields):
-        allowed={'status','updated','error','progress','received_bytes','mail_status','mail_attempts','mail_updated','bed_ready','expires','email','options','client','filename','expected_bytes'}
+        allowed={'status','updated','error','progress','stage','received_bytes','mail_status','mail_attempts','mail_updated','bed_ready','expires','email','options','client','filename','expected_bytes'}
         if not fields.keys() <= allowed: raise ValueError('Invalid database column')
         fields['updated']=time.time()
         with self.connect() as c:

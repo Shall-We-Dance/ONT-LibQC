@@ -13,6 +13,7 @@ from .store import Store, ACTIVE, TERMINAL, token_for
 from .catalog import job_config, public_catalog
 from .mappers import BWA_INDEX_KEYS, resolve_mapper, microc_bwa_mapper
 from .star_resources import star_memory_bytes
+from .progress import analysis_stage
 
 LOG=logging.getLogger('ont-worker')
 STOP=False
@@ -220,7 +221,7 @@ class Worker:
             elif status in TERMINAL and row['expires']<=now:
                 self.cleanup(jid);remove_tree(self.state/'reports'/jid)
                 (self.state/'logs'/(jid+'.log')).unlink(missing_ok=True)
-                self.store.update(jid,status='expired',email='',options='{}',client='',filename='',expected_bytes=0,received_bytes=0,error=None,mail_status='expired')
+                self.store.update(jid,status='expired',email='',options='{}',client='',filename='',expected_bytes=0,received_bytes=0,error=None,mail_status='expired',stage=None)
             elif status in {'succeeded','failed','cancelled'}:self.cleanup(jid)
 
     def recover(self):
@@ -234,6 +235,7 @@ class Worker:
     def process(self,row):
         jid=row['id']; work=self.state/'work'/jid; start=time.monotonic();proc=None
         try:
+            self.store.update(jid,stage='Validating input reads')
             options=Options.model_validate_json(row['options']).check_catalog(self.public)
             if not valid_id(jid) or not 0<row['expected_bytes']<=self.cfg['max_upload_bytes']:raise ValueError('Invalid task envelope')
             budget=self.memory_for(options)
@@ -273,7 +275,9 @@ class Worker:
                     with logfile.open('rb') as progress_log:
                         progress_log.seek(max(0,logfile.stat().st_size-32768));tail=progress_log.read().decode('utf8','replace')
                     matches=re.findall(r'(\d+) of (\d+) steps \((\d+)%\)',tail)
-                    if matches:self.store.update(jid,progress=min(95,max(5,int(matches[-1][2]))))
+                    fields={'stage':analysis_stage(work,tail)}
+                    if matches:fields['progress']=min(95,max(5,int(matches[-1][2])))
+                    self.store.update(jid,**fields)
                     time.sleep(3)
             result_file=work/'result.json'
             if result_file.is_symlink() or not result_file.is_file() or result_file.stat().st_size>16384:raise ValueError('Missing bounded job result')
@@ -285,6 +289,7 @@ class Worker:
             if latest['status']=='cancelling':self.store.update(jid,status='cancelled');return
             if tree_size(self.state/'reports')+2*tree_size(work/'report')>self.cfg['max_report_total_bytes']:
                 raise TimeoutError('Report storage is full. Please retry later.')
+            self.store.update(jid,stage='Publishing the report',progress=98)
             publish_report(work/'report',self.state/'reports'/jid,self.cfg['max_report_bytes'],self.cfg['max_html_bytes'])
             self.store.update(jid,status='succeeded',progress=100,error=None,expires=time.time()+self.cfg.get('retention_days',DEFAULTS['retention_days'])*86400)
         except (TimeoutError,ValueError) as exc:

@@ -413,7 +413,7 @@ function taskProgress(task) {
   const percent = Math.round(Math.min(100, Math.max(0, (task.uploading ? task.uploadProgress * 100 : job.progress) || 0)));
   const message = state === 'deleting' ? 'Deletion requested. Report access has been removed.'
     : state === 'queued' ? (job.queue_ahead ? job.queue_ahead + (job.queue_ahead === 1 ? ' analysis ahead' : ' analyses ahead') : 'Waiting to start')
-    : state === 'running' ? 'Processing reads and preparing the report'
+    : state === 'running' ? (job.stage || 'Starting analysis')
     : labels[state] || state;
   return { percent, message, state };
 }
@@ -450,7 +450,7 @@ function taskView(task) {
     card.append(node('p', { class: 'field-note task-expiry' }, 'Available until ', node('time', { datetime: expires.toISOString() }, expires.toLocaleString())));
   }
   actions.append(node('button', { type: 'button', class: 'secondary task-utility copy-private-link', onclick: async event => { try { await navigator.clipboard.writeText(privateLink(task)); event.target.textContent = 'Link copied'; } catch { saveText('ont-libqc-private-link.txt', privateLink(task)); } } }, 'Copy private link'));
-  if (['created', 'uploaded', 'queued', 'running'].includes(job.status) && !task.uploading) actions.append(node('button', { type: 'button', class: 'secondary task-utility', onclick: async () => { try { await api('/api/jobs/' + task.id + '/cancel', 'POST', {}, task.token); await refreshTask(task); } catch (e) { task.failure = e.message; renderTasks(); } } }, 'Cancel analysis'));
+  if (['created', 'uploaded', 'queued', 'running'].includes(job.status) && !task.uploading) actions.append(node('button', { type: 'button', class: 'secondary task-utility cancel-analysis', onclick: async () => { try { await api('/api/jobs/' + task.id + '/cancel', 'POST', {}, task.token); await refreshTask(task); } catch (e) { task.failure = e.message; renderTasks(); } } }, 'Cancel analysis'));
   if (['succeeded', 'failed', 'cancelled'].includes(job.status)) {
     const warning = node('p', { class: 'deletion-warning', id: 'delete-warning-' + task.id, role: 'status', hidden: true }, 'Permanently deletes this report and its files. This cannot be undone.');
     const deleteButton = node('button', { type: 'button', class: 'secondary task-utility delete-report', onclick: async () => {
@@ -489,7 +489,7 @@ function syncChildren(parent, children) {
 }
 function updateTaskView(task) {
   // Progress and timestamps change often; update the bar without rebuilding controls.
-  const { progress, updated, ...job } = task.job || {};
+  const { progress, updated, stage, ...job } = task.job || {};
   const key = JSON.stringify([job, task.name, task.uploading, task.waitingForUpload, task.failure, task.fetchError, task.confirmDelete, task.deleting, task.deletionRequested, catalog?.retention_days]);
   let view = taskViews.get(task);
   if (!view || view.key !== key) {
