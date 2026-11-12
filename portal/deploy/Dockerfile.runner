@@ -1,6 +1,19 @@
+# STARlong is compiled explicitly: ordinary STAR has a short-read length limit.
+FROM debian:bookworm-slim AS starlong-build
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential ca-certificates curl zlib1g-dev xxd && rm -rf /var/lib/apt/lists/*
+ARG STAR_VERSION=2.7.11b
+ARG STAR_SHA256=3f65305e4112bd154c7e22b333dcdaafc681f4a895048fa30fa7ae56cac408e7
+RUN curl --fail --location --retry 3 "https://codeload.github.com/alexdobin/STAR/tar.gz/refs/tags/${STAR_VERSION}" -o /tmp/star.tar.gz \
+    && echo "${STAR_SHA256}  /tmp/star.tar.gz" | sha256sum -c - \
+    && tar -xzf /tmp/star.tar.gz -C /tmp \
+    && make -C "/tmp/STAR-${STAR_VERSION}/source" -j 4 STARlongStatic CXXFLAGS_SIMD=-msse4.1 \
+    && install -m 0755 "/tmp/STAR-${STAR_VERSION}/source/STARlong" /usr/local/bin/STARlong \
+    && test "$(/usr/local/bin/STARlong --version)" = "${STAR_VERSION}"
+
 FROM mambaorg/micromamba:2.9.0
 COPY --chown=$MAMBA_USER:$MAMBA_USER environment.yaml /tmp/ont-environment.yaml
 RUN micromamba install -y -n base -f /tmp/ont-environment.yaml && micromamba clean --all --yes
+COPY --from=starlong-build /usr/local/bin/STARlong /opt/conda/bin/STARlong
 ENV PATH=/opt/conda/bin:$PATH PYTHONDONTWRITEBYTECODE=1 MPLCONFIGDIR=/tmp/matplotlib XDG_CACHE_HOME=/tmp/cache HOME=/tmp USER=ont-qc LOGNAME=ont-qc
 WORKDIR /job
 ENTRYPOINT []

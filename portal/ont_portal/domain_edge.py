@@ -22,7 +22,8 @@ def configure(config, compose, runtime):
         restriction='if ($trusted_edge = 0) { return 403; }'
     cert='domain' if all((runtime/'tls'/('domain.'+ext)).is_file() for ext in ('crt','key')) else 'server'
     config=config.replace('    access_log off;','    '+real_ip+'\n    access_log off;',1)
-    config=config.replace('server_name _;',f'server_name {domain};\n        {restriction}',1)
+    robots='add_header X-Robots-Tag \"noindex, nofollow, noarchive\" always;' if settings.get('noindex') is True else ''
+    config=config.replace('server_name _;',f'server_name {domain};\n        {restriction}\n        {robots}',1)
     config=config.replace('/tls/server.crt',f'/tls/{cert}.crt').replace('/tls/server.key',f'/tls/{cert}.key')
     extra=f'''
     server {{

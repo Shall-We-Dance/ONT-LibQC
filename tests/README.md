@@ -26,3 +26,10 @@ and the aligner recorded in Micro-C reports, separate resource/API rate budgets,
 report-grant isolation and the public-only analytics policy.
 CI runs Python 3.11/3.13 and Chromium/WebKit; it does not run the full mapping
 pipeline or require reference genomes.
+
+RNA regressions cover STARlong admission and memory reservation, per-sublibrary
+UMI trimming, source attribution, strand and splice evidence, low-depth metaplots,
+HOMER result handling and screening visibility. Set `HOMER2` to a HOMER 5.1
+`homer2` executable to include the planted-motif integration test; CI skips that
+external-tool test when HOMER is unavailable. Browser CI also checks RNA/CLIP
+default screens, opt-out persistence and reference availability.

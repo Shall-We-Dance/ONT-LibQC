@@ -5,6 +5,14 @@ let catalog, files = [], tasks = [], submitting = false, refreshing = false, ret
 let nextLocalId = 0;
 let loadingExample = false;
 const taskViews = new WeakMap();
+const isRnaAssay = assay => ['rnaseq', 'clip'].includes(assay);
+const assayLabel = assay => ({chromatin: 'Chromatin', microc: 'Micro-C', rnaseq: 'RNA-seq (Beta)', clip: 'CLIP-seq (Beta)'})[assay] || '';
+function assayAvailable(reference, assay) {
+  if (!reference) return true;
+  if (Array.isArray(reference.assays)) return reference.assays.includes(assay);
+  if (isRnaAssay(assay)) return Boolean(reference.rna_ready);
+  return Boolean(reference.ready && (assay !== 'microc' || reference.mappers.some(mapper => ['bwa-mem2', 'bwa-mem', 'minimap2'].includes(mapper))));
+}
 const bytes = n => (n / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 2 }) + ' MB';
 function node(tag, attrs = {}, ...children) {
   const n = document.createElement(tag);
@@ -65,8 +73,9 @@ function check(label, description = '') {
 }
 function screenCheck(label, description) {
   const field = check(label, description);
-  field.preferred = true;
-  field.input.addEventListener('change', () => { field.preferred = field.input.checked; });
+  field.preferences = { dna: true, rna: true };
+  field.assayGroup = 'dna';
+  field.input.addEventListener('change', () => { field.preferences[field.assayGroup] = field.input.checked; });
   return field;
 }
 function referenceChange(entry) {
@@ -77,8 +86,6 @@ function referenceChange(entry) {
   entry.bedConfirm.checked = false;
   entry.myco.input.disabled = !r.mycoplasma;
   entry.spike.input.disabled = !r.spike_in;
-  entry.myco.input.checked = Boolean(r.mycoplasma && entry.myco.preferred);
-  entry.spike.input.checked = Boolean(r.spike_in && entry.spike.preferred);
   entry.chromosomes.placeholder = r.primary_chromosomes.join(', ');
   entry.chromosomes.value = '';
   updateAssay(entry);
@@ -86,20 +93,42 @@ function referenceChange(entry) {
 function updateAssay(entry) {
   const reference = catalog.references.find(x => x.id === entry.ref.value);
   const r = reference || { mappers: [] };
-  const microc = entry.assay.querySelector('option[value="microc"]');
-  microc.disabled = Boolean(reference && !r.mappers.some(mapper => ['bwa-mem2', 'bwa-mem', 'minimap2'].includes(mapper)));
-  microc.textContent = microc.disabled ? 'Micro-C · unavailable on this server' : 'Micro-C';
-  entry.availabilityNote.textContent = reference?.availability_note || '';
-  entry.availabilityNote.hidden = entry.assay.value !== 'microc' || !reference?.availability_note;
+  for (const assay of ['chromatin', 'microc', 'rnaseq', 'clip']) {
+    const option = entry.assay.querySelector(`option[value="${assay}"]`);
+    option.disabled = !assayAvailable(reference, assay);
+    const label = assay === 'chromatin' ? 'Chromatin · CUT&RUN / CUT&Tag / ChIP / ATAC, etc.' : assayLabel(assay);
+    option.textContent = label + (option.disabled ? ' · unavailable for this reference' : '');
+  }
   if (entry.assay.selectedOptions[0]?.disabled) {
     entry.assay.value = '';
     entry.assay.dispatchEvent(new Event('change'));
     return;
   }
-  const assay = entry.assay.value;
+  const assay = entry.assay.value, rna = isRnaAssay(assay);
+  const betaNote = 'Beta version — still being tested.';
+  entry.availabilityNote.textContent = rna ? betaNote : reference?.availability_note || '';
+  entry.availabilityNote.hidden = !rna && (assay !== 'microc' || !reference?.availability_note);
   entry.mapper.disabled = !assay || !entry.ref.value;
-  entry.mapper.replaceChildren(node('option', { value: 'auto' }, !assay ? 'Choose a library assay first' : assay === 'microc' ? `Default · ${(r.microc_mapper || 'bwa-mem2').toUpperCase()}` : 'Default · Bowtie2'),
-    ...r.mappers.filter(x => assay !== 'microc' || x !== 'bowtie2').map(x => node('option', { value: x }, x)));
+  const defaultMapper = rna ? 'STARlong' : assay === 'microc' ? (r.microc_mapper || 'bwa-mem2').toUpperCase() : 'Bowtie2';
+  entry.mapper.replaceChildren(node('option', { value: 'auto' }, !assay ? 'Choose a library assay first' : `Default · ${defaultMapper}`),
+    ...r.mappers.filter(x => rna ? x === 'starlong' : x !== 'starlong' && (assay !== 'microc' || x !== 'bowtie2')).map(x => node('option', { value: x }, x === 'starlong' ? 'STARlong' : x)));
+  for (const [field, ready] of [[entry.myco, r.mycoplasma], [entry.spike, r.spike_in]]) {
+    field.assayGroup = rna ? 'rna' : 'dna';
+    field.input.checked = Boolean(ready && field.preferences[field.assayGroup]);
+  }
+  for (const [key, range] of Object.entries(entry.ranges || {})) {
+    if (range.edited) continue;
+    const defaults = rna && (catalog.rna_descriptive_ranges || []).includes(key) ? null : catalog.ranges[key];
+    range.disable.checked = defaults === null;
+    for (const [limit, input] of Object.entries(range.values)) {
+      input.value = defaults?.[limit] === undefined ? '' : String(defaults[limit]);
+      input.disabled = defaults === null;
+    }
+  }
+  for (const {group, title, grid} of entry.paramGroups || []) {
+    title.hidden = grid.hidden = rna && ['Chromatin', 'Micro-C'].includes(group);
+    for (const input of grid.querySelectorAll('input')) input.disabled = grid.hidden;
+  }
   entry.bedCheck.input.disabled = assay !== 'chromatin';
   if (assay !== 'chromatin') entry.bedCheck.input.checked = false;
   updateCustomRegions(entry);
@@ -145,8 +174,8 @@ function addFiles(incoming) {
     if (file.size > catalog.max_upload_bytes) { errors.push('“' + file.name + '” was not added: maximum ' + bytes(catalog.max_upload_bytes) + ' per file. For larger files, download the pipeline from GitHub and run it locally.'); continue; }
     const entry = { file, id: ++nextLocalId };
     entry.sample = node('input', { class: 'sample-name', value: file.name.replace(/\.(fastq|fq)(\.gz)?$/i, '').replace(/[^A-Za-z0-9_-]/g, '_').replace(/^[^A-Za-z]/, 'S_').slice(0, 48), required: true, pattern: '[A-Za-z][A-Za-z0-9_-]{0,47}', maxlength: '48' });
-    entry.assay = select([['', 'Choose library assay…'], ['chromatin', 'Chromatin · CUT&RUN / CUT&Tag / ChIP / ATAC, etc.'], ['microc', 'Micro-C']], '');
-    const available = catalog.references.filter(r => r.ready);
+    entry.assay = select([['', 'Choose library assay…'], ['chromatin', 'Chromatin · CUT&RUN / CUT&Tag / ChIP / ATAC, etc.'], ['microc', 'Micro-C'], ['rnaseq', 'RNA-seq (Beta)'], ['clip', 'CLIP-seq (Beta)']], '');
+    const available = catalog.references.filter(r => r.ready || r.rna_ready);
     entry.ref = select([['', 'Choose reference genome…'], ...available.map(r => [r.id, r.label])], '');
     entry.mapper = select([['auto', 'Default · Bowtie2']], 'auto');
     entry.myco = screenCheck('Mycoplasma screen', 'An opportunistic screen; negative results do not exclude contamination.');
@@ -199,7 +228,7 @@ function addFiles(incoming) {
     advanced.append(info, node('div', { class: 'fields' }, control('Alignment method', entry.mapper), control('Primary chromosomes (optional override)', entry.chromosomes)),
       node('p', { class: 'advanced-group' }, 'Expected physical index pairs'), entry.pairs,
       node('p', { class: 'field-note' }, 'One pair per line: name i5 i7. Leave empty to discover index pairs automatically.'));
-    entry.params = {};
+    entry.params = {}; entry.paramGroups = [];
     for (const group of [...new Set(catalog.params.map(p => p.group))]) {
       const grid = node('div', { class: 'fields' });
       for (const p of catalog.params.filter(x => x.group === group)) {
@@ -207,7 +236,9 @@ function addFiles(incoming) {
         entry.params[p.key] = input;
         const field = control(p.label, input); field.insertBefore(node('span', { class: 'param-key' }, p.key), input); grid.append(field);
       }
-      advanced.append(node('p', { class: 'advanced-group' }, group), grid);
+      const title = node('p', { class: 'advanced-group' }, group);
+      entry.paramGroups.push({ group, title, grid });
+      advanced.append(title, grid);
     }
     entry.screen = {};
     const screenGrid = node('div', { class: 'fields' });
@@ -231,7 +262,8 @@ function addFiles(incoming) {
         row.append(values[limit]);
       }
       disable.input.addEventListener('change', () => { for (const input of Object.values(values)) input.disabled = disable.input.checked; });
-      ranges.append(row, disable.wrapper); entry.ranges[key] = { values, disable: disable.input };
+      ranges.append(row, disable.wrapper); entry.ranges[key] = { values, disable: disable.input, edited: false };
+      for (const input of [...Object.values(values), disable.input]) input.addEventListener('change', () => { entry.ranges[key].edited = true; });
     }
     const header = node('div', { class: 'file-header' }, node('div', {}, node('strong', {}, file.name), node('br'), node('small', {}, bytes(file.size))),
       node('button', { type: 'button', class: 'remove', 'aria-label': 'Remove ' + file.name, onclick: () => { files = files.filter(f => f.id !== entry.id); entry.card.remove(); updateCount(); } }, '×'));
@@ -291,7 +323,6 @@ function applyToAll(source) {
 function updateCount() {
   updateApplyControls();
   $('file-count').textContent = files.length + (files.length === 1 ? ' file' : ' files');
-  $('empty-hint').hidden = files.length > 0;
   $('submit-button').disabled = !files.length || submitting || !catalog?.worker_online || !$('data-policy').checked || files.some(e => e.bedCheck.input.checked && e.bedChecking);
   $('submit-note').textContent = files.length && !$('data-policy').checked ? 'Confirm the data policy to continue' : files.length ? files.length + ' independent ' + (files.length === 1 ? 'analysis' : 'analyses') : 'Select a file to begin';
 }
@@ -313,7 +344,7 @@ function optionsFor(e) {
     regions_filename: e.bedCheck.input.checked ? e.bed.files[0].name : null,
     regions_mode: e.bedMode.value, regions_assembly: e.bedCheck.input.checked && e.bedConfirm.checked ? e.bedAssembly : null,
     primary_chromosomes: e.chromosomes.value.trim() ? e.chromosomes.value.trim().split(/[,\s]+/) : null,
-    params: Object.fromEntries(Object.entries(e.params).filter(([, i]) => i.value !== '').map(([k, i]) => [k, Number(i.value)])), qc_reference_ranges,
+    params: Object.fromEntries(Object.entries(e.params).filter(([, i]) => !i.disabled && i.value !== '').map(([k, i]) => [k, Number(i.value)])), qc_reference_ranges,
     ...Object.fromEntries(Object.entries(e.screen).map(([k, i]) => [k, Number(i.value)])) };
 }
 function privateLink(task) { return location.origin + '/jobs/' + task.id + '#' + task.token; }
@@ -392,7 +423,7 @@ function taskView(task) {
   const card = node('article', { class: 'task-card' });
   const state = taskState(task);
   const title = node('div', { class: 'task-title' }, node('h2', { class: !expired && job.sample ? 'task-sample' : '' }, expired ? (deleted ? 'Report deleted' : 'Report expired') : job.sample || 'Analysis'), node('span', { class: 'status ' + state }, labels[state] || state));
-  card.append(title, node('p', { class: 'task-meta' }, [job.filename ? node('span', { class: 'task-filename' }, job.filename) : null, job.assay === 'microc' ? 'Micro-C' : job.assay === 'chromatin' ? 'Chromatin' : '', job.reference].filter(Boolean).flatMap((part, index) => index ? [' · ', part] : [part])));
+  card.append(title, node('p', { class: 'task-meta' }, [job.filename ? node('span', { class: 'task-filename' }, job.filename) : null, assayLabel(job.assay), job.reference].filter(Boolean).flatMap((part, index) => index ? [' · ', part] : [part])));
   const { percent, message } = taskProgress(task);
   const bar = node('span'); bar.style.width = percent + '%';
   if (expired) {

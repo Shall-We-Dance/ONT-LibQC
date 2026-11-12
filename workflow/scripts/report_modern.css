@@ -109,3 +109,52 @@ code{border-radius:3px;background:#f0f4f6;overflow-wrap:anywhere}
 
 .report-hero,.report-section{box-shadow:var(--surface-shadow)}
 @media print{.report-hero,.report-section{box-shadow:none}}
+
+/* RNA results share the existing report tables and figure cards; every scope stays visible. */
+.rna-beta{font-size:11px;font-weight:500;vertical-align:middle;border:1px solid var(--line);border-radius:6px;padding:3px 7px;margin-left:6px;color:var(--muted)}
+.rna-metadata{display:flex;flex-wrap:wrap;gap:7px 24px;color:var(--muted);font-size:12px;margin:16px 0}.rna-metadata strong{font-weight:500;color:var(--ink)}
+.rna-scope-nav{display:flex;flex-wrap:wrap;gap:8px 16px;border-top:1px solid var(--line);padding:14px 0 4px;margin-top:18px;font-size:12px}.rna-scope-nav a{overflow-wrap:anywhere}
+.rna-scope{scroll-margin-top:90px;margin-top:24px;padding-top:20px}.rna-scope.rna-primary{border-top:0;margin-top:14px;padding-top:0}.rna-scope-heading{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin:0 0 12px}.rna-scope-heading h3{margin:0;font-weight:500}.rna-scope-heading span{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.rna-table{margin:12px 0 20px;overflow-x:auto}.rna-table table{width:100%}.rna-table td{vertical-align:top}.rna-table td:nth-child(2){font-variant-numeric:tabular-nums}.rna-table td:last-child{color:var(--muted)}
+.rna-characteristics{padding-left:20px;color:var(--ink);line-height:1.65;margin-bottom:22px}.rna-characteristics li{margin:6px 0}
+.rna-plots{align-items:start;margin-top:20px}.rna-plots .plot-card h4{font-size:13px;font-weight:500;color:var(--ink);margin:4px 8px 14px}.rna-plots .plot-card img{height:auto;max-width:100%}.rna-wide-plot{grid-column:1/-1;width:100%;max-width:1020px;justify-self:center;box-sizing:border-box}.rna-scope>details{margin:18px 0}.rna-scope>details>summary{line-height:1.6}.rna-scope>details>p{color:var(--muted);font-size:13px}
+@media(max-width:850px){.rna-plots{grid-template-columns:minmax(0,1fr)}.rna-scope{padding-top:16px}.rna-scope-heading{align-items:start;flex-direction:column;gap:5px}.rna-table table{min-width:640px}.rna-wide-plot{max-width:100%}}
+
+.rna-evidence-block{margin:24px 0;padding-top:12px;border-top:1px solid var(--line)}.rna-evidence-block>h3{margin-top:8px}.rna-structure-model{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;font-size:13px}.rna-structure-model strong{font-weight:500}.rna-structure-model code{font-size:12px;line-height:1.6;white-space:normal;overflow-wrap:anywhere}.rna-evidence-block .muted{line-height:1.65}.rna-evidence-download{font-size:12px}.rna-evidence-block .rna-table table{min-width:760px}
+
+/* RNA core results: ordered figures with secondary evidence in disclosures. */
+.rna-core h4, .rna-scope > h4 {font-size:1.05rem;margin:20px 0 10px;color:#293f53}
+.rna-bars{display:grid;gap:7px;margin:10px 0}
+.rna-bar-row{display:grid;grid-template-columns:150px minmax(40px,1fr) 165px;gap:14px;align-items:center;font-size:14px}
+.rna-bar-track{display:flex;height:16px;background:#f0f3f6;border-radius:3px;overflow:hidden}
+.rna-bar-value{text-align:right;font-variant-numeric:tabular-nums}.rna-bar-value small{color:#67798b}
+.rna-source-legend{display:flex;flex-wrap:wrap;gap:10px 22px;font-size:12px;color:#526579}
+.rna-source-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px}
+.rna-core .muted{font-size:12px;line-height:1.5;margin:8px 0}.rna-core .plot-card img{width:100%;max-height:none}
+.rna-end-bar{height:24px;background:#4b9b91;border-radius:4px;overflow:hidden}.rna-end-bar span{display:block;height:100%;background:#3276b5}
+.rna-empty{padding:16px;background:#f5f7fa;border-radius:4px;color:#526579}
+.rna-auxiliary{margin-top:16px}.rna-core{margin-bottom:16px}
+@media(max-width:600px){.rna-bar-row{grid-template-columns:110px minmax(30px,1fr);gap:6px;font-size:12px}.rna-bar-value{grid-column:2;text-align:left;font-size:12px}.rna-source-legend{gap:8px 14px}}
+
+/* Compact report spacing; keep primary results expanded and figures proportional. */
+.report-section{padding:20px 24px;margin:18px 0}.report-section>h2{margin-bottom:14px;padding-bottom:10px}
+.report-nav{margin-bottom:14px}.traffic-grid{margin:16px 0}.plots{gap:16px}
+.library-profiles{margin-top:20px;padding-top:10px}.primary-size-plots{max-width:900px}
+.count-size-plots .full-library-count-card{max-width:900px}
+.rna-metadata{margin:10px 0}.rna-scope-nav{margin-top:12px;padding-top:10px}
+.rna-scope{margin-top:18px;padding-top:14px}.rna-scope.rna-primary{margin-top:10px}
+.rna-scope-heading{margin-bottom:8px}.rna-scope>details{margin:12px 0}
+.rna-core .plot-card{box-sizing:border-box;width:100%;max-width:880px;margin:10px auto;padding:6px}
+.rna-core .plot-card img{height:auto;display:block}.rna-end-bar{max-width:880px;height:20px}
+.rna-motif-notice{background:#fff2f2;border:1px solid #efd0d0;border-radius:6px;color:#8a4444;padding:10px 14px;margin:10px 0 14px;font-size:13px;line-height:1.5}
+@media(min-width:851px){.analysis-plots .plot-card img{height:300px}}
+@media(max-width:850px){.report-section{padding:16px;margin:16px 0}.rna-scope{padding-top:12px}}
+@media print{.rna-motif-notice{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
+
+/* GRIP internal tags are separate from physical sample indexes. */
+.library-block.grip-umi{min-width:82px;border-color:#d7ae67;background:#fff2d7;color:#865b1d}
+.library-block.grip-umi.expected{border-style:dashed;background:#fffaf0}
+.library-block.grip-tag{min-width:78px;border-style:dashed;background:#f7f8fa;border-color:#d9e1e7;color:#617780}
+.library-grip-note{margin:5px auto 10px;max-width:1050px;font-size:12px;line-height:1.5;color:var(--muted);text-align:center}
+.library-grip-note strong{font-weight:600;color:#865b1d}
+@media(max-width:600px){.library-grip-note{text-align:left}}

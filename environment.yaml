@@ -9,6 +9,7 @@ dependencies:
   - pyyaml
   - numpy
   - matplotlib
+  - homer =5.1
   - bowtie2 >=2.5
   - bwa-mem2 >=2.3
   - bwa >=0.7.19,<0.8

@@ -1112,6 +1112,17 @@ def contributing_molecules(records):
     return len(parents)
 
 
+def rna_mapping_metrics(records, denominator, mapq, mito):
+    """Technical alignment counts only; biological RNA evidence is computed separately."""
+    usable = [r for r in records.values() if mapq <= r["mapq"] < 255]
+    mitochondrial = sum(r["chrom"] in mito for r in usable)
+    return dict(usable_fragments=len(usable),
+                usable_fragment_rate=len(usable) / denominator if denominator else None,
+                mitochondrial_fraction=mitochondrial / len(usable) if usable else None,
+                biological_qc_call="beta_descriptive",
+                classification_note="RNA/CLIP beta: source composition, strand orientation, splice evidence and transcript profiles are descriptive. Library-selection methods are inferred only when supported and cannot be uniquely identified from shallow reads. No PCR deduplication or IP-specific enrichment is inferred.")
+
+
 def scope_qc(args, pair, profile, records, chrom_sizes, primary_names, mito, primary_sizes,
              sample_raw_reads):
     units = pair["support_units"]
@@ -1150,6 +1161,9 @@ def scope_qc(args, pair, profile, records, chrom_sizes, primary_names, mito, pri
                       sequencing_yield_call="pass" if assigned_raw_reads >= args.minimum_raw and units >= args.minimum_units else "inconclusive_low_yield",
                       biological_qc_call="not_classified",
                       chromatin_qc_method="collision_oe_descriptive")
+    elif args.assay in {"rnaseq", "clip"}:
+        result.update(rna_mapping_metrics(records, mappable, args.mapq, mito))
+        result["sequencing_yield_call"] = "pass" if assigned_raw_reads >= args.minimum_raw and units >= args.minimum_units else "inconclusive_low_yield"
     else:
         result.update(contact_metrics(*microc_contacts(records, primary_sizes, args), mappable, args))
         result["sequencing_yield_call"] = "pass" if assigned_raw_reads >= args.minimum_raw and units >= args.minimum_units else "inconclusive_low_yield"
@@ -1312,6 +1326,13 @@ def cmd_metrics(args):
                 out.write(f"{r['chrom']}\t{r['start']}\t{r['end']}\t{r['qname']}\t{r['mapq']}\t{r['strand']}\n")
         with gzip.open(args.pairs, "wt") as out:
             out.write("# chromatin sample; no contact pairs\n")
+    elif args.assay in {"rnaseq", "clip"}:
+        metrics = dict(common, **rna_mapping_metrics(records, mappable_units, args.mapq, mito),
+                       sequencing_yield_call="pass" if raw_count >= args.minimum_raw and units >= args.minimum_units else "inconclusive_low_yield")
+        with gzip.open(args.fragments, "wt") as out:
+            out.write("# RNA/CLIP: aligned-block evidence is retained in the RNA QC tables\n")
+        with gzip.open(args.pairs, "wt") as out:
+            out.write("# RNA/CLIP sample; no contact pairs\n")
     else:
         assignment_scopes = {u: row.get("scope_id", "") for u, row in read_index_assignments(args.index_assignments).items()}
         both, passed, filtered, unique, same_fragment = microc_contacts(records, primary_sizes, args, assignment_scopes)
@@ -1792,7 +1813,16 @@ def metric_light_class(key, value, ranges):
     return "red"
 
 
-def summary_overview_svg(metrics, ranges):
+def assay_reference_ranges(cfg, assay):
+    ranges = merged_reference_ranges(cfg)
+    if assay in {"rnaseq", "clip"}:
+        for key in ("primary_mapping_rate", "usable_fragment_rate", "mitochondrial_fraction"):
+            if key not in cfg.get("qc_reference_ranges", {}):
+                ranges[key] = None
+    return ranges
+
+
+def summary_overview_svg(metrics, ranges, assay_ranges=None):
     """Technical quick overview: ONT sequencing and NGS library shape only."""
     columns = [
         ("Sample", 30, None),
@@ -1819,19 +1849,20 @@ def summary_overview_svg(metrics, ranges):
     for label, x, _ in columns:
         svg.append(f"<text x='{x}' y='102' font-size='12' font-weight='700' fill='#536475'>{html.escape(label)}</text>")
     for index, metric in enumerate(metrics):
+        current_ranges = (assay_ranges or {}).get(metric["assay"], ranges)
         y = 132 + index * row_h
         if index % 2 == 0:
             svg.append(f"<rect x='18' y='{y-23}' width='{width-36}' height='{row_h}' rx='8' fill='white'/>")
         svg.extend([
             f"<text x='30' y='{y+5}' font-size='14' font-weight='700' fill='#18324A'>{html.escape(metric['sample'])}</text>",
-            f"<text x='{130+sample_extra}' y='{y+5}' font-size='12' fill='#607080'>{html.escape({'chromatin':'Chromatin','microc':'Micro-C'}.get(metric['assay'],metric['assay']))}</text>",
+            f"<text x='{130+sample_extra}' y='{y+5}' font-size='12' fill='#607080'>{html.escape({'chromatin':'Chromatin','microc':'Micro-C','rnaseq':'RNA-seq · beta','clip':'CLIP-seq · beta'}.get(metric['assay'],metric['assay']))}</text>",
         ])
         for _, x, key in columns[2:]:
             value = metric.get(key)
-            color = light_colors["amber" if key == "adapter_dimer_rate" and str(metric.get("adapter_dimer_call", "")).startswith("inconclusive") else metric_light_class(key, value, ranges)]
+            color = light_colors["amber" if key == "adapter_dimer_rate" and str(metric.get("adapter_dimer_call", "")).startswith("inconclusive") else metric_light_class(key, value, current_ranges)]
             svg.append(f"<circle cx='{x+7}' cy='{y}' r='7' fill='{color}'/>")
             svg.append(f"<text x='{x+20}' y='{y+5}' font-size='11.5' fill='#34495E'>{html.escape(display_value(key, value, ranges))}</text>")
-    svg.append(f"<text x='30' y='{height-9}' font-size='10' fill='#71808D'>Chromatin- and Micro-C-specific biological metrics are available in each sample report, not in this quick overview.</text></svg>")
+    svg.append(f"<text x='30' y='{height-9}' font-size='10' fill='#71808D'>Assay-specific evidence is available in each sample report.</text></svg>")
     return "".join(svg)
 
 
@@ -1895,26 +1926,40 @@ REPORT_TOOLTIP_SCRIPT = """<script>
 </script>"""
 
 
-def svg_region_pie(metric, title):
-    values = [metric.get("promoter_proximal_rate"), metric.get("gene_body_rate"), metric.get("intergenic_rate")]
-    labels = ["Promoter proximal", "Gene body", "Distal"]
-    colors = ["#466E8A", "#71A8A0", "#D9BE8C"]
-    width, height, cx, cy, radius = 640, 350, 180, 175, 105
-    if any(v is None for v in values) or sum(values) <= 0:
-        return f"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 {width} {height}' style='font-family:Arial,Helvetica,sans-serif'><rect width='100%' height='100%' fill='white'/><text x='{width/2}' y='28' text-anchor='middle' font-size='17'>{html.escape(title)}</text><text x='{width/2}' y='170' text-anchor='middle' fill='#687986'>No usable annotation data</text></svg>"
-    total=sum(values); angle=-math.pi/2; paths=[]
-    for label,value,color in zip(labels,values,colors):
-        fraction=value/total; end=angle+2*math.pi*fraction
-        x1,y1=cx+radius*math.cos(angle),cy+radius*math.sin(angle); x2,y2=cx+radius*math.cos(end),cy+radius*math.sin(end)
-        large=1 if fraction>.5 else 0
-        if fraction>=.999999:
-            d=f"M {cx-radius} {cy} A {radius} {radius} 0 1 0 {cx+radius} {cy} A {radius} {radius} 0 1 0 {cx-radius} {cy}"
-        else:
-            d=f"M {cx} {cy} L {x1:.2f} {y1:.2f} A {radius} {radius} 0 {large} 1 {x2:.2f} {y2:.2f} Z"
-        paths.append(f"<path d='{d}' fill='{color}' stroke='white' stroke-width='2'><title>{html.escape(label)}: {value:.1%}</title></path>")
-        angle=end
-    legend=''.join(f"<rect x='330' y='{112+i*48}' width='15' height='15' rx='2' fill='{c}'/><text x='354' y='{125+i*48}' font-size='13'>{html.escape(l)} {v:.1%}</text>" for i,(l,v,c) in enumerate(zip(labels,values,colors)))
-    return f"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 {width} {height}' style='font-family:Arial,Helvetica,sans-serif'><rect width='100%' height='100%' fill='white'/><text x='{width/2}' y='28' text-anchor='middle' font-size='17'>{html.escape(title)}</text>{''.join(paths)}{legend}<text x='320' y='325' text-anchor='middle' font-size='11'>n={metric.get('annotation_mapped_reads',0):,} alignments; promoter priority</text></svg>"
+def svg_region_bars(metric, title):
+    """Show mutually exclusive genomic-region fractions on a common 0–100% scale."""
+    rows = [("Promoter", "promoter_proximal"), ("Gene body", "gene_body"), ("Distal", "intergenic")]
+    width, height, bar_x, bar_width = 640, 240, 144, 320
+    total = metric.get("annotation_mapped_reads", 0)
+    window = metric.get("promoter_window_bp")
+    window_label = (f"{window / 1000:g} kb" if window >= 1000 else f"{window:g} bp") if window is not None else None
+    descriptions = {"promoter_proximal": "Overlaps the promoter" + (f" (TSS ±{window_label})" if window_label else "") + "; assigned first.",
+                    "gene_body": "Overlaps a gene body and no promoter.",
+                    "intergenic": "Outside both promoters and gene bodies."}
+    available = total > 0 and all(metric.get(key + "_rate") is not None for _, key in rows)
+    svg = [f"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 {width} {height}' role='img' aria-label='{html.escape(title, quote=True)}' style='font-family:Arial,Helvetica,sans-serif'>",
+           f"<title>{html.escape(title)}</title>",
+           "<metadata id='genomic-region-metrics'>" + html.escape(json.dumps(metric, sort_keys=True)) + "</metadata>",
+           "<rect width='100%' height='100%' fill='white'/>",
+           f"<text x='22' y='28' font-size='17' fill='#203040'>{html.escape(title)}</text>"]
+    for index, (label, key) in enumerate(rows):
+        y = 64 + index * 46
+        rate = metric.get(key + "_rate") if available else None
+        count = metric.get(key + "_reads") if available else None
+        value = f"{rate:.1%}" if rate is not None else "—"
+        count_text = f" ({count:,})" if count is not None else ""
+        svg.append(f"<g><title>{html.escape(label + ': ' + value + count_text + '. ' + descriptions[key])}</title>"
+                   f"<text x='22' y='{y + 14}' font-size='14' fill='#34495e'>{label}</text>"
+                   f"<rect x='{bar_x}' y='{y}' width='{bar_width}' height='20' rx='3' fill='#eef2f6'/>")
+        if rate is not None:
+            svg.append(f"<rect x='{bar_x}' y='{y}' width='{bar_width * rate:.3f}' height='20' rx='3' fill='#3276b5'/>")
+        svg.append(f"<text x='618' y='{y + 14}' text-anchor='end' font-size='14' fill='#34495e'>{value}"
+                   f"<tspan font-size='12' fill='#65758c'>{count_text}</tspan></text></g>")
+    footer = f"n={total:,} MAPQ-pass alignments" if available else "No usable annotation data"
+    if available and window_label:
+        footer += f" · Promoter: TSS ±{window_label}"
+    svg.append(f"<text x='22' y='216' font-size='11' fill='#65758c'>{html.escape(footer)}</text></svg>")
+    return ''.join(svg)
 
 
 def svg_contact_funnel(metric, title):
@@ -2105,9 +2150,9 @@ def scoped_table_html(scopes, keys, ranges):
     return f"<div class='table-scroll' tabindex='0' aria-label='QC metrics; scroll horizontally for additional columns'><table class='qc-metrics'><tr><th>Metric</th>{heads}<th>Reference interval</th></tr>{''.join(rows)}</table></div>"
 
 
-def library_structure_html(metric, adapter_summary=None, unit_rows=None):
+def library_structure_html(metric, adapter_summary=None, unit_rows=None, rna_summary=None):
     from report_library_structure import library_structure_html as render_structure
-    return render_structure(metric, adapter_summary, unit_rows, adapter_templates=FAMILIES)
+    return render_structure(metric, adapter_summary, unit_rows, adapter_templates=FAMILIES, rna_summary=rna_summary)
 
 
 def pair_label(pair):
@@ -2178,8 +2223,23 @@ def profile_scope_html(label, raw_name, insert_name, region_name, karyotype_name
             f"<img src='assets/{html.escape(karyotype_name, quote=True)}' alt='Mapped reads by chromosome karyotype'></details></section>")
 
 
+def rna_screening_html(scopes):
+    """Keep screening results visible when RNA replaces the generic assay panel."""
+    keys = ["mycoplasma_status", "mycoplasma_screened_reads", "mycoplasma_qualifying_reads",
+            "mycoplasma_qualifying_fraction", "spike_in_status", "spike_in_screened_reads", "spike_in_reads", "spike_in_fraction"]
+    return ("<section class='report-section' id='contamination'><h2>Contamination screening</h2>"
+            + scoped_table_html(scopes, keys, {})
+            + "<p class='muted'>Not configured = not run. No signal detected applies only to the screened inserts. Foreign-sequence hits may include spike-in.</p></section>")
+
+
 def extension_report_html(out, sample, scopes, metric):
     sections=[]
+    if metric["assay"] in {"rnaseq", "clip"}:
+        align_path = out / "qc/rna_alignment" / f"{sample}.json"
+        if align_path.exists():
+            evidence = json.loads(align_path.read_text())
+            peak = evidence.get("peak_child_rss_kib", 0) / 1024**2
+            sections.append(f"<details class='metric-group' id='rna-alignment'><summary>Alignment settings and provenance</summary><p>STARlong {html.escape(str(evidence.get('version', '')))} · maximum insert {evidence.get('maximum_insert_bp', 0):,} bp · peak mapper/sorter RSS {peak:.2f} GiB. BAM sorting uses a separate 256 MiB buffer.</p><p><a href='../qc/rna_alignment/{sample}.json'>Settings and alignment counts</a> · <a href='../qc/rna_preparation/{sample}.json'>Technical preparation evidence</a></p></details>")
     screen_path=out/"qc"/"spike_in"/f"{sample}.json"
     if screen_path.exists():
         screen=json.loads(screen_path.read_text())
@@ -2246,6 +2306,7 @@ def cmd_report(args):
     annotation_cache={}
     for sample in samples:
         with open(out/"qc"/"metrics"/f"{sample}.json") as handle: metric=json.load(handle)
+        ranges = assay_reference_ranges(cfg, metric["assay"])
         if metric.get("assay") == "chromatin":
             metric["biological_qc_call"] = "not_classified"
             metric["classification_note"] = "Chromatin enrichment is not classified. Collision O/E is depth normalized (random baseline 1). Sampling uncertainty remains at low depth. TSS–TES profiles are CPM normalized and visual only."
@@ -2262,6 +2323,7 @@ def cmd_report(args):
                 scope["biological_qc_call"] = "not_classified"
         reference_key=cfg["samples"][sample].get("reference", cfg.get("default_reference", "dm6"))
         report_reference=cfg["references"][reference_key]
+        report_assembly=report_reference.get("assembly", reference_key)
         report_gene_bed=out/"reference"/f"{reference_key}.genes.bed"
         report_chrom_sizes=read_chrom_sizes(report_reference["chrom_sizes"])
         primary_arg=report_reference.get("primary_chromosomes", "auto")
@@ -2335,7 +2397,7 @@ def cmd_report(args):
                 scope_profiles.get(scope_id, {}).get("unit_rows", []), adapter_summary, trace_max, trace_bandwidth)
             if metric["assay"] == "chromatin":
                 region_metric=region_metrics if scope_id == "total" else sub_region_metrics[scope_id]
-                region_asset.write_text(svg_region_pie(region_metric,f"{label}: genomic regions"))
+                region_asset.write_text(svg_region_bars(region_metric,f"{label}: genomic regions"))
             else:
                 region_asset.unlink(missing_ok=True)
             if not getattr(args, "reuse_plot_assets", False) or not karyotype_asset.exists():
@@ -2372,12 +2434,17 @@ def cmd_report(args):
         pairing=metric.get("index_pairing",{}); pairs=pairing.get("pairs",[])
         if pairing.get("mode")=="single_library" and pairs: pairs=[max(pairs,key=lambda x:x.get("informative_support",0))]
         top=''.join(traffic_html(x, ranges) for x in scopes)
+        from report_sublibrary import render_sublibrary_composition
+        mixture_html = render_sublibrary_composition(metric)
         ont_keys=["raw_reads","sequencing_yield_call","mean_read_q","raw_median_bp","raw_n50_bp","complete_read_rate"]
         library_keys=(["scope_unit_fraction"] if metric.get("sub_libraries") else [])+["outer_complete_units","outer_complete_unit_rate","index_assignment_rate","index_ambiguous_fraction","index_unassigned_fraction","unreconstructed_probable_dimer_reads","adapter_dimer_unit_rate","concatemer_rate","insert_median_bp","library_units","units_per_complete_read","mappable_library_units","canonical_adapter_dimer_units","probable_adapter_dimer_units","adapter_dimer_rate","raw_structure_dimer_rate","adapter_dimer_call","primary_mapping_rate"]
         screen_keys=["mycoplasma_status","mycoplasma_screened_reads","mycoplasma_qualifying_reads","mycoplasma_qualifying_loci","mycoplasma_qualifying_fraction"]
         if metric["assay"]=="chromatin":
             type_specific_keys=["collision_oe","collision_contributing_molecules","usable_fragments","usable_fragment_rate","mitochondrial_fraction"]+screen_keys
             type_specific_title="Chromatin QC"
+        elif metric["assay"] in {"rnaseq", "clip"}:
+            type_specific_keys=["usable_fragments","usable_fragment_rate","mitochondrial_fraction"]+screen_keys
+            type_specific_title="RNA alignment QC · beta"
         else:
             type_specific_keys=["unique_valid_contacts","cis_ratio","long_range_cis_fraction","valid_contact_rate"]+screen_keys
             type_specific_title="Micro-C QC"
@@ -2394,26 +2461,42 @@ def cmd_report(args):
         settings=metric.get('metric_settings',metric_profile())
         definition_label=f"{settings['metric_profile']} · MAPQ ≥{settings['mapq']}"
         if metric['assay']=='chromatin':definition_label+=f" · {settings['collision_qc_bin_size']/1000:g} kb bins"
-        else:definition_label+=f" · {settings['dedup_tolerance_bp']} bp deduplication"
+        elif metric['assay']=='microc':definition_label+=f" · {settings['dedup_tolerance_bp']} bp deduplication"
+        else:definition_label+=" · RNA/CLIP beta · no deduplication"
         from custom_regions import report_html as custom_region_report
-        custom_html=custom_region_report(out,sample,reference_key,report_chrom_sizes,report_primary,scope_records,scopes,cfg['samples'][sample],Path(__file__).resolve().parents[2],report_mapq) if metric['assay']=='chromatin' else ""
+        custom_html=custom_region_report(out,sample,report_assembly,report_chrom_sizes,report_primary,scope_records,scopes,cfg['samples'][sample],Path(__file__).resolve().parents[2],report_mapq) if metric['assay']=='chromatin' else ""
+        rna_html = ""
+        rna_summary = None
+        if metric['assay'] in {'rnaseq', 'clip'}:
+            from rna_report import render_rna_section
+            rna_summary_path = out / "qc/rna" / sample / "summary.json"
+            if rna_summary_path.exists():
+                rna_summary = json.loads(rna_summary_path.read_text())
+            rna_html = render_rna_section(out / "qc/rna" / sample / "summary.json", f"../qc/rna/{sample}",
+                                          scope_labels={s['scope_id']: s.get('scope_name', s['scope_id']) for s in scopes})
+        screen_html = rna_screening_html(scopes) if rna_html else ""
+        assay_html = "" if rna_html else (f"<section class='report-section' id='assay-qc'><h2>{type_specific_title}</h2>{type_specific_table}<details><summary>Assay interpretation</summary><p>{html.escape(metric.get('classification_note',''))}</p></details>" +
+                    ("<h3>Micro-C valid-contact funnel</h3><div class='plots'>"+funnel_html+"</div>"+funnel_details if funnel_html else "") + "</section>")
         report=f"""<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>{sample} · ONT-LibQC</title>{favicon("assets/ont-libqc-mark.svg")}<style>{REPORT_CSS}</style></head><body>
 {brand_bar("assets/ont-libqc-mark.svg")}
-<header class='report-hero'><h1 class='sample-name'>{html.escape(sample)}</h1><div class='hero-meta'><span>{html.escape({'chromatin':'Chromatin','microc':'Micro-C'}.get(metric['assay'],metric['assay']))}</span><span>{html.escape(reference_key)}</span><span>{metric['raw_reads']:,} raw molecules</span><span>{html.escape(definition_label)}</span></div></header>
-<nav class='report-nav'><a href='#sequencing'>Sequencing</a><a href='#library-shape'>Library quality</a><a href='#assay-qc'>Assay metrics</a>{"<a href='#custom-regions'>Custom regions</a>" if custom_html else ""}{"<a href='#pairtools'>Pairtools</a><a href='#ligation'>Ligation</a><a href='#mnase'>MNase</a>" if pairtools_html else ""}{"<a href='#spike-screen'>Candidate screen</a>" if metric.get('spike_in_mode')=='auto' or json.loads((out/'qc/spike_in'/f'{sample}.json').read_text()).get('mode')=='auto' else ''}<a href='../summary/index.html'>All samples</a></nav>
+<header class='report-hero'><h1 class='sample-name'>{html.escape(sample)}</h1><div class='hero-meta'><span>{html.escape({'chromatin':'Chromatin','microc':'Micro-C','rnaseq':'RNA-seq · beta','clip':'CLIP-seq · beta'}.get(metric['assay'],metric['assay']))}</span><span>{html.escape(report_assembly)}</span><span>{metric['raw_reads']:,} raw molecules</span><span>{html.escape(definition_label)}</span></div></header>
+<nav class='report-nav'><a href='#sequencing'>Sequencing</a><a href='#library-shape'>Library quality</a>{"<a href='#rna-qc'>RNA QC · beta</a><a href='#contamination'>Contamination</a>" if rna_html else ""}{"" if rna_html else "<a href='#assay-qc'>Assay metrics</a>"}{"<a href='#custom-regions'>Custom regions</a>" if custom_html else ""}{"<a href='#pairtools'>Pairtools</a><a href='#ligation'>Ligation</a><a href='#mnase'>MNase</a>" if pairtools_html else ""}{"<a href='#spike-screen'>Candidate screen</a>" if metric.get('spike_in_mode')=='auto' or json.loads((out/'qc/spike_in'/f'{sample}.json').read_text()).get('mode')=='auto' else ''}<a href='../summary/index.html'>All samples</a></nav>
 <div class='traffic-grid'>{top}</div>
+{mixture_html}
 <section class='report-section' id='sequencing'><h2>ONT sequencing</h2>{ont_table}</section>
 <section class='report-section' id='library-shape'><h2>Library quality</h2>{identity_panel_html(metric,pairing,pairs)}
-{library_structure_html(metric, adapter_summary, scope_profiles.get("total", {}).get("unit_rows", []))}
+{library_structure_html(metric, adapter_summary, scope_profiles.get("total", {}).get("unit_rows", []), rna_summary)}
 <div id='library-key-metrics'>{library_primary_table}</div>
 <details class='metric-group' id='library-extra-metrics'><summary>All structure and index metrics</summary>{library_table}</details>
 {reference_notes_html()}
 <details><summary>Size and adapter interpretation</summary><p>The 120–170 bp raw-size window is supportive only. Dimer-like units have a ≤{fmt(metric.get('adapter_dimer_max_bp'))}-bp central gap. Unreconstructed template matches remain candidates; resolved 11–50 bp inserts are retained. Full-library sizes include expected outer adapters and inferred physical indexes, including units with undetected outer handles. The main profile weights each recovered unit by its modeled full-library length; count-based profiles are expandable. Curves are conditional on sequencing and adapter recovery and do not measure TapeStation fluorescence or NGS molarity.</p></details>
 <div class='library-profiles' id='profiles'><h3>Size and genomic profiles</h3>{profiles_html}</div></section>
-<section class='report-section' id='assay-qc'><h2>{type_specific_title}</h2>{type_specific_table}<details><summary>Assay interpretation</summary><p>{html.escape(metric.get('classification_note',''))}</p></details>{"<h3>Micro-C valid-contact funnel</h3><div class='plots'>"+funnel_html+"</div>"+funnel_details if funnel_html else ""}</section>
+{rna_html}
+{screen_html}
+{assay_html}
 {pairtools_html}
 {custom_html}{extension_report_html(out, sample, scopes, metric)}
-<footer class='report-footer'><details><summary>Methods &amp; interpretation</summary><div class='report-explanation'><ul><li><strong>Reference values</strong> distinguish local screening settings, biological context and statistical expectations.</li><li><strong>Gene profiles</strong> show mean coverage and SEM across annotated genes; SEM does not describe biological replicate uncertainty. CPM uses MAPQ-pass configured primary nuclear alignments within each scope.</li><li><strong>Genomic distribution:</strong> chromatin region fractions and chromosome density use mapped alignments; Micro-C chromosome density uses endpoint legs.</li><li><strong>Duplicates:</strong> Pairtools marks sample-level coordinate duplicates as DD. Shallow sequencing does not estimate PCR duplication or library complexity. Native Micro-C contact deduplication is an internal validity filter.</li></ul></div></details><p><a href='../summary/index.html'>All samples</a> · <a href='../qc/adapters/{sample}.reads.tsv.gz'>Adapter table</a> · <a href='../qc/adapters/{sample}.index_assignments.tsv.gz'>Index assignments</a></p></footer>{REPORT_TOOLTIP_SCRIPT}</body></html>"""
+<footer class='report-footer'><details><summary>Methods &amp; interpretation</summary><div class='report-explanation'><ul><li><strong>Reference values</strong> distinguish local screening settings, biological context and statistical expectations.</li><li><strong>Gene profiles:</strong> chromatin TSS–TES profiles use CPM; RNA profiles use per-gene exonic coverage normalization, detailed in the RNA section. SEM is across contributing genes, not biological replicates.</li><li><strong>Genomic distribution:</strong> chromatin uses mapped alignments, Micro-C uses endpoint legs, and RNA region fractions use aligned reference bases excluding skipped introns and deletions.</li><li><strong>Duplicates:</strong> Pairtools marks sample-level coordinate duplicates as DD. Shallow sequencing does not estimate PCR duplication or library complexity. Native Micro-C contact deduplication is an internal validity filter.</li></ul></div></details><p><a href='../summary/index.html'>All samples</a> · <a href='../qc/adapters/{sample}.reads.tsv.gz'>Adapter table</a> · <a href='../qc/adapters/{sample}.index_assignments.tsv.gz'>Index assignments</a></p></footer>{REPORT_TOOLTIP_SCRIPT}</body></html>"""
         (out/"reports"/f"{sample}.html").write_text(add_pdf_export(report))
     columns=["sample","assay","reference_assembly","mean_read_q","outer_complete_unit_rate","index_assignment_rate","index_ambiguous_fraction","index_unassigned_fraction","cis_ratio_ci95_low","cis_ratio_ci95_high","raw_reads","sequencing_yield_call","complete_read_rate","adapter_dimer_rate","adapter_dimer_call","index_architecture","primary_mapping_rate","spike_in_reads","spike_in_fraction","collision_bin_size","collision_oe","collision_fragments","collision_observed_pairs","collision_null_expected_pairs","usable_fragment_rate","both_legs_mapping_rate","mapq_pass_pairs","same_fragment_filter_pass_pairs","unique_valid_contacts","valid_contact_rate","cis_ratio","long_range_cis_min_bp","long_range_cis_contacts","long_range_cis_fraction","contact_evidence_status","metric_profile","metric_definition_version"]
     for m in metrics:
@@ -2443,9 +2526,15 @@ def cmd_report(args):
             for sub in m.get("sub_libraries", []):
                 row = {"sample": m["sample"], "assay": m["assay"], "reference_assembly": m["reference_assembly"], **sub}
                 handle.write("\t".join(fmt(row.get(k)) for k in scoped_columns) + "\n")
-    summary_plot=out/"plots"/"summary"/"all_samples_qc.svg"; summary_plot.write_text(summary_overview_svg(metrics,ranges))
+    rna_paths = [out / "qc/rna" / m["sample"] / "summary.json" for m in metrics if m["assay"] in {"rnaseq", "clip"}]
+    rna_cohort_html = ""
+    if rna_paths:
+        from rna_report import render_cohort_qc
+        rna_cohort_html = render_cohort_qc(rna_paths, out / "qc/rna/cohort", "../qc/rna/cohort")
+    ranges = merged_reference_ranges(cfg)
+    summary_plot=out/"plots"/"summary"/"all_samples_qc.svg"; summary_plot.write_text(summary_overview_svg(metrics,ranges,{m["assay"]: assay_reference_ranges(cfg,m["assay"]) for m in metrics}))
     rows=''.join(f"<tr><td><a href='../reports/{m['sample']}.html'>{html.escape(m['sample'])}</a></td><td>{html.escape(m['assay'])}</td><td>{html.escape(str(m.get('reference_assembly','')))}</td><td>{m['raw_reads']:,}</td><td>{display_value('mean_read_q',m.get('mean_read_q'),ranges)}</td><td>{display_value('complete_read_rate',m.get('complete_read_rate'),ranges)}</td><td>{display_value('raw_n50_bp',m.get('raw_n50_bp'),ranges)}</td><td>{display_value('insert_median_bp',m.get('insert_median_bp'),ranges)}</td><td>{display_value('primary_mapping_rate',m.get('primary_mapping_rate'),ranges)}</td><td>{display_value('adapter_dimer_rate',m.get('adapter_dimer_rate'),ranges)}</td></tr>" for m in metrics)
-    index=f"""<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Library reports · ONT-LibQC</title>{favicon('../reports/assets/ont-libqc-mark.svg')}<style>{REPORT_CSS}</style></head><body>{brand_bar('../reports/assets/ont-libqc-mark.svg', 'Library reports')}<header class='report-hero'><h1>Library reports</h1><p>Sequencing and library quality across samples.</p></header><div class='note'>Open a sample for its complete report, including Chromatin or Micro-C metrics.</div><img class='summary-plot' src='../plots/summary/all_samples_qc.svg' alt='All samples technical QC summary'><table><tr><th>Sample</th><th>Assay</th><th>Assembly</th><th>Raw reads</th><th>Mean Q</th><th>Complete</th><th>Raw N50</th><th>Insert median</th><th>Mapping</th><th>Adapter dimer</th></tr>{rows}</table><p><a href='qc_metrics.tsv'>Download total-library TSV</a> · <a href='sublibrary_qc_metrics.tsv'>Download sublibrary TSV</a></p>{REPORT_TOOLTIP_SCRIPT}</body></html>"""
+    index=f"""<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Library reports · ONT-LibQC</title>{favicon('../reports/assets/ont-libqc-mark.svg')}<style>{REPORT_CSS}</style></head><body>{brand_bar('../reports/assets/ont-libqc-mark.svg', 'Library reports')}<header class='report-hero'><h1>Library reports</h1><p>Sequencing and library quality across samples.</p></header><div class='note'>Open a sample for its complete report, including Chromatin, Micro-C or RNA/CLIP beta metrics.</div>{rna_cohort_html}<img class='summary-plot' src='../plots/summary/all_samples_qc.svg' alt='All samples technical QC summary'><div class='table-scroll' tabindex='0'><table><tr><th>Sample</th><th>Assay</th><th>Assembly</th><th>Raw reads</th><th>Mean Q</th><th>Complete</th><th>Raw N50</th><th>Insert median</th><th>Mapping</th><th>Adapter dimer</th></tr>{rows}</table></div><p><a href='qc_metrics.tsv'>Download total-library TSV</a> · <a href='sublibrary_qc_metrics.tsv'>Download sublibrary TSV</a></p>{REPORT_TOOLTIP_SCRIPT}</body></html>"""
     (out/"summary"/"index.html").write_text(index)
     json_dump({"created_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                "config": cfg, "python_version": sys.version,
@@ -2555,7 +2644,7 @@ def parser():
     p = argparse.ArgumentParser()
     sub = p.add_subparsers(dest="command", required=True)
     x = sub.add_parser("prepare")
-    x.add_argument("--sample", required=True); x.add_argument("--assay", choices=["chromatin", "microc"], required=True)
+    x.add_argument("--sample", required=True); x.add_argument("--assay", choices=["chromatin", "microc", "rnaseq", "clip"], required=True)
     x.add_argument("--fastq", nargs="+", required=True); x.add_argument("--inserts", required=True); x.add_argument("--legs", required=True)
     x.add_argument("--leg1", required=True); x.add_argument("--leg2", required=True)
     x.add_argument("--read-table", required=True); x.add_argument("--index-assignments", required=True); x.add_argument("--summary", required=True)
@@ -2577,7 +2666,7 @@ def parser():
     x.add_argument("--library-structure", default="{}", help="JSON library layout with fixed-length UMI positions")
     x.set_defaults(func=cmd_prepare)
     x = sub.add_parser("metrics")
-    x.add_argument("--sample", required=True); x.add_argument("--assay", choices=["chromatin", "microc"], required=True)
+    x.add_argument("--sample", required=True); x.add_argument("--assay", choices=["chromatin", "microc", "rnaseq", "clip"], required=True)
     x.add_argument("--bam", required=True); x.add_argument("--samtools", default="samtools"); x.add_argument("--adapter-summary", required=True)
     x.add_argument("--read-table", required=True); x.add_argument("--index-assignments", required=True)
     x.add_argument("--assembly", default="unspecified"); x.add_argument("--mycoplasma", required=True); x.add_argument("--spike-in", required=True)

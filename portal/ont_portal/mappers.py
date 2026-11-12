@@ -1,4 +1,5 @@
 """Shared mapper selection for admission, resource budgeting and job configuration."""
+RNA_ASSAYS = frozenset({'rnaseq', 'clip'})
 BWA_INDEX_KEYS = {'bwa-mem': 'bwa_index', 'bwa-mem2': 'bwa_mem2_index'}
 
 
@@ -8,7 +9,11 @@ def microc_default(reference):
 
 
 def resolve_mapper(requested, assay, reference):
-    return requested if requested != 'auto' else microc_default(reference) if assay == 'microc' else 'bowtie2'
+    if requested != 'auto':
+        return requested
+    if assay in RNA_ASSAYS:
+        return 'starlong'
+    return microc_default(reference) if assay == 'microc' else 'bowtie2'
 
 
 def microc_bwa_mapper(mapper, reference):

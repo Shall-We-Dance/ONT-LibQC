@@ -43,7 +43,7 @@ def build_message(config,smtp,row,secret,rows=None):
         state=display_status(item)
         label=str(opts.get('sample') or item['filename'] or ('Deleted report' if state=='deleted' else 'Expired report'))
         filename=str(item['filename'] or '')
-        assay={'microc':'Micro-C','chromatin':'Chromatin'}.get(opts.get('assay'),'')
+        assay={'microc':'Micro-C','chromatin':'Chromatin','rnaseq':'RNA-seq (Beta)','clip':'CLIP-seq (Beta)'}.get(opts.get('assay'),'')
         meta=' · '.join(str(v) for v in (assay,opts.get('reference')) if v)
         item_link=origin+'/jobs/'+item['id']+'#'+token_for(secret,item['id'])
         status=labels.get(state,state)

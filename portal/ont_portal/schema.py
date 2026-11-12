@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from email_validator import validate_email, EmailNotValidError
 from .structure import LibraryStructure, structure_catalog
-from .mappers import resolve_mapper, microc_bwa_mapper
+from .mappers import RNA_ASSAYS, resolve_mapper, microc_bwa_mapper
 
 # label, default, minimum, maximum, numeric kind, UI group
 PARAMS = {
@@ -64,17 +64,17 @@ class IndexPair(StrictModel):
 
 class Options(StrictModel):
     sample: str = Field(pattern='^'+SAFE_NAME+'$', max_length=48)
-    assay: Literal['chromatin','microc']
+    assay: Literal['chromatin','microc','rnaseq','clip']
     reference: str = Field(pattern=r'^[a-zA-Z0-9_-]{1,32}$')
-    mapper: Literal['auto','bowtie2','bwa-mem2','bwa-mem','minimap2'] = 'auto'
-    spike_in: bool = False
+    mapper: Literal['auto','bowtie2','bwa-mem2','bwa-mem','minimap2','starlong'] = 'auto'
+    spike_in: bool = True
     declared_spike_in: bool = False
-    mycoplasma: bool = False
+    mycoplasma: bool = True
     custom_regions: bool = False
     regions_label: str = Field(default='Uploaded regions',pattern=r'^[A-Za-z0-9 _().-]{1,80}$')
     regions_filename: str | None = Field(default=None, max_length=180, pattern=r'^[^/\\\x00-\x1f\x7f]{1,180}$')
     regions_mode: Literal['auto','reference_point','region'] = 'auto'
-    regions_assembly: str | None = Field(default=None,pattern=r'^[A-Za-z0-9_-]{1,32}$')
+    regions_assembly: str | None = Field(default=None,pattern=r'^[A-Za-z0-9_.-]{1,32}$')
     library_structure: LibraryStructure = Field(default_factory=LibraryStructure)
     index_pairs: list[IndexPair] = Field(default_factory=list,max_length=96)
     params: dict[str,float|int] = Field(default_factory=dict)
@@ -123,14 +123,26 @@ class Options(StrictModel):
     def check_catalog(self, catalog, *, require_regions_confirmation=False):
         refs = {r['id']:r for r in catalog['references']}
         ref = refs.get(self.reference)
-        if not ref or not ref['ready']: raise ValueError('Reference is unavailable')
+        if not ref: raise ValueError('Reference is unavailable')
+        if self.assay in RNA_ASSAYS:
+            if not ref.get('rna_ready', False):
+                raise ValueError('RNA/CLIP beta is unavailable for this reference')
+        elif not ref['ready']:
+            raise ValueError('Reference is unavailable')
         mapper = resolve_mapper(self.mapper,self.assay,ref)
-        if mapper not in ref['mappers'] or (self.assay=='microc' and mapper=='bowtie2'):
+        if ((self.assay in RNA_ASSAYS and mapper != 'starlong')
+                or (self.assay not in RNA_ASSAYS and mapper == 'starlong')
+                or mapper not in ref['mappers'] or (self.assay=='microc' and mapper=='bowtie2')):
             raise ValueError('Mapper is unavailable for this assay/reference')
         if self.assay=='microc' and microc_bwa_mapper(mapper,ref) not in ref['mappers']:
             raise ValueError('Micro-C auxiliary mapper is unavailable for this reference')
-        if self.mycoplasma and not ref['mycoplasma']: raise ValueError('Mycoplasma reference is unavailable')
-        if self.spike_in and not ref['spike_in']: raise ValueError('Spike-in reference is unavailable')
+        # Apply defaults only where a prepared panel exists. Explicit requests
+        # still fail clearly when a reference cannot support the requested screen.
+        for field, label in (('mycoplasma', 'Mycoplasma'), ('spike_in', 'Spike-in')):
+            if getattr(self, field) and not ref[field]:
+                if field in self.model_fields_set:
+                    raise ValueError(label + ' reference is unavailable')
+                setattr(self, field, False)
         if self.custom_regions and self.assay!='chromatin': raise ValueError('Custom regions require a chromatin library')
         # Require confirmation for new submissions while retaining queued legacy jobs.
         if self.custom_regions and (require_regions_confirmation or self.regions_assembly is not None):
@@ -190,4 +202,7 @@ class BatchSubmission(StrictModel):
 
 def schema_payload():
     return {'params':[{ 'key':k,'label':v[0],'default':v[1],'min':v[2],'max':v[3],'kind':v[4],'group':v[5]} for k,v in PARAMS.items()],
-            'ranges':RANGES,'metric_profile':'ont_native','library_structure':structure_catalog()}
+            'ranges':RANGES,'rna_descriptive_ranges':['primary_mapping_rate','usable_fragment_rate','mitochondrial_fraction'],
+            'assays':[{'id':'chromatin','label':'Chromatin','beta':False},{'id':'microc','label':'Micro-C','beta':False},
+                      {'id':'rnaseq','label':'RNA-seq','beta':True},{'id':'clip','label':'CLIP-seq','beta':True}],
+            'metric_profile':'ont_native','library_structure':structure_catalog()}

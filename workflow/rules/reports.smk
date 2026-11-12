@@ -11,6 +11,11 @@ rule resolved_report_config:
 rule reports:
     input:
         script="workflow/scripts/ont_qc.py",
+        rna_script="workflow/scripts/rna_qc.py",
+        rna_renderer="workflow/scripts/rna_report.py",
+        mixture_renderer="workflow/scripts/report_sublibrary.py",
+        rna=expand(f"{OUT}/qc/rna/{{sample}}", sample=RNA),
+        rna_preparation=expand(f"{OUT}/qc/rna_preparation/{{sample}}.json", sample=RNA),
         structure_model="workflow/scripts/library_structure.py",
         structure_diagram="workflow/scripts/report_library_structure.py",
         extension_script="workflow/scripts/spikein_auto.py",
@@ -85,6 +90,11 @@ rule reports:
 
 rule report_bundle:
     input:
+        rna=expand(f"{OUT}/qc/rna/{{sample}}", sample=RNA),
+        rna_preparation=expand(f"{OUT}/qc/rna_preparation/{{sample}}.json", sample=RNA),
+        rna_preparation_units=expand(f"{OUT}/qc/rna_preparation/{{sample}}.units.tsv.gz", sample=RNA),
+        rna_sources=expand(f"{OUT}/qc/rna_sources/{{sample}}.json", sample=RNA),
+        rna_source_units=expand(f"{OUT}/qc/rna_sources/{{sample}}.units.tsv.gz", sample=RNA),
         rendered=rules.reports.output,
         config=rules.resolved_report_config.output,
         script="workflow/scripts/report_bundle.py",

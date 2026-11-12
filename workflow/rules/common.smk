@@ -25,6 +25,7 @@ Bowtie2 = TOOLS.get("bowtie2", "bowtie2")
 BWA_MEM2 = TOOLS.get("bwa_mem2", "bwa-mem2")
 BWA = TOOLS.get("bwa", "bwa")
 SAMTOOLS = TOOLS.get("samtools", "samtools")
+STARLONG = TOOLS.get("starlong", TOOLS.get("STAR", "STARlong"))
 BAMCOVERAGE = TOOLS.get("bamCoverage", "bamCoverage")
 BEDGRAPH2BW = TOOLS.get("bedGraphToBigWig", "bedGraphToBigWig")
 COMPUTEMATRIX = TOOLS.get("computeMatrix", "computeMatrix")
@@ -45,6 +46,10 @@ def assay(sample):
     value = str(config["samples"][sample]["type"]).lower().replace("-", "").replace("_", "").replace(" ", "")
     if value in {"microc", "microclike"}:
         return "microc"
+    if value in {"rna", "rnaseq"}:
+        return "rnaseq"
+    if value in {"clip", "clipseq", "eclip", "iclip", "seclip"}:
+        return "clip"
     if value in {"hic", "insituhic", "dilutionhic", "3d", "contact"}:
         raise ValueError(f"Sample {sample}: Hi-C must not be processed as Micro-C. The supported assays are chromatin and Micro-C.")
     if value != "chromatin":
@@ -59,6 +64,13 @@ def fastqs(wildcards):
 
 def sample_mapper(sample):
     sample_override = config["samples"][sample].get("mapper")
+    if assay(sample) in {"rnaseq", "clip"}:
+        mapper = str(sample_override or ALIGNMENT.get("rna_mapper", "starlong")).lower()
+        if mapper not in {"star", "starlong"}:
+            raise ValueError("RNA/CLIP beta requires the STARlong splice-aware mapper")
+        if not reference_for(sample).get("star_index"):
+            raise ValueError(f"Sample {sample}: reference needs a prepared STAR index for RNA/CLIP beta")
+        return "starlong"
     default = ALIGNMENT.get("microc_mapper", reference_for(sample).get("microc_mapper", "bwa-mem2")) if assay(sample) == "microc" else ALIGNMENT.get("chromatin_mapper", "bowtie2")
     mapper = str(sample_override or default).lower()
     if mapper not in {"bowtie2", "bwa-mem2", "bwa-mem", "minimap2"}:
@@ -74,15 +86,21 @@ def microc_bwa_mapper(sample):
     return mapper
 
 def bwa_tool(sample):
+    if assay(sample) in {"rnaseq", "clip"}:
+        return BWA_MEM2
     return BWA if microc_bwa_mapper(sample)=='bwa-mem' else BWA_MEM2
 
 def bwa_index(sample):
     return reference_for(sample)['bwa_index' if microc_bwa_mapper(sample)=='bwa-mem' else 'bwa_mem2_index']
 
 def bwa_batch_options(sample):
+    if assay(sample) in {"rnaseq", "clip"}:
+        return ""
     return '-K '+str(int(ALIGNMENT.get('bwa_batch_bases',1000000))) if microc_bwa_mapper(sample)=='bwa-mem' else ''
 
 def query1(wildcards):
+    if assay(wildcards.sample) in {"rnaseq", "clip"}:
+        return f"{OUT}/prepared/{wildcards.sample}.rna.fastq.gz"
     suffix = "leg1" if assay(wildcards.sample) == "microc" else "inserts"
     return f"{OUT}/prepared/{wildcards.sample}.{suffix}.fastq.gz"
 
@@ -91,11 +109,15 @@ def query2(wildcards):
 
 def index_dependency(wildcards):
     ref=reference_for(wildcards.sample)
+    if sample_mapper(wildcards.sample) == "starlong":
+        return [str(Path(ref["star_index"]) / name) for name in ("Genome", "SA", "SAindex", "genomeParameters.txt")]
     return [ref["minimap2_index"]] if sample_mapper(wildcards.sample)=="minimap2" and ref.get("minimap2_index") else []
 
 def index_prefix(wildcards):
     mapper = sample_mapper(wildcards.sample)
     reference = reference_for(wildcards.sample)
+    if mapper == "starlong":
+        return reference["star_index"]
     if mapper == "bowtie2":
         return reference["bowtie2_index"]
     if mapper == "bwa-mem2":
@@ -161,3 +183,4 @@ def primary_for_reference(wildcards):
 
 
 MICROC = [s for s in SAMPLES if assay(s) == "microc"]
+RNA = [s for s in SAMPLES if assay(s) in {"rnaseq", "clip"}]
