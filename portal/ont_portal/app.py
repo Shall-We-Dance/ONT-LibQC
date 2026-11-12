@@ -354,19 +354,52 @@ def create_app(settings=None):
     async def unavailable_report():
         return HTMLResponse("<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Report link unavailable · ONT-LibQC</title><link rel='stylesheet' href='/static/style.css'></head><body><main><h1>Report link unavailable</h1><p>This report link has expired or is incomplete. Reopen the private analysis link from your email or saved links.</p><p><a href='/'>New analysis</a></p></main></body></html>")
 
-    @api.get('/r/{key}')
-    async def short_report(request:Request,key:str):
-        if not KEY.fullmatch(key):raise HTTPException(404,'Report not found')
+    def short_report_record(key):
+        if not KEY.fullmatch(key):return None
         with store.connect() as c:
             link=c.execute('SELECT * FROM report_links WHERE key_hash=?',(key_hash(key),)).fetchone()
         row=store.get(link['job_id']) if link else None
         if not link or link['expires']<=time.time() or not row or row['expires']<=time.time() or row['status']!='succeeded':
+            return None
+        return row,link
+
+    @api.get('/r/{key}')
+    async def short_report(request:Request,key:str):
+        if not KEY.fullmatch(key):raise HTTPException(404,'Report not found')
+        record=short_report_record(key)
+        if record is None:
             document=request.headers.get('sec-fetch-dest')=='document' or 'text/html' in request.headers.get('accept','')
             if document:return RedirectResponse('/r/',status_code=303)
             raise HTTPException(404,'Report not found or expired')
+        row,link=record
         with store.connect() as c:
             return safe_report(s.state/'reports'/row['id'],link['file'],
                                lambda file:report_link(row['id'],file,min(link['expires'],int(row['expires'])),c))
+
+    def authorized_report_image(scope):
+        """Exempt actual accessible images, never opaque links on trust alone."""
+        path=scope['path']
+        try:
+            if path.startswith('/r/'):
+                record=short_report_record(path[3:])
+                if record is None:return False
+                row,link=record;root=s.state/'reports'/row['id'];file=link['file']
+            elif path.startswith('/reports/'):
+                parts=path.split('/',3)
+                if len(parts)!=4:return False
+                _,_,job_id,file=parts
+                if Path(file).suffix not in {'.svg','.png'}:return False
+                row=owned(Request(scope),job_id,report=True)
+                if row['status']!='succeeded' or row['expires']<=time.time():return False
+                root=s.state/'reports'/job_id
+            elif path.startswith('/example/'):
+                root=s.examples;file=path[len('/example/'):]
+            else:return False
+            if Path(file).suffix not in {'.svg','.png'}:return False
+            safe_report(root,file)
+            return True
+        except HTTPException:
+            return False
 
     @api.get('/example/{file:path}')
     async def example(file:str): return safe_report(s.examples,file or 'index.html')
@@ -403,7 +436,7 @@ def create_app(settings=None):
     @api.get('/j/')
     @api.get('/b/')
     async def index(): return FileResponse(s.static/'index.html')
-    api.add_middleware(RequestGate, settings=s)
+    api.add_middleware(RequestGate, settings=s, report_image=authorized_report_image)
     api.add_middleware(RequestSecurity, settings=s, app_csp=APP_CSP, report_csp=REPORT_CSP,
                        public_csp=PUBLIC_CSP, example_index_csp=EXAMPLE_INDEX_CSP)
     return api

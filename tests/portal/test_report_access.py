@@ -167,6 +167,35 @@ class ReportAccessTests(unittest.TestCase):
         self.assertIn('max-age=',response.headers['strict-transport-security'])
         self.assertNotIn('set-cookie',response.headers)
 
+    def test_many_authenticated_report_images_are_not_rate_limited(self):
+        self.settings.resource_request_burst=3
+        self.settings.resource_requests_per_minute=1
+        self.settings.global_resource_request_burst=4
+        self.settings.global_resource_requests_per_minute=1
+        page=self.client.get(self.task()['report_url'])
+        image=re.search(r'href="(/r/[A-Za-z0-9_-]{22})"',page.text).group(1)
+        legacy=f'/reports/{JID}/assets/figure.svg?view='+report_grant(self.settings.secret,JID,int(self.now)+100)
+        for path in [image,legacy]*128:
+            response=self.client.get(path,headers={'Sec-Fetch-Dest':'image'})
+            self.assertEqual(response.status_code,200)
+            self.assertEqual(response.headers['content-type'],'image/svg+xml')
+        # A forged or expired capability still reaches ordinary access checks.
+        self.assertEqual(self.client.get('/r/'+'x'*22,headers={'Sec-Fetch-Dest':'image'}).status_code,404)
+        self.store.update(JID,expires=0)
+        self.assertEqual(self.client.get(image,headers={'Sec-Fetch-Dest':'image'}).status_code,404)
+
+    def test_image_destination_cannot_exempt_documents_downloads_or_invalid_links(self):
+        self.settings.resource_request_burst=3
+        self.settings.resource_requests_per_minute=1
+        job=self.task();hint={'Sec-Fetch-Dest':'image'}
+        self.assertEqual(self.client.get(job['report_url'],headers=hint).status_code,200)
+        self.assertEqual(self.client.get(job['download_url'],headers=hint).status_code,200)
+        self.assertEqual(self.client.get('/r/'+'x'*22,headers=hint).status_code,404)
+        self.assertEqual(self.client.get(job['report_url'],headers=hint).status_code,429)
+        self.assertEqual(self.client.get(job['download_url'],headers=hint).status_code,429)
+        self.assertEqual(self.client.get('/r/'+'x'*22,headers=hint).status_code,429)
+        self.assertEqual(self.client.get('/api/catalog').status_code,200)
+
     def test_bundle_buttons_are_short_and_preserve_offline_paths(self):
         job=self.task();grant=report_grant(self.settings.secret,JID,int(self.now)+100)
         for url in [self.page,f'/reports/{JID}/downloads.html',f'/reports/{JID}/index.html']:

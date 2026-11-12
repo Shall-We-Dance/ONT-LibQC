@@ -66,18 +66,24 @@ class _RequestPool:
 
 
 class RequestGate:
-    """A report page can fetch many figures without spending the API/upload budget.
+    """Authenticated report images do not spend request budgets.
 
-    Both pools remain bounded per client and globally. Routing and report access
-    checks still run for every request; this does not make private files public.
+    All other resources and API/upload work retain separate bounded pools.
+    Image access is checked before exemption and again by the serving route.
     """
-    def __init__(self, app, settings):
+    def __init__(self, app, settings, report_image=None):
+        self.app, self.report_image = app, report_image
         self.api = _RequestPool(app, settings)
         self.resources = _RequestPool(app, settings, resources=True)
 
     async def __call__(self, scope, receive, send):
         resource = (scope['type'] == 'http' and scope['method'] in {'GET', 'HEAD'}
                     and scope['path'].startswith(('/reports/', '/r/', '/example/', '/static/', '/example-inputs/')))
+        if (resource and self.report_image is not None
+                and scope['path'].startswith(('/reports/', '/r/', '/example/'))):
+            from starlette.concurrency import run_in_threadpool
+            if await run_in_threadpool(self.report_image, scope):
+                return await self.app(scope, receive, send)
         await (self.resources if resource else self.api)(scope, receive, send)
 
 
