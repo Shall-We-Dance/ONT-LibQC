@@ -147,6 +147,18 @@ class StatusLinksTests(unittest.TestCase):
         self.assertIn('no-transform',valid.headers['cache-control'])
         self.assertNotIn('cloudflare',valid.headers['content-security-policy'])
 
+    def test_converted_legacy_batch_mail_link_resolves(self):
+        jobs=self.create(2)
+        with self.store.connect() as db:
+            db.execute('DELETE FROM batch_links')
+            db.execute('UPDATE jobs SET short_link_hash=NULL')
+        for job in jobs:self.assertEqual(self.compact([job]).status_code,200)
+        rows=[self.store.get(job['id']) for job in jobs]
+        link=batch_link(self.settings.secret,rows)
+        resolved=self.resolve(link)
+        self.assertEqual(resolved.status_code,200)
+        self.assertEqual({row['id'] for row in resolved.json()['jobs']},{job['id'] for job in jobs})
+
     def test_new_and_old_task_shells_keep_private_headers(self):
         for url in ('/j/','/b/','/jobs/'+'a'*32):
             response=self.client.get(url)

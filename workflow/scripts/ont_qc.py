@@ -2411,7 +2411,8 @@ def cmd_report(args):
                                                        region_asset.name if metric["assay"] == "chromatin" else None, karyotype_asset.name,
                                                        gene_profile_assets[scope_id].name if scope_id in gene_profile_assets else None,
                                                        full_library_assets=full_library_assets))
-        profiles_html=''.join(profile_sections)
+        from report_profiles import render_profiles_card
+        profiles_html=render_profiles_card(sample, scopes, profile_sections, out/'reports/assets', out/'qc/gene_profile')
         pairtools_html = ""
         if metric["assay"] == "microc":
             from microc_pairtools import report_html as pairtools_report
@@ -2480,7 +2481,7 @@ def cmd_report(args):
         report=f"""<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>{sample} · ONT-LibQC</title>{favicon("assets/ont-libqc-mark.svg")}<style>{REPORT_CSS}</style></head><body>
 {brand_bar("assets/ont-libqc-mark.svg")}
 <header class='report-hero'><h1 class='sample-name'>{html.escape(sample)}</h1><div class='hero-meta'><span>{html.escape({'chromatin':'Chromatin','microc':'Micro-C','rnaseq':'RNA-seq · beta','clip':'CLIP-seq · beta'}.get(metric['assay'],metric['assay']))}</span><span>{html.escape(report_assembly)}</span><span>{metric['raw_reads']:,} raw molecules</span><span>{html.escape(definition_label)}</span></div></header>
-<nav class='report-nav'><a href='#sequencing'>Sequencing</a><a href='#library-shape'>Library quality</a>{"<a href='#rna-qc'>RNA QC · beta</a><a href='#contamination'>Contamination</a>" if rna_html else ""}{"" if rna_html else "<a href='#assay-qc'>Assay metrics</a>"}{"<a href='#custom-regions'>Custom regions</a>" if custom_html else ""}{"<a href='#pairtools'>Pairtools</a><a href='#ligation'>Ligation</a><a href='#mnase'>MNase</a>" if pairtools_html else ""}{"<a href='#spike-screen'>Candidate screen</a>" if metric.get('spike_in_mode')=='auto' or json.loads((out/'qc/spike_in'/f'{sample}.json').read_text()).get('mode')=='auto' else ''}<a href='../summary/index.html'>All samples</a></nav>
+<nav class='report-nav'><a href='#sequencing'>Sequencing</a><a href='#library-shape'>Library quality</a><a href='#profiles'>Size &amp; profiles</a>{"<a href='#rna-qc'>RNA QC · beta</a><a href='#contamination'>Contamination</a>" if rna_html else ""}{"" if rna_html else "<a href='#assay-qc'>Assay metrics</a>"}{"<a href='#custom-regions'>Custom regions</a>" if custom_html else ""}{"<a href='#pairtools'>Pairtools</a><a href='#ligation'>Ligation</a><a href='#mnase'>MNase</a>" if pairtools_html else ""}{"<a href='#spike-screen'>Candidate screen</a>" if metric.get('spike_in_mode')=='auto' or json.loads((out/'qc/spike_in'/f'{sample}.json').read_text()).get('mode')=='auto' else ''}<a href='../summary/index.html'>All samples</a></nav>
 <div class='traffic-grid'>{top}</div>
 {mixture_html}
 <section class='report-section' id='sequencing'><h2>ONT sequencing</h2>{ont_table}</section>
@@ -2490,7 +2491,8 @@ def cmd_report(args):
 <details class='metric-group' id='library-extra-metrics'><summary>All structure and index metrics</summary>{library_table}</details>
 {reference_notes_html()}
 <details><summary>Size and adapter interpretation</summary><p>The 120–170 bp raw-size window is supportive only. Dimer-like units have a ≤{fmt(metric.get('adapter_dimer_max_bp'))}-bp central gap. Unreconstructed template matches remain candidates; resolved 11–50 bp inserts are retained. Full-library sizes include expected outer adapters and inferred physical indexes, including units with undetected outer handles. The main profile weights each recovered unit by its modeled full-library length; count-based profiles are expandable. Curves are conditional on sequencing and adapter recovery and do not measure TapeStation fluorescence or NGS molarity.</p></details>
-<div class='library-profiles' id='profiles'><h3>Size and genomic profiles</h3>{profiles_html}</div></section>
+</section>
+{profiles_html}
 {rna_html}
 {screen_html}
 {assay_html}

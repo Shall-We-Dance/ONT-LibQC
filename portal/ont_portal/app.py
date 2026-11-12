@@ -126,8 +126,14 @@ def create_app(settings=None):
                 raise HTTPException(404, 'Private link not found')
             if jid not in ids: ids.append(jid)
         with store.connect(immediate=True) as c:
-            if not all(c.execute('SELECT 1 FROM jobs WHERE id=?', (jid,)).fetchone() for jid in ids):
+            rows = [c.execute('SELECT batch_id FROM jobs WHERE id=?', (jid,)).fetchone() for jid in ids]
+            if not all(rows):
                 raise HTTPException(404, 'Private link not found')
+            # Legacy batches have no registered short key. Register it without
+            # disclosing it here; selection links still cover only supplied IDs.
+            for batch in {row['batch_id'] for row in rows if row['batch_id']}:
+                c.execute('INSERT OR IGNORE INTO batch_links VALUES (?,?)',
+                          (batch, key_hash(link_key(s.secret, 'batch', batch))))
             jobs = []
             for jid in ids:
                 key = link_key(s.secret, 'job', jid)
