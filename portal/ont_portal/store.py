@@ -58,6 +58,7 @@ class Store:
                 if name not in columns: c.execute('ALTER TABLE jobs ADD COLUMN ' + name + ' TEXT')
             c.execute('CREATE UNIQUE INDEX IF NOT EXISTS jobs_short_link ON jobs(short_link_hash)')
             c.execute('CREATE TABLE IF NOT EXISTS batch_links (batch_id TEXT PRIMARY KEY, key_hash TEXT UNIQUE NOT NULL)')
+            c.execute('CREATE TABLE IF NOT EXISTS saved_links (key_hash TEXT PRIMARY KEY, job_ids TEXT NOT NULL)')
             c.execute("UPDATE jobs SET outcome=status WHERE outcome IS NULL AND status IN ('succeeded','failed','cancelled')")
             # Preserve anonymous outcome counts when retention erases task metadata.
             c.execute("""CREATE TRIGGER IF NOT EXISTS jobs_outcome_update AFTER UPDATE OF status ON jobs
@@ -97,17 +98,20 @@ class Store:
             return result.rowcount==1
 
     def statistics(self):
-        # Fixed aggregates only: never expose IDs, options, names, addresses or times.
+        # Daily UTC aggregates only; retain no per-job timestamps in this response.
         with self.connect() as c:
+            c.execute('BEGIN')  # Totals and history must describe the same snapshot.
             row = c.execute("""SELECT COUNT(*) AS total,
                 COALESCE(SUM(status IN ('running','cancelling')),0) AS running,
-                COALESCE(SUM(status='queued'),0) AS queued,
-                COALESCE(SUM(outcome='succeeded'),0) AS succeeded,
-                COALESCE(SUM(outcome='failed'),0) AS failed,
-                COALESCE(SUM(outcome='cancelled'),0) AS cancelled,
-                COALESCE(SUM(status='expired' AND outcome IS NULL),0) AS archived
+                COALESCE(SUM(status='queued'),0) AS queued
                 FROM jobs""").fetchone()
-        return {key: int(row[key]) for key in row.keys()}
+            days = c.execute("SELECT date(created,'unixepoch') AS day, COUNT(*) AS count FROM jobs GROUP BY day ORDER BY day").fetchall()
+        cumulative = 0
+        history = []
+        for day in days:
+            cumulative += day['count']
+            history.append({'date': day['day'], 'total': cumulative})
+        return {key: int(row[key]) for key in row.keys()} | {'history': history}
 
     def heartbeat(self):
         with self.connect() as c:

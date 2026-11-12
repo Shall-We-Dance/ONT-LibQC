@@ -43,7 +43,7 @@ class StatusLinksTests(unittest.TestCase):
         migrated=Store(old);row=migrated.get('a'*32)
         self.assertEqual((row['email'],row['filename'],row['expires']),('legacy@example.org','legacy.fastq',99))
         self.assertEqual(row['outcome'],'succeeded');self.assertIsNone(row['short_link_hash'])
-        self.assertEqual(migrated.statistics()['succeeded'],1)
+        self.assertEqual(migrated.statistics()['history'],[{'date':'1970-01-01','total':1}])
         self.assertEqual(job_link(self.settings.secret,row),'/jobs/'+'a'*32+'#'+token_for(self.settings.secret,'a'*32))
 
     def test_new_single_link_is_short_private_and_isolated(self):
@@ -86,22 +86,66 @@ class StatusLinksTests(unittest.TestCase):
         Store(self.store.state)
         self.assertIsNone(self.store.get(job['id'])['short_link_hash'])
 
-    def test_public_statistics_are_counts_only_and_survive_cleanup(self):
+    def test_public_statistics_are_daily_counts_only_and_survive_cleanup(self):
+        self.assertEqual(self.store.statistics(),dict(total=0,running=0,queued=0,history=[]))
         jobs=self.create(5)
         for job,status in zip(jobs,('running','queued','succeeded','failed','cancelled')):
             self.store.update(job['id'],status=status)
+        with self.store.connect() as db:
+            for job,created in zip(jobs,(0,86399,86400,259200,259201)):
+                db.execute('UPDATE jobs SET created=? WHERE id=?',(created,job['id']))
+        history=[{'date':'1970-01-01','total':2},{'date':'1970-01-02','total':3},{'date':'1970-01-04','total':5}]
         stats=self.client.get('/api/statistics')
-        self.assertEqual(stats.json(),dict(total=5,running=1,queued=1,succeeded=1,failed=1,cancelled=1,archived=0))
-        self.assertTrue(all(type(value) is int for value in stats.json().values()))
-        for marker in (jobs[0]['id'],jobs[0]['token'],'private_sample','person@example.org','198.51'):
+        self.assertEqual(stats.json(),dict(total=5,running=1,queued=1,history=history))
+        for marker in (jobs[0]['id'],jobs[0]['token'],'private_sample','person@example.org','198.51','succeeded','failed','cancelled','archived'):
             self.assertNotIn(marker,stats.text)
         self.store.update(jobs[2]['id'],status='expired',options='{}',email='',filename='',client='',expires=0)
         self.assertEqual(self.client.get('/api/statistics').json(),stats.json())
         self.store.update(jobs[1]['id'],status='expired',options='{}',email='',filename='',client='')
         updated=self.client.get('/api/statistics').json()
-        self.assertEqual((updated['archived'],updated['queued'],updated['succeeded']),(1,0,1))
+        self.assertEqual(updated,dict(total=5,running=1,queued=0,history=history))
         Store(self.store.state)
         self.assertEqual(self.store.statistics(),updated)
+
+    def compact(self,jobs):
+        return self.client.post('/api/links/compact',json={'jobs':jobs})
+
+    def test_legacy_selection_compacts_exactly_without_widening_access(self):
+        batch=self.create(3);other=self.create()[0]
+        selected=[batch[1],other,batch[0]]
+        with self.store.connect() as db:db.execute('UPDATE jobs SET short_link_hash=NULL')
+        response=self.compact(selected)
+        self.assertEqual(response.status_code,200)
+        link=response.json()['private_link']
+        self.assertRegex(link,r'^/b/#[A-Za-z0-9_-]{22}$')
+        resolved=self.resolve(link).json()['jobs']
+        self.assertEqual([row['id'] for row in resolved],[row['id'] for row in selected])
+        self.assertNotIn(batch[2]['id'],str(resolved))
+        self.assertIsNone(self.store.get(batch[2]['id'])['short_link_hash'])
+        self.assertEqual(self.compact(selected).json(),response.json())
+        self.assertEqual(self.compact([selected[0]]).json()['private_link'],resolved[0]['private_link'])
+        for row in resolved:
+            self.assertEqual(self.resolve(row['private_link']).status_code,200)
+            self.assertEqual(self.client.get('/api/jobs/'+row['id'],headers={'Authorization':'Bearer '+row['token']}).status_code,200)
+        with self.store.connect() as db:
+            self.assertNotIn(link.split('#')[1],str([tuple(row) for row in db.execute('SELECT * FROM saved_links')]))
+        Store(self.store.state)
+        self.assertEqual(self.resolve(link).json()['jobs'],resolved)
+
+    def test_compaction_requires_every_credential_before_writing(self):
+        jobs=self.create(2)
+        with self.store.connect() as db:db.execute('UPDATE jobs SET short_link_hash=NULL')
+        for entries in (None,[],[jobs[0],{'id':jobs[1]['id'],'token':jobs[0]['token']}],
+                        [jobs[0],{'id':'f'*32,'token':token_for(self.settings.secret,'f'*32)}],
+                        [jobs[0]]*65,[None],[{'id':[], 'token':{}}]):
+            self.assertEqual(self.compact(entries).status_code,404)
+        self.assertEqual(self.client.post('/api/links/compact',content='{',headers={'Content-Type':'application/json'}).status_code,404)
+        self.assertEqual(self.client.post('/api/links/compact',json={'jobs':jobs},headers={'Origin':'https://other.example'}).status_code,403)
+        self.assertTrue(all(self.store.get(job['id'])['short_link_hash'] is None for job in jobs))
+        with self.store.connect() as db:self.assertEqual(db.execute('SELECT COUNT(*) FROM saved_links').fetchone()[0],0)
+        valid=self.compact(jobs)
+        self.assertIn('no-transform',valid.headers['cache-control'])
+        self.assertNotIn('cloudflare',valid.headers['content-security-policy'])
 
     def test_new_and_old_task_shells_keep_private_headers(self):
         for url in ('/j/','/b/','/jobs/'+'a'*32):

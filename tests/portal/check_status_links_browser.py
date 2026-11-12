@@ -10,6 +10,12 @@ from ont_portal.short_links import link_key,key_hash
 OUTPUT=Path(sys.argv[1]) if len(sys.argv)>1 else Path('test-results/status-links')
 OUTPUT.mkdir(parents=True,exist_ok=True)
 results=[]
+def wait_tasks(page,count):
+ deadline=time.monotonic()+10
+ while time.monotonic()<deadline:
+  if page.evaluate('tasks.length === '+str(count)+' && tasks.every(t => t.job && !t.fetchError)'):return
+  page.wait_for_timeout(50)
+ raise AssertionError('Private page did not load')
 with tempfile.TemporaryDirectory() as tmp:
  sock=socket.socket();sock.bind(('127.0.0.1',0));origin='http://127.0.0.1:'+str(sock.getsockname()[1])
  cfg=Settings(state=Path(tmp),public_url=origin,allowed_hosts=['127.0.0.1'],secret='browser-fixture-'*5,submission_key='',public_catalog={'references':[]},require_https=False,min_free_bytes=0)
@@ -18,7 +24,7 @@ with tempfile.TemporaryDirectory() as tmp:
   for n,status in enumerate(('running','queued','succeeded','failed','expired'),1):
    jid=str(n)*32;key=link_key(cfg.secret,'job',jid);keys[jid]=key
    db.execute('INSERT INTO jobs (id,created,updated,status,email,filename,expected_bytes,options,client,expires,batch_id,short_link_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
-    (jid,now+n,now,status,'private@example.org','private.fastq',20,json.dumps({'sample':'Sample'+str(n)}),'private-address',now+86400,batch if n<=2 else None,key_hash(key) if n!=3 else None))
+    (jid,now-(5-n)*86400,now,status,'private@example.org','private.fastq',20,json.dumps({'sample':'Sample'+str(n)}),'private-address',now+86400,batch if n<=2 else None,key_hash(key) if n!=3 else None))
   db.execute('INSERT INTO batch_links VALUES (?,?)',(batch,key_hash(link_key(cfg.secret,'batch',batch))))
  server=uvicorn.Server(uvicorn.Config(app,log_level='error',access_log=False));thread=threading.Thread(target=server.run,kwargs={'sockets':[sock]},daemon=True);thread.start()
  while not server.started:time.sleep(.02)
@@ -34,9 +40,9 @@ with tempfile.TemporaryDirectory() as tmp:
       page.get_by_text('Jobs running: 1',exact=True).wait_for();page.get_by_text('Jobs waiting to run: 1',exact=True).wait_for()
       page.locator('#server-status summary').click()
       assert page.locator('#jobs-total').inner_text()=='5'
-      assert page.locator('#jobs-succeeded').inner_text()=='1'
-      assert page.locator('#jobs-failed').inner_text()=='1'
-      assert page.locator('#jobs-archived').inner_text()=='1'
+      assert page.locator('#jobs-history-chart svg').count()==1
+      assert page.locator('#jobs-history-chart .history-point').count()==5
+      for text in ('Completed','Failed','Cancelled','Earlier archived jobs'):assert text not in page.locator('#server-status').inner_text()
       assert 'private' not in page.locator('#server-status').inner_text().lower()
       assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
       page.screenshot(path=str(OUTPUT/f'{engine}-{width}-counts.png'))
@@ -47,7 +53,7 @@ with tempfile.TemporaryDirectory() as tmp:
         if page.evaluate('tasks.length === '+str(count)+' && tasks.every(t => t.job && !t.fetchError)'):break
         page.wait_for_timeout(50)
        else:raise AssertionError('Private page did not load')
-       assert page.url==origin+path
+       page.wait_for_url('**/'+('j' if count==1 else 'b')+'/#*')
        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
        if path.startswith('/j/'):
         store.update('1'*32,stage='Plotting sublibrary gene coverage (2 of 6 complete)')
@@ -55,9 +61,34 @@ with tempfile.TemporaryDirectory() as tmp:
         page.get_by_text('Plotting sublibrary gene coverage (2 of 6 complete)',exact=True).wait_for()
         assert page.locator('.cancel-analysis').evaluate("el => getComputedStyle(el).backgroundColor")=='rgb(255, 241, 240)'
         page.screenshot(path=str(OUTPUT/f'{engine}-{width}-progress.png'))
+      # Slow private requests must show a result/loading view from the first paint;
+      # an unavailable upload catalog must never block reports.
+      page.route('**/api/catalog',lambda route: route.abort())
+      def slow(route):
+       page.wait_for_timeout(650)
+       route.continue_()
+      page.route('**/api/links/resolve',slow)
+      page.route('**/api/jobs/*',slow)
+      for path in ('/b/#'+link_key(cfg.secret,'batch',batch), '/#jobs='+','.join(jid+':'+token_for(cfg.secret,jid) for jid in ('1'*32,'2'*32))):
+       page.goto(origin+path,wait_until='domcontentloaded')
+       assert page.locator('#submission-view').is_hidden()
+       assert page.locator('#page-loading').is_visible() or page.locator('#tasks-view').is_visible()
+       wait_tasks(page,2)
+       page.wait_for_url('**/b/#*')
+       assert page.locator('#submission-view').is_hidden()
+      page.unroute('**/api/links/resolve',slow);page.unroute('**/api/jobs/*',slow)
+      # Conversion failure leaves the legacy link and reports usable.
+      page.route('**/api/links/compact',lambda route: route.fulfill(status=503,json={'detail':'Try later'}))
+      legacy='/jobs/'+'3'*32+'#'+token_for(cfg.secret,'3'*32)
+      page.goto(origin+legacy)
+      wait_tasks(page,1)
+      assert page.url==origin+legacy
+      page.goto(origin+'/b/#invalid')
+      page.locator('#global-error').wait_for()
+      assert page.locator('#submission-view').is_hidden()
       assert not context.cookies();assert not errors,errors
       for key in [*keys.values(),link_key(cfg.secret,'batch',batch)]:assert all(key not in url for url in urls)
-      results.append({'browser':engine,'width':width,'counts_only':True,'short_and_legacy_links':True,'keys_absent_from_http_urls':True})
+      results.append({'browser':engine,'width':width,'daily_cumulative_counts':True,'no_homepage_flash':True,'short_and_legacy_links':True,'keys_absent_from_http_urls':True})
       context.close()
     finally:browser.close()
  finally:server.should_exit=True;thread.join(timeout=10);sock.close()

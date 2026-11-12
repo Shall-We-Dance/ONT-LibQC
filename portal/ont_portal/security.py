@@ -98,7 +98,7 @@ class RequestSecurity:
         path, method = scope['path'], scope['method']
         example_index = path in {'/example/', '/example/index.html'}
         report = path.startswith('/reports/') or (path.startswith('/example/') and not example_index)
-        private_task = path.startswith('/jobs/') or path in {'/j/', '/b/', '/api/links/resolve'}
+        private_task = path.startswith(('/jobs/', '/api/links/')) or path in {'/j/', '/b/'}
         headers = Headers(scope=scope)
         started = False
         async def secured_send(message):

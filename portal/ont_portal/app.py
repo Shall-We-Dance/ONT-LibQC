@@ -101,9 +101,46 @@ def create_app(settings=None):
                 batch = c.execute('SELECT batch_id FROM batch_links WHERE key_hash=?', (digest,)).fetchone()
                 if batch:
                     rows = c.execute('SELECT * FROM jobs WHERE batch_id=? ORDER BY created LIMIT 64', (batch[0],)).fetchall()
+                else:
+                    saved = c.execute('SELECT job_ids FROM saved_links WHERE key_hash=?', (digest,)).fetchone()
+                    if saved:
+                        rows = [c.execute('SELECT * FROM jobs WHERE id=?', (jid,)).fetchone() for jid in json.loads(saved[0])]
+                        if not all(rows): rows = []
         if not rows: raise HTTPException(404, 'Private link not found')
         return {'jobs': [{'id': row['id'], 'token': token_for(s.secret,row['id']),
                           'private_link': job_link(s.secret,dict(row))} for row in rows]}
+
+    @api.post('/api/links/compact')
+    async def compact_link(request: Request):
+        try: data = await request.json()
+        except ValueError: raise HTTPException(404, 'Private link not found')
+        entries = data.get('jobs') if isinstance(data, dict) else None
+        if not isinstance(entries, list) or not 1 <= len(entries) <= 64:
+            raise HTTPException(404, 'Private link not found')
+        ids = []
+        for entry in entries:
+            jid, token = (entry.get('id'), entry.get('token')) if isinstance(entry, dict) else (None, None)
+            if (not isinstance(jid, str) or not JOB_ID.fullmatch(jid)
+                    or not isinstance(token, str) or not re.fullmatch(r'[0-9a-f]{64}', token)
+                    or not hmac.compare_digest(token, token_for(s.secret, jid))):
+                raise HTTPException(404, 'Private link not found')
+            if jid not in ids: ids.append(jid)
+        with store.connect(immediate=True) as c:
+            if not all(c.execute('SELECT 1 FROM jobs WHERE id=?', (jid,)).fetchone() for jid in ids):
+                raise HTTPException(404, 'Private link not found')
+            jobs = []
+            for jid in ids:
+                key = link_key(s.secret, 'job', jid)
+                c.execute('UPDATE jobs SET short_link_hash=? WHERE id=?', (key_hash(key), jid))
+                jobs.append({'id': jid, 'token': token_for(s.secret, jid), 'private_link': '/j/#' + key})
+            link = jobs[0]['private_link']
+            if len(ids) > 1:
+                # The capability covers exactly the authenticated selection, even
+                # for subsets or links combining tasks from different batches.
+                key = link_key(s.secret, 'selection', ','.join(ids))
+                c.execute('INSERT OR IGNORE INTO saved_links VALUES (?,?)', (key_hash(key), json.dumps(ids)))
+                link = '/b/#' + key
+        return {'jobs': jobs, 'private_link': link}
 
     def create_jobs(request, submissions):
         amount=len(submissions)
