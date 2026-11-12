@@ -6,19 +6,23 @@ from pathlib import Path
 import re
 
 from report_sublibrary import COLORS
+from report_profile_band import read_profile_band
 
 CSS = '''
 .profile-comparison-legend{display:flex;flex-wrap:wrap;gap:8px 22px;list-style:none;margin:8px 0 14px;padding:0;font-size:13px}
 .profile-comparison-legend i,.profile-detail summary i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:7px;print-color-adjust:exact;-webkit-print-color-adjust:exact}
-.profile-comparison-grid{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(240px,1fr);gap:16px;align-items:start}
-.profile-comparison .plot-card{margin:0;min-width:0}.profile-comparison img{display:block;width:100%;height:auto;min-height:0}
-.profile-comparison .comparison-metaplot{max-width:1000px;margin:16px auto 0}
+.profile-comparison-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,.43fr);gap:12px;align-items:stretch}
+.profile-comparison .plot-card{margin:0;min-width:0;padding:12px;border-radius:9px}.profile-comparison img{display:block;width:100%;height:auto;min-height:0}
+.profile-comparison-grid .plot-card>a{display:flex;align-items:center;justify-content:center;height:clamp(240px,25vw,350px)}
+.profile-comparison-grid img{width:100%;height:100%;object-fit:contain}
+.profile-comparison .comparison-metaplot{max-width:850px;margin:12px auto 0}
+.profile-comparison .figure-link{margin-top:6px;font-size:11px}
 .profile-comparison .comparison-note{font-size:12px;color:var(--muted);margin:8px 0 16px}
 .profile-detail{margin:12px 0 0;border:1px solid var(--line);border-radius:8px;padding:0;background:#fff}
 .profile-detail>summary{padding:13px 16px;color:var(--deep);font-weight:550}.profile-detail>summary small{font-weight:400;color:var(--muted);margin-left:12px}
 .profile-detail>.profile-scope{margin:0;padding:0 16px 16px;border:0}.profile-detail .primary-size-plots{margin-top:8px}
 #profiles{scroll-margin-top:80px}#profiles>.profile-scope{border:0;margin-top:0;padding-top:0}
-@media(max-width:700px){.profile-comparison-grid{grid-template-columns:minmax(0,1fr)}.profile-detail>summary small{display:block;margin:5px 0 0 20px}}
+@media(max-width:700px){.profile-comparison-grid{grid-template-columns:minmax(0,1fr)}.profile-comparison-grid .plot-card>a{height:auto}.profile-comparison-grid .comparison-gel>a{height:290px}.profile-detail>summary small{display:block;margin:5px 0 0 20px}}
 @media print{.profile-comparison-grid{display:block}.profile-comparison .plot-card{max-width:100%;break-inside:avoid}.profile-detail{border:0}.profile-detail>summary{padding:2mm 0}.profile-detail>.profile-scope{padding:0}}
 '''
 
@@ -87,14 +91,14 @@ def size_comparison(series):
 
 
 def virtual_lanes(series):
-    width = max(320, 105 + 58*len(series));top, bottom = 55, 300
+    width = 94 + 42*len(series);top, bottom = 55, 300
     maximum = max(row['sizes'][0][-1] for row in series);upper = math.log1p(maximum/50)
     y = lambda bp: bottom - math.log1p(bp/50)/upper*(bottom-top)
     svg = svg_start(width, 370, 'Virtual gel')
-    for value in (0, 100, 300, 1000, maximum):
+    for value in sorted({0, 100, 300, 1000, maximum}):
         if value <= maximum: svg.append(text(52, y(value)+4, f'{value:,.0f}', 'end', 11))
     for i, row in enumerate(series):
-        xs, ys = row['sizes'];lane_x=68+i*58;lane_w=32
+        xs, ys = row['sizes'];lane_x=68+i*42;lane_w=30
         svg.append(f"<g data-scope='{html.escape(row['id'], quote=True)}'><title>{html.escape(row['label'])}</title>")
         for j, signal in enumerate(ys):
             y0 = y(xs[j]) if j == len(xs)-1 else (y(xs[j])+y(xs[j+1]))/2
@@ -104,7 +108,7 @@ def virtual_lanes(series):
         svg += [f"<rect x='{lane_x}' y='{top}' width='{lane_w}' height='{bottom-top}' fill='none' stroke='#aab4bc'/>",
                 f"<rect x='{lane_x}' y='{top-7}' width='{lane_w}' height='4' fill='{row['color']}'/>",
                 text(lane_x+lane_w/2, bottom+22, row['id'], size=11, color=row['color']), '</g>']
-    svg += [text(width/2, 350, 'Larger fragments at top · bp'), '</svg>']
+    svg += [text(width/2, 350, 'Fragment length (bp)', size=11), '</svg>']
     return ''.join(svg)
 
 
@@ -114,19 +118,46 @@ def gene_comparison(series):
     labels, bins, _ = rows[0]['gene']
     if any(row['gene'][:2] != (labels, bins) for row in rows):
         raise ValueError('Sublibrary gene profiles must share the same bin coordinates')
-    left, right, top, bottom = 72, 920, 55, 290
-    maximum = max((v for row in rows for v in row['gene'][2] if math.isfinite(v)), default=0) or 1
+    left, right, top, bottom = 80, 792, 52, 350
+    maximum = max((v for row in rows for v in (row['gene'][2] + (row['band'][1] if row.get('band') else [])) if math.isfinite(v)), default=0) or 1
+    # A little headroom and round tick values keep the axes readable at report size.
+    magnitude = 10 ** math.floor(math.log10(maximum / 4))
+    step = min((v * magnitude for v in (1, 2, 2.5, 5, 10)), key=lambda v: abs(math.log(v / (maximum / 4))))
+    maximum = math.ceil(maximum * 1.06 / step) * step
     x = lambda v: left+(v-bins[0])/(bins[-1]-bins[0])*(right-left)
-    svg = svg_start(960, 350, 'TSS–TES metaplot')
-    for fraction in (0, .25, .5, .75, 1):
-        value=maximum*fraction;y=bottom-fraction*(bottom-top)
-        svg += [f"<line x1='{left}' x2='{right}' y1='{y}' y2='{y}' stroke='#e4eaf0'/>",text(left-10,y+4,f'{value:.3g}','end')]
-    for label, b in zip(labels,bins):
+    y = lambda v: bottom-v/maximum*(bottom-top)
+    legend_rows = math.ceil(len(rows) / 8)
+    svg = svg_start(820, 440 + 24*(legend_rows-1), 'TSS–TES metaplot')
+    svg.append(f"<defs><clipPath id='profile-frame'><rect x='{left}' y='{top}' width='{right-left}' height='{bottom-top}'/></clipPath></defs>")
+    for tick in range(round(maximum / step) + 1):
+        value = tick * step
+        svg += [f"<line x1='{left-5}' x2='{left}' y1='{y(value):.3f}' y2='{y(value):.3f}' stroke='#202b36'/>", text(left-11, y(value)+5, f'{value:g}', 'end', 14, '#202b36')]
+    for label, b in zip(labels, bins):
         if label:
-            svg += [f"<line x1='{x(b):.3f}' x2='{x(b):.3f}' y1='{top}' y2='{bottom}' stroke='#c6d1df' stroke-dasharray='3 4'/>",text(x(b),bottom+23,label)]
+            label = re.sub(r'([+-]?\d+)(?:\.0)?Kb', r'\1 kb', label).replace('-', '−')
+            svg += [f"<line x1='{x(b):.3f}' x2='{x(b):.3f}' y1='{bottom}' y2='{bottom+5}' stroke='#202b36'/>", text(x(b), bottom+28, label, size=15, color='#202b36')]
+    # Bands are recovered from the original deepTools SE plot, never synthesized.
     for row in rows:
-        svg.append(polyline([x(b) for b in bins], [bottom-v/maximum*(bottom-top) for v in row['gene'][2]], row['color'], row['id']))
-    svg += ["<text x='20' y='172' transform='rotate(-90 20 172)' text-anchor='middle' font-size='12' fill='#526579'>CPM-normalized signal</text>", '</svg>']
+        if not row.get('band'): continue
+        lower, upper = row['band']
+        segment = []
+        for i in range(len(bins)+1):
+            if i < len(bins) and math.isfinite(lower[i]) and math.isfinite(upper[i]):
+                segment.append(i)
+            elif segment:
+                points = [(x(bins[j]), y(upper[j])) for j in segment]+[(x(bins[j]), y(lower[j])) for j in reversed(segment)]
+                coords = ' '.join(f'{px:.3f},{py:.3f}' for px,py in points)
+                svg.append(f"<polygon data-band='{html.escape(row['id'],quote=True)}' points='{coords}' fill='{row['color']}' fill-opacity='.16' clip-path='url(#profile-frame)'/>")
+                segment = []
+    for row in rows:
+        svg.append(polyline([x(b) for b in bins], [y(v) for v in row['gene'][2]], row['color'], row['id']).replace("stroke-width='2'", "stroke-width='2.4' clip-path='url(#profile-frame)'"))
+    svg.append(f"<rect x='{left}' y='{top}' width='{right-left}' height='{bottom-top}' fill='none' stroke='#202b36' stroke-width='1.2'/>")
+    svg.append("<text x='22' y='201' transform='rotate(-90 22 201)' text-anchor='middle' font-size='15' fill='#202b36'>CPM-normalized signal</text>")
+    for i, row in enumerate(rows):
+        count = min(8, len(rows) - (i//8)*8);gap = 86
+        lx = (820-gap*count)/2 + gap*(i%8);ly = 417 + 24*(i//8)
+        svg += [f"<line x1='{lx}' x2='{lx+20}' y1='{ly}' y2='{ly}' stroke='{row['color']}' stroke-width='2.4'/>", text(lx+27, ly+4, row['id'], 'start', 13, '#202b36')]
+    svg.append('</svg>')
     return ''.join(svg)
 
 
@@ -146,6 +177,7 @@ def render_profiles_card(sample, scopes, scope_html, asset_dir, gene_dir, asset_
         series.append(dict(id=sid,label=label,color=COLORS[i%len(COLORS)],
                            sizes=read_size_profile(asset_dir/f'{sample}.{sid}.full_library_profiles.tsv'),
                            gene=read_gene_profile(gene_dir/f'{sample}.{sid}.profile.tsv')))
+        series[-1]['band'] = read_profile_band(asset_dir/f'{sample}.{sid}.TSS_TES.svg', series[-1]['gene'])
     parts += ["<div class='profile-comparison'><ul class='profile-comparison-legend'>"]
     for row in series:
         label=row['label'] if row['label']==row['id'] else row['id']+' · '+row['label']
@@ -153,7 +185,7 @@ def render_profiles_card(sample, scopes, scope_html, asset_dir, gene_dir, asset_
     parts.append('</ul>')
     size_name=f'{sample}.sublibraries.size_profiles.svg';gel_name=f'{sample}.sublibraries.virtual_gel.svg'
     (asset_dir/size_name).write_text(size_comparison(series));(asset_dir/gel_name).write_text(virtual_lanes(series))
-    parts.append("<div class='profile-comparison-grid'>"+figure(size_name,'Sublibrary full-library size traces')+figure(gel_name,'Sublibrary virtual gel lanes')+'</div>')
+    parts.append("<div class='profile-comparison-grid'>"+figure(size_name,'Sublibrary full-library size traces')+figure(gel_name,'Sublibrary virtual gel lanes','comparison-gel')+'</div>')
     parts.append("<p class='comparison-note'>ONT-derived full-library sizes, length-weighted; each trace and lane is scaled to its own peak of 100.</p>")
     meta=gene_comparison(series)
     if meta:

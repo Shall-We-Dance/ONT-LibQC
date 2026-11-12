@@ -304,22 +304,47 @@ button.structure-block:hover{border-color:currentColor}
 .rna-consistency-table td:first-child{white-space:normal;overflow-wrap:anywhere;min-width:140px}
 @media(max-width:600px){.rna-consistency{padding:18px 16px}}
 
-.service-bar{max-width:1320px;margin:0 auto;padding:10px 32px 0;display:flex;justify-content:flex-end}
-.server-status{margin:0;padding:0;border:0;position:relative;color:var(--muted,#5b6d82);font-size:13px}
-.server-status>summary{color:inherit;font-weight:400;line-height:1.4;display:flex;gap:20px;align-items:center;cursor:pointer;list-style:none}
+/* The public status control sits beside the lab link in the navigation. */
+.portal-topbar{column-gap:22px}
+.topbar-actions{display:flex;align-items:center;justify-content:flex-end;gap:12px;min-width:0}
+.server-status{margin:0;padding:0;border:0;position:relative;color:var(--muted);font-size:12px}
+.server-status>summary{min-height:40px;padding:8px 10px 8px 12px;border:1px solid #e1e8f1;border-radius:var(--radius-control);background:#f7f9fc;color:inherit;font-size:inherit;font-weight:400;line-height:1.4;display:flex;gap:12px;align-items:center;cursor:pointer;list-style:none;transition:background-color var(--motion-ui) ease,border-color var(--motion-ui) ease}
 .server-status>summary::-webkit-details-marker{display:none}
-.server-status>summary::after{content:'⌄';font-size:14px}
-.server-status>summary strong{font-variant-numeric:tabular-nums;color:var(--ink,#24364b);font-weight:600}
-.server-status>summary:focus-visible{outline:2px solid #2a6cbd;outline-offset:5px;border-radius:3px}
-.job-history{position:absolute;z-index:20;right:0;top:30px;width:360px;padding:16px 18px;background:#fff;border:1px solid #dce5f0;border-radius:8px;box-shadow:0 6px 20px #24364b12}
+.server-status>summary:hover,.server-status[open]>summary{background:#edf4fc;border-color:#c9dbef}
+.server-counts{display:flex;align-items:center;gap:12px;white-space:nowrap}
+.server-counts>span+span{padding-left:12px;border-left:1px solid #dce5f0}
+.server-status>summary strong{margin-left:2px;font-variant-numeric:tabular-nums;color:var(--ink);font-weight:600}
+.server-status>summary:focus-visible{outline:2px solid var(--blue);outline-offset:3px}
+.status-chevron{flex:none;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;transition:transform var(--motion-ui) var(--motion-ease)}
+.server-status[open] .status-chevron{transform:rotate(180deg)}
+.job-history{position:absolute;z-index:30;right:0;top:calc(100% + 10px);width:350px;padding:18px 20px 14px;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 5px 14px #24364b08,0 16px 36px #24364b0d;transform-origin:top right}
+.server-status[open] .job-history{animation:history-in var(--motion-enter) var(--motion-ease)}
+@keyframes history-in{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:translateY(0)}}
 .job-history-total{display:flex;justify-content:space-between;align-items:baseline;color:var(--ink);font-size:14px}
-.job-history-total strong{font-size:23px;font-weight:600;font-variant-numeric:tabular-nums}
+.job-history-total strong{font-size:25px;font-weight:600;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
 .jobs-history-chart{margin-top:12px}.jobs-history-chart svg{display:block;width:100%;height:auto;overflow:visible}
 .jobs-history-chart text{fill:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
 .jobs-history-chart .history-grid{stroke:var(--line);stroke-width:1}
 .jobs-history-chart .history-line{fill:none;stroke:var(--blue);stroke-width:2;stroke-linejoin:round}
-.jobs-history-chart .history-area{fill:var(--blue);fill-opacity:.07}
-.jobs-history-chart .history-point{fill:var(--blue)}
+.jobs-history-chart .history-area{fill:var(--blue);fill-opacity:.06}
 .jobs-history-chart p{font-size:13px;margin:16px 0;color:var(--muted)}
 .page-loading{min-height:220px;padding:24px 0}.page-loading h1{font-size:26px}.page-loading p{color:var(--muted);margin-top:8px}
-@media(max-width:600px){.service-bar{padding:10px 16px 0}.server-status>summary{gap:12px;font-size:12px}.job-history{max-width:calc(100vw - 32px)}}
+@media(max-width:1180px){
+ .portal-topbar{grid-template-columns:auto minmax(0,1fr);row-gap:4px}
+ .portal-topbar>.brand{grid-column:1;grid-row:1}
+ .portal-topbar>.topbar-actions{grid-column:2;grid-row:1}
+ .portal-topbar>nav{grid-column:1/-1;grid-row:2}
+}
+@media(max-width:740px){
+ .portal-topbar{grid-template-columns:minmax(0,1fr);gap:8px}
+ .portal-topbar>.brand{grid-column:1;grid-row:1}
+ .portal-topbar>.topbar-actions{grid-column:1;grid-row:2;justify-content:space-between}
+ .portal-topbar>nav{grid-column:1;grid-row:3}
+ .portal-topbar .lab-button{min-height:40px}
+ .server-counts{display:grid;gap:1px}
+ .server-counts>span+span{padding-left:0;border:0}
+ .server-status>summary{padding:7px 10px;gap:14px;font-size:11px}
+ .job-history{left:0;right:auto;width:350px;max-width:calc(100vw - 36px);transform-origin:top left}
+}
+@media(max-width:320px){.topbar-actions{gap:8px}.server-status>summary{gap:6px;padding:6px 8px}.portal-topbar .lab-button{padding-inline:8px;font-size:12px}}
+@media(prefers-reduced-motion:reduce){.server-status[open] .job-history{animation:none}.status-chevron,.server-status>summary{transition:none}}

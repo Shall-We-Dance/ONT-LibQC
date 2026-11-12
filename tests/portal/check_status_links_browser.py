@@ -33,7 +33,7 @@ with tempfile.TemporaryDirectory() as tmp:
    for engine in sys.argv[2:] or ['chromium','webkit']:
     browser=getattr(p,engine).launch(**({'executable_path':os.environ['ONT_WEBKIT_EXECUTABLE']} if engine=='webkit' and os.environ.get('ONT_WEBKIT_EXECUTABLE') else {}))
     try:
-     for width in (1280,390):
+     for width in (1440,900,390):
       context=browser.new_context(viewport={'width':width,'height':900});urls=[];errors=[]
       context.on('request',lambda request:urls.append(request.url));page=context.new_page();page.on('pageerror',lambda error:errors.append(str(error)))
       page.goto(origin)
@@ -41,11 +41,33 @@ with tempfile.TemporaryDirectory() as tmp:
       page.locator('#server-status summary').click()
       assert page.locator('#jobs-total').inner_text()=='5'
       assert page.locator('#jobs-history-chart svg').count()==1
-      assert page.locator('#jobs-history-chart .history-point').count()==5
+      assert page.locator('#jobs-history-chart circle').count()==0
+      assert page.locator('#jobs-history-chart .history-line').get_attribute('d').count(' V ')==5
+      assert page.locator('.topbar .topbar-actions > #server-status + .lab-button').count()==1
+      status=page.locator('#server-status').bounding_box();lab=page.locator('.topbar .lab-button').bounding_box()
+      assert status['x']+status['width'] <= lab['x']
+      assert abs((status['y']+status['height']/2)-(lab['y']+lab['height']/2))<2
+      page.wait_for_timeout(250)
+      assert page.locator('.status-chevron').evaluate("el => getComputedStyle(el).transform")=='matrix(-1, 0, 0, -1, 0, 0)'
+      history=page.locator('.job-history').bounding_box()
+      assert history['x']>=0 and history['x']+history['width']<=width
       for text in ('Completed','Failed','Cancelled','Earlier archived jobs'):assert text not in page.locator('#server-status').inner_text()
       assert 'private' not in page.locator('#server-status').inner_text().lower()
       assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
       page.screenshot(path=str(OUTPUT/f'{engine}-{width}-counts.png'))
+      page.keyboard.press('Escape')
+      assert not page.locator('#server-status').evaluate('el => el.open')
+      assert page.locator('#server-status summary').evaluate('el => el === document.activeElement')
+      page.keyboard.press('Enter')
+      assert page.locator('#server-status').evaluate('el => el.open')
+      page.mouse.click(5,200)
+      assert not page.locator('#server-status').evaluate('el => el.open')
+      page.emulate_media(reduced_motion='reduce')
+      page.locator('#server-status summary').click()
+      assert page.locator('.job-history').evaluate('el => getComputedStyle(el).animationName')=='none'
+      assert page.locator('.status-chevron').evaluate('el => getComputedStyle(el).transitionDuration')=='0s'
+      page.keyboard.press('Escape')
+      page.emulate_media(reduced_motion='no-preference')
       for path,count in [('/j/#'+keys['1'*32],1),('/b/#'+link_key(cfg.secret,'batch',batch),2),('/jobs/'+'3'*32+'#'+token_for(cfg.secret,'3'*32),1),('/#jobs='+','.join(jid+':'+token_for(cfg.secret,jid) for jid in ('1'*32,'2'*32)),2)]:
        page.goto(origin+path)
        deadline=time.monotonic()+10
@@ -88,7 +110,7 @@ with tempfile.TemporaryDirectory() as tmp:
       assert page.locator('#submission-view').is_hidden()
       assert not context.cookies();assert not errors,errors
       for key in [*keys.values(),link_key(cfg.secret,'batch',batch)]:assert all(key not in url for url in urls)
-      results.append({'browser':engine,'width':width,'daily_cumulative_counts':True,'no_homepage_flash':True,'short_and_legacy_links':True,'keys_absent_from_http_urls':True})
+      results.append({'browser':engine,'width':width,'daily_cumulative_counts':True,'navbar_status_without_markers':True,'keyboard_and_reduced_motion':True,'no_homepage_flash':True,'short_and_legacy_links':True,'keys_absent_from_http_urls':True})
       context.close()
     finally:browser.close()
  finally:server.should_exit=True;thread.join(timeout=10);sock.close()

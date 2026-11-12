@@ -19,7 +19,7 @@ class ProfileComparisonTests(unittest.TestCase):
         self.assertEqual([c.attrib['stroke'] for c in curves],['#2a6cbd','#23877f'])
         low=float(curves[0].attrib['points'].split()[-1].split(',')[1])
         high=float(curves[1].attrib['points'].split()[-1].split(',')[1])
-        self.assertAlmostEqual((290-high)/(290-low),10)
+        self.assertAlmostEqual((350-high)/(350-low),10)
         incompatible=self.rows();incompatible[1]['gene']=(['TSS','','TES'],[1,2,4],[10,20,30])
         with self.assertRaises(ValueError):gene_comparison(incompatible)
 

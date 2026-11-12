@@ -740,15 +740,21 @@ function drawJobHistory(history, total) {
   path += ` H ${right}`;
   svg.append(svgNode('path', {d: path + ` V ${bottom} H ${left} Z`, class: 'history-area'}));
   svg.append(svgNode('path', {d: path, class: 'history-line'}));
-  for (const point of values) {
-    const dot = svgNode('circle', {cx: x(point.time), cy: y(point.total), r: 2.5, class: 'history-point'});
-    dot.append(svgNode('title', {}, dateLabel(point.time) + ': ' + point.total.toLocaleString() + ' jobs'));
-    svg.append(dot);
-  }
   svg.append(svgNode('text', {x: left, y: 158}, dateLabel(start)));
   svg.append(svgNode('text', {x: right, y: 158, 'text-anchor': 'end'}, dateLabel(end)));
   container.replaceChildren(svg);
 }
+const serverStatus = $('server-status');
+// Keep the native summary keyboard behavior while making the popover easy to dismiss.
+document.addEventListener('click', event => {
+  if (serverStatus.open && !serverStatus.contains(event.target)) serverStatus.open = false;
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && serverStatus.open) {
+    serverStatus.open = false;
+    serverStatus.querySelector('summary').focus();
+  }
+});
 async function refreshServerStatus() {
   const keys = ['running', 'queued', 'total'];
   try {
