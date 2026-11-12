@@ -47,8 +47,12 @@ with tempfile.TemporaryDirectory() as tmp:
       status=page.locator('#server-status').bounding_box();lab=page.locator('.topbar .lab-button').bounding_box()
       assert status['x']+status['width'] <= lab['x']
       assert abs((status['y']+status['height']/2)-(lab['y']+lab['height']/2))<2
-      page.wait_for_timeout(250)
-      assert page.locator('.status-chevron').evaluate("el => getComputedStyle(el).transform")=='matrix(-1, 0, 0, -1, 0, 0)'
+      # Browser engines serialize sin(pi) differently; wait for the same final rotation.
+      page.wait_for_function("""() => {
+       const m = new DOMMatrixReadOnly(getComputedStyle(document.querySelector('.status-chevron')).transform);
+       return Math.abs(m.a + 1) < 1e-5 && Math.abs(m.d + 1) < 1e-5 &&
+              Math.abs(m.b) < 1e-5 && Math.abs(m.c) < 1e-5;
+      }""", timeout=3000)
       history=page.locator('.job-history').bounding_box()
       assert history['x']>=0 and history['x']+history['width']<=width
       for text in ('Completed','Failed','Cancelled','Earlier archived jobs'):assert text not in page.locator('#server-status').inner_text()
