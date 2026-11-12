@@ -12,9 +12,11 @@ CSS = '''
 .profile-comparison-legend{display:flex;flex-wrap:wrap;gap:8px 22px;list-style:none;margin:8px 0 14px;padding:0;font-size:13px}
 .profile-comparison-legend i,.profile-detail summary i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:7px;print-color-adjust:exact;-webkit-print-color-adjust:exact}
 .profile-comparison-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,.43fr);gap:12px;align-items:stretch}
-.profile-comparison .plot-card{margin:0;min-width:0;padding:12px;border-radius:9px}.profile-comparison img{display:block;width:100%;height:auto;min-height:0}
-.profile-comparison-grid .plot-card>a{display:flex;align-items:center;justify-content:center;height:clamp(240px,25vw,350px)}
-.profile-comparison-grid img{width:100%;height:100%;object-fit:contain}
+.profile-comparison .plot-card{margin:0;min-width:0;padding:8px;border-radius:9px;display:flex;flex-direction:column}.profile-comparison img{display:block;width:100%;height:auto;min-height:0}
+.profile-comparison-grid .plot-card>a{display:block}
+.profile-comparison-grid img{width:100%;height:auto;object-fit:contain}
+.profile-comparison-grid .comparison-gel>a{position:relative;flex:1;min-height:0}
+.profile-comparison-grid .comparison-gel img{position:absolute;inset:0;width:100%;height:100%}
 .profile-comparison .comparison-metaplot{max-width:850px;margin:12px auto 0}
 .profile-comparison .figure-link{margin-top:6px;font-size:11px}
 .profile-comparison .comparison-note{font-size:12px;color:var(--muted);margin:8px 0 16px}
@@ -22,7 +24,7 @@ CSS = '''
 .profile-detail>summary{padding:13px 16px;color:var(--deep);font-weight:550}.profile-detail>summary small{font-weight:400;color:var(--muted);margin-left:12px}
 .profile-detail>.profile-scope{margin:0;padding:0 16px 16px;border:0}.profile-detail .primary-size-plots{margin-top:8px}
 #profiles{scroll-margin-top:80px}#profiles>.profile-scope{border:0;margin-top:0;padding-top:0}
-@media(max-width:700px){.profile-comparison-grid{grid-template-columns:minmax(0,1fr)}.profile-comparison-grid .plot-card>a{height:auto}.profile-comparison-grid .comparison-gel>a{height:290px}.profile-detail>summary small{display:block;margin:5px 0 0 20px}}
+@media(max-width:700px){.profile-comparison-grid{grid-template-columns:minmax(0,1fr)}.profile-comparison-grid .plot-card>a{height:auto}.profile-comparison-grid .comparison-gel>a{flex:none;height:320px}.profile-detail>summary small{display:block;margin:5px 0 0 20px}}
 @media print{.profile-comparison-grid{display:block}.profile-comparison .plot-card{max-width:100%;break-inside:avoid}.profile-detail{border:0}.profile-detail>summary{padding:2mm 0}.profile-detail>.profile-scope{padding:0}}
 '''
 
@@ -104,8 +106,8 @@ def virtual_lanes(series):
     width = 100 + 44*len(series);top, bottom = 64, 314
     maximum = max(row['sizes'][0][-1] for row in series);upper = math.log1p(maximum/50)
     y = lambda bp: bottom - math.log1p(bp/50)/upper*(bottom-top)
-    svg = svg_start(width, 390, 'Virtual gel')
-    svg[3] = "<text x='68' y='28' font-size='19' font-weight='600'>Virtual gel</text>"
+    svg = svg_start(width, 390, 'Virtual lanes')
+    svg[3] = "<text x='68' y='28' font-size='19' font-weight='600'>Virtual lanes</text>"
     for value in sorted({0, 100, 300, 1000, maximum}):
         if value <= maximum:
             svg += [text(54, y(value)+4, f'{value:,.0f}', 'end', 13, '#485460'),
@@ -198,7 +200,7 @@ def render_profiles_card(sample, scopes, scope_html, asset_dir, gene_dir, asset_
     parts.append('</ul>')
     size_name=f'{sample}.sublibraries.size_profiles.svg';gel_name=f'{sample}.sublibraries.virtual_gel.svg'
     (asset_dir/size_name).write_text(size_comparison(series));(asset_dir/gel_name).write_text(virtual_lanes(series))
-    parts.append("<div class='profile-comparison-grid'>"+figure(size_name,'Sublibrary full-library size traces')+figure(gel_name,'Sublibrary virtual gel lanes','comparison-gel')+'</div>')
+    parts.append("<div class='profile-comparison-grid'>"+figure(size_name,'Sublibrary full-library size traces')+figure(gel_name,'Sublibrary virtual lanes','comparison-gel')+'</div>')
     parts.append("<p class='comparison-note'>ONT-derived full-library sizes, length-weighted; each trace and lane is scaled to its own peak of 100.</p>")
     meta=gene_comparison(series)
     if meta:
