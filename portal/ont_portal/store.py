@@ -53,6 +53,19 @@ class Store:
             if 'batch_id' not in {r['name'] for r in c.execute('PRAGMA table_info(jobs)')}:
                 c.execute('ALTER TABLE jobs ADD COLUMN batch_id TEXT')
             c.execute('CREATE INDEX IF NOT EXISTS jobs_batch ON jobs(batch_id)')
+            columns = {r['name'] for r in c.execute('PRAGMA table_info(jobs)')}
+            for name in ('short_link_hash', 'outcome'):
+                if name not in columns: c.execute('ALTER TABLE jobs ADD COLUMN ' + name + ' TEXT')
+            c.execute('CREATE UNIQUE INDEX IF NOT EXISTS jobs_short_link ON jobs(short_link_hash)')
+            c.execute('CREATE TABLE IF NOT EXISTS batch_links (batch_id TEXT PRIMARY KEY, key_hash TEXT UNIQUE NOT NULL)')
+            c.execute("UPDATE jobs SET outcome=status WHERE outcome IS NULL AND status IN ('succeeded','failed','cancelled')")
+            # Preserve anonymous outcome counts when retention erases task metadata.
+            c.execute("""CREATE TRIGGER IF NOT EXISTS jobs_outcome_update AFTER UPDATE OF status ON jobs
+                WHEN NEW.status IN ('succeeded','failed','cancelled')
+                BEGIN UPDATE jobs SET outcome=NEW.status WHERE id=NEW.id; END""")
+            c.execute("""CREATE TRIGGER IF NOT EXISTS jobs_outcome_insert AFTER INSERT ON jobs
+                WHEN NEW.status IN ('succeeded','failed','cancelled')
+                BEGIN UPDATE jobs SET outcome=NEW.status WHERE id=NEW.id; END""")
         self.db.chmod(0o600)
 
     @contextmanager
@@ -82,6 +95,19 @@ class Store:
         with self.connect(immediate=True) as c:
             result=c.execute('UPDATE jobs SET status=?,updated=? WHERE id=? AND status=?',(new,time.time(),job_id,old))
             return result.rowcount==1
+
+    def statistics(self):
+        # Fixed aggregates only: never expose IDs, options, names, addresses or times.
+        with self.connect() as c:
+            row = c.execute("""SELECT COUNT(*) AS total,
+                COALESCE(SUM(status IN ('running','cancelling')),0) AS running,
+                COALESCE(SUM(status='queued'),0) AS queued,
+                COALESCE(SUM(outcome='succeeded'),0) AS succeeded,
+                COALESCE(SUM(outcome='failed'),0) AS failed,
+                COALESCE(SUM(outcome='cancelled'),0) AS cancelled,
+                COALESCE(SUM(status='expired' AND outcome IS NULL),0) AS archived
+                FROM jobs""").fetchone()
+        return {key: int(row[key]) for key in row.keys()}
 
     def heartbeat(self):
         with self.connect() as c:

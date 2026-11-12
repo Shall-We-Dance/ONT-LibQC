@@ -28,7 +28,7 @@ FASTQ and gzip validation runs inside the isolated container, checks four-line r
 
 ## Private report access
 
-Task access uses unguessable authenticated links. The long-lived task credential is in the URL fragment, then sent in an Authorization header; it is not in the HTTP URL or access logs. The application does not set or accept authentication cookies and does not use localStorage or sessionStorage.
+New tasks and batches use a 128-bit capability encoded as a 22-character URL fragment. The browser exchanges it through a protected POST body for the existing task authorization; only a SHA-256 lookup hash is stored in the database. The capability never enters HTTP paths, query strings or referrers. Old task and batch links keep their original format and authorization behavior. Task authorization is sent in an Authorization header. The application does not set or accept authentication cookies and does not use localStorage or sessionStorage.
 
 An authenticated task response provides read-only report and download links lasting at most one hour. Authorized report HTML renews these grants on its local figure and download links. Grants are scoped to one job and cannot access task metadata, cancel jobs or delete reports; deletion and retention are checked on every request. Missing or expired report grants direct document navigations to instructions for reopening the complete private task link.
 
@@ -75,7 +75,7 @@ Both services load operator settings from one private `runtime/limits.yaml`. New
 | Report size | 100 MiB per bundle; HTML pages at most 4 MiB |
 | Total published report storage | 2 GiB |
 | Administrator log | 10 MiB hard file-size limit per job |
-| Report retention | 7 days after completion |
+| Report retention | 30 days after completion |
 
 The batch endpoint accepts the entire batch or rejects it without creating any jobs. The browser uploads files sequentially, waits and retries when upload capacity is occupied, restores all batch links after a refresh, and polls active tasks every 10 seconds (30 seconds in a hidden tab). Completed tasks are checked every 20 minutes to refresh report links; opening an expired link from the task page also renews it on demand. Rate-limited polling pauses according to `Retry-After` and adds jitter; it does not retry a non-idempotent submission automatically.
 
@@ -129,3 +129,7 @@ Security design references: [OWASP denial of service](https://cheatsheetseries.o
 The public portal must not receive human patient data (including de-identified patient data) or other sensitive or identifiable personal data. This applies to FASTQ files, custom BED files, filenames, and sample names. Users must actively check the separate data acknowledgment for each submission. Both `POST /api/jobs` and every file entry in `POST /api/batches` require the JSON boolean `data_policy_acknowledged: true`, in addition to `consent: true`. Missing, false, or non-boolean acknowledgments are rejected before job creation. Older clients must be updated. The acknowledgment is a user declaration; it does not inspect or certify the uploaded data.
 
 The public example-input manifest includes download checksums. Publication checks cover file types, sizes, index sets, report links and paths. HMAC authenticates private task and read-only report links and pseudonymizes rate-limit identifiers.
+
+## Public service statistics
+
+`GET /api/statistics` returns only integer totals for running, queued, submitted, completed, failed, cancelled and earlier archived jobs. It never returns job identifiers, filenames, samples, email/IP addresses, reference selections, timestamps or private links. Terminal outcomes are retained as counts after private metadata is removed. Older expired rows whose outcomes are unavailable are counted as earlier archived jobs; their outcomes are not guessed.

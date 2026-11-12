@@ -286,7 +286,7 @@ class Worker:
             if tree_size(self.state/'reports')+2*tree_size(work/'report')>self.cfg['max_report_total_bytes']:
                 raise TimeoutError('Report storage is full. Please retry later.')
             publish_report(work/'report',self.state/'reports'/jid,self.cfg['max_report_bytes'],self.cfg['max_html_bytes'])
-            self.store.update(jid,status='succeeded',progress=100,error=None,expires=time.time()+self.cfg.get('retention_days',7)*86400)
+            self.store.update(jid,status='succeeded',progress=100,error=None,expires=time.time()+self.cfg.get('retention_days',DEFAULTS['retention_days'])*86400)
         except (TimeoutError,ValueError) as exc:
             self.docker_stop(jid);self.store.update(jid,status='failed',error=str(exc))
         except Exception:

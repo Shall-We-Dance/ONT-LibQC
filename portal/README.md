@@ -61,7 +61,7 @@ The report diagram shows i5/i7 sequences, adapter types and UMI lengths. Expand 
 
 ## Read and save results
 
-Open a report through its complete private task link, including the part after `#`. Viewing and downloads require no cookies or browser storage. Short-lived report/figure links are renewed from the task page; if one expires, reopen the original private task link. That link works until deletion or retention expiry.
+New submissions use compact private links: `/j/#<key>` for one task and `/b/#<key>` for a batch. Existing `/jobs/<id>#<token>` and `/#jobs=...` links remain supported. Keep the complete link, including the part after `#`. Viewing and downloads require no cookies or browser storage. Short-lived report/figure links are renewed from the task page; if one expires, reopen the original private task link. Reports are kept for 30 days after completion unless deleted earlier. The header shows running and queued counts; expand it for numeric job-history totals. No sample names, file names, addresses, or task links appear in these public statistics.
 
 Online jobs open their sample directly. **Download complete report (ZIP)** includes saved HTML, figures, tables and settings. Extract it and open `report/index.html`; keep the folder together.
 

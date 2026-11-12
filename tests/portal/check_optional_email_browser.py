@@ -87,11 +87,12 @@ with tempfile.TemporaryDirectory() as directory:
                         with page.expect_download() as pending:button.click()
                         download=pending.value;assert download.failure() is None
                         saved=Path(download.path()).read_text()
-                        assert saved.count('/jobs/')==amount
+                        assert saved.count('/j/#')==amount
+                        assert ('/j/#' if amount==1 else '/b/#') in return_link
                         for job_id in job_ids:
                             row=store.get(job_id)
                             assert row['email']=='' and row['mail_status']=='disabled' and row['mail_attempts']==0
-                            assert job_id in saved
+                            assert job_id not in saved
                             publish_report(ROOT/'example_report',settings.state/'reports'/job_id)
                             store.update(job_id,status='succeeded',progress=100)
                         notify(mail_config);sender.assert_not_called()

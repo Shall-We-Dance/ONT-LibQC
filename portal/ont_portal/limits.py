@@ -9,7 +9,7 @@ DEFAULTS = {
     'max_jobs_per_day': 128,
     'max_reserved_bytes': 2_000_000_000,
     'min_free_bytes': 10 * 1024**3,
-    'retention_days': 7,
+    'retention_days': 30,
     'upload_hours': 3,
     'max_concurrent_uploads': 10,
     'max_http_requests': 16,

@@ -302,3 +302,14 @@ button.structure-block:hover{border-color:currentColor}
 .rna-consistency-table th{font-weight:550;color:var(--muted)}
 .rna-consistency-table td:first-child{white-space:normal;overflow-wrap:anywhere;min-width:140px}
 @media(max-width:600px){.rna-consistency{padding:18px 16px}}
+
+.service-bar{max-width:1320px;margin:0 auto;padding:10px 32px 0;display:flex;justify-content:flex-end}
+.server-status{margin:0;padding:0;border:0;position:relative;color:var(--muted,#5b6d82);font-size:13px}
+.server-status>summary{color:inherit;font-weight:400;line-height:1.4;display:flex;gap:20px;align-items:center;cursor:pointer;list-style:none}
+.server-status>summary::-webkit-details-marker{display:none}
+.server-status>summary::after{content:'⌄';font-size:14px}
+.server-status>summary strong{font-variant-numeric:tabular-nums;color:var(--ink,#24364b);font-weight:600}
+.server-status>summary:focus-visible{outline:2px solid #2a6cbd;outline-offset:5px;border-radius:3px}
+.job-history{position:absolute;z-index:20;right:0;top:30px;width:260px;padding:16px 18px;background:#fff;border:1px solid #dce5f0;border-radius:8px;box-shadow:0 6px 20px #24364b12}
+.job-history h2{font-size:14px;margin:0 0 10px;color:#24364b}.job-history dl{margin:0}.job-history dl>div{display:flex;justify-content:space-between;gap:14px;padding:6px 0}.job-history dd{margin:0;font-variant-numeric:tabular-nums;font-weight:600;color:#24364b}
+@media(max-width:600px){.service-bar{padding:10px 16px 0}.server-status>summary{gap:12px;font-size:12px}.job-history{max-width:calc(100vw - 32px)}}

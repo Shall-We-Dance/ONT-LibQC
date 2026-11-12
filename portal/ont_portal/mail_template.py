@@ -6,7 +6,7 @@ from html import escape
 import json
 from pathlib import Path
 from urllib.parse import urlsplit
-from .store import token_for
+from .short_links import job_link, batch_link
 
 
 def build_message(config,smtp,row,secret,rows=None):
@@ -14,7 +14,7 @@ def build_message(config,smtp,row,secret,rows=None):
     items=rows if rows is not None else [row]
     multiple=len(items)>1
     ready=all(item['status']=='succeeded' for item in items)
-    link=origin+'/jobs/'+jid+'#'+token_for(secret,jid)
+    link=origin+job_link(secret,row)
     title={'succeeded':'Report ready','failed':'Analysis failed','cancelled':'Analysis cancelled',
            'expired':'Report unavailable'}.get(row['status'],'Analysis update')
     subject='ONT-LibQC - '+title.lower()
@@ -22,7 +22,7 @@ def build_message(config,smtp,row,secret,rows=None):
     if rows is not None:
         jid='batch-'+row['batch_id']
     if multiple:
-        link=origin+'/#jobs='+','.join(r['id']+':'+token_for(secret,r['id']) for r in items)
+        link=origin+batch_link(secret,items)
         title='Reports ready' if ready else 'Submission finished'
         subject=f'ONT-LibQC - {len(items)} '+('reports ready' if ready else 'analyses finished')
         action='View all results'
@@ -45,7 +45,7 @@ def build_message(config,smtp,row,secret,rows=None):
         filename=str(item['filename'] or '')
         assay={'microc':'Micro-C','chromatin':'Chromatin','rnaseq':'RNA-seq (Beta)','clip':'CLIP-seq (Beta)'}.get(opts.get('assay'),'')
         meta=' · '.join(str(v) for v in (assay,opts.get('reference')) if v)
-        item_link=origin+'/jobs/'+item['id']+'#'+token_for(secret,item['id'])
+        item_link=origin+job_link(secret,item)
         status=labels.get(state,state)
         fg=colors.get(state,'#5b6d82')
         if state=='deleted':

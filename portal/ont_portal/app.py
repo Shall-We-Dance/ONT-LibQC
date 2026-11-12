@@ -13,6 +13,7 @@ from .report_entry import online_report_links
 from .schema import Submission, BatchSubmission, SAFE_NAME, schema_payload
 from .security import RequestGate, RequestSecurity, client_address
 from .store import Store, ACTIVE, token_for, client_key, report_grant, valid_report_grant
+from .short_links import KEY, link_key, key_hash, job_link, batch_link
 
 JOB_ID = re.compile(r'^[0-9a-f]{32}$')
 APP_CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
@@ -69,6 +70,7 @@ def create_app(settings=None):
             'report_url':f"/reports/{row['id']}/samples/{opts['sample']}.html{query}" if available and re.fullmatch(SAFE_NAME,opts.get('sample','')) else None,
             'download_url':f"/reports/{row['id']}/report.zip{query}" if available else None,
             'report_access_expires':access_expires,
+            'private_link':job_link(s.secret,row),
         }
 
     @api.get('/healthz')
@@ -79,6 +81,28 @@ def create_app(settings=None):
         return s.public_catalog | schema_payload() | {'max_upload_bytes':s.max_upload_bytes,'max_expanded_bytes':s.max_expanded_bytes,'max_reads':s.max_reads,'max_files':s.max_files,'pipeline_url':s.pipeline_url,
             'retention_days':s.retention_days,'mail_enabled':s.mail_enabled,'submission_key_required':bool(s.submission_key),
             'worker_online':store.worker_alive(), 'examples':example_inputs}
+
+    @api.get('/api/statistics')
+    async def statistics():
+        return await run_in_threadpool(store.statistics)
+
+    @api.post('/api/links/resolve')
+    async def resolve_link(request: Request):
+        try: data = await request.json()
+        except ValueError: raise HTTPException(404, 'Private link not found')
+        key = data.get('key') if isinstance(data, dict) else None
+        if not isinstance(key, str) or not KEY.fullmatch(key):
+            raise HTTPException(404, 'Private link not found')
+        digest = key_hash(key)
+        with store.connect() as c:
+            rows = c.execute('SELECT * FROM jobs WHERE short_link_hash=?', (digest,)).fetchall()
+            if not rows:
+                batch = c.execute('SELECT batch_id FROM batch_links WHERE key_hash=?', (digest,)).fetchone()
+                if batch:
+                    rows = c.execute('SELECT * FROM jobs WHERE batch_id=? ORDER BY created LIMIT 64', (batch[0],)).fetchall()
+        if not rows: raise HTTPException(404, 'Private link not found')
+        return {'jobs': [{'id': row['id'], 'token': token_for(s.secret,row['id']),
+                          'private_link': job_link(s.secret,dict(row))} for row in rows]}
 
     def create_jobs(request, submissions):
         amount=len(submissions)
@@ -124,12 +148,15 @@ def create_app(settings=None):
                     raise HTTPException(503,'The queue is full. Please try again later.')
                 if shutil.disk_usage(s.state).free-reserved-requested<s.min_free_bytes:
                     raise HTTPException(503,'Storage is temporarily full. Please try again later.')
+                c.execute('INSERT INTO batch_links VALUES (?,?)',(batch_id,key_hash(link_key(s.secret,'batch',batch_id))))
                 for entry in submissions:
                     jid=uuid.uuid4().hex
                     folder=s.state/'uploads'/jid; folder.mkdir(mode=0o700); folders.append(folder)
-                    c.execute('INSERT INTO jobs (id,created,updated,status,email,filename,expected_bytes,options,client,expires,mail_status,batch_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
-                        (jid,now+len(result)/1_000_000,now,'created',entry.email,entry.filename,entry.size,entry.options.model_dump_json(),client,now+s.retention_days*86400,mail_status,batch_id))
-                    result.append({'id':jid,'token':token_for(s.secret,jid),'status':'created','mail_status':mail_status})
+                    c.execute('INSERT INTO jobs (id,created,updated,status,email,filename,expected_bytes,options,client,expires,mail_status,batch_id,short_link_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                        (jid,now+len(result)/1_000_000,now,'created',entry.email,entry.filename,entry.size,entry.options.model_dump_json(),client,now+s.retention_days*86400,mail_status,batch_id,key_hash(link_key(s.secret,'job',jid))))
+                    result.append({'id':jid,'token':token_for(s.secret,jid),'status':'created','mail_status':mail_status,
+                                   'private_link':'/j/#'+link_key(s.secret,'job',jid),
+                                   'batch_link':'/b/#'+link_key(s.secret,'batch',batch_id)})
                 for _,_,subject in quotas:
                     c.execute('INSERT INTO admission_events VALUES (?,?,?)',(subject,now,amount))
         except BaseException:
@@ -291,6 +318,8 @@ def create_app(settings=None):
 
     @api.get('/')
     @api.get('/jobs/{job_id}')
+    @api.get('/j/')
+    @api.get('/b/')
     async def index(): return FileResponse(s.static/'index.html')
     api.add_middleware(RequestGate, settings=s)
     api.add_middleware(RequestSecurity, settings=s, app_csp=APP_CSP, report_csp=REPORT_CSP,

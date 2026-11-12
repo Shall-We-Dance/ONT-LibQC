@@ -69,6 +69,10 @@ jobs:
         run: python tests/portal/check_private_reports_browser.py test-results/private-reports ${{ matrix.browser }}
         env:
           PYTHONPATH: portal
+      - name: Public counts and private link compatibility
+        run: python tests/portal/check_status_links_browser.py test-results/status-links ${{ matrix.browser }}
+        env:
+          PYTHONPATH: portal
       - name: Optional email submission and delivery
         run: python tests/portal/check_optional_email_browser.py test-results/optional-email ${{ matrix.browser }}
         env:

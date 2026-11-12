@@ -347,9 +347,11 @@ function optionsFor(e) {
     params: Object.fromEntries(Object.entries(e.params).filter(([, i]) => !i.disabled && i.value !== '').map(([k, i]) => [k, Number(i.value)])), qc_reference_ranges,
     ...Object.fromEntries(Object.entries(e.screen).map(([k, i]) => [k, Number(i.value)])) };
 }
-function privateLink(task) { return location.origin + '/jobs/' + task.id + '#' + task.token; }
+let savedBatchLink = null;
+function privateLink(task) { return location.origin + (task.private_link || task.job?.private_link || '/jobs/' + task.id + '#' + task.token); }
 function saveLocation() {
-  if (tasks.length === 1) history.replaceState(null, '', '/jobs/' + tasks[0].id + '#' + tasks[0].token);
+  if (tasks.length === 1) history.replaceState(null, '', privateLink(tasks[0]));
+  else if (savedBatchLink) history.replaceState(null, '', savedBatchLink);
   else history.replaceState(null, '', '/#jobs=' + tasks.map(t => t.id + ':' + t.token).join(','));
 }
 function binaryUploadOnce(task, file, endpoint, onprogress) {
@@ -582,7 +584,8 @@ $('submission-form').addEventListener('submit', async event => {
       email: $('email').value.trim(), filename: entry.file.name, size: entry.file.size, options,
       consent: $('consent').checked, data_policy_acknowledged: $('data-policy').checked, submission_key: $('submission-code').value, website: $('website').value
     })) });
-    tasks = batch.jobs.map((job, i) => ({ id: job.id, token: job.token, name: entries[i].options.sample,
+    savedBatchLink = batch.jobs[0]?.batch_link || null;
+    tasks = batch.jobs.map((job, i) => ({ id: job.id, token: job.token, private_link: job.private_link, name: entries[i].options.sample,
       uploadProgress: 0, job: { ...job, ...entries[i].options, filename: entries[i].entry.file.name } }));
     saveLocation(); renderTasks();
     for (let i = 0; i < entries.length; i++) {
@@ -646,7 +649,13 @@ async function init() {
     $('privacy-delivery-note').textContent = catalog.mail_enabled ? 'Save your private task links before leaving. If you provide an email, we’ll also send them when all files finish.' : 'Save your task links before leaving. Without email delivery, lost links cannot be recovered here.';
     $('code-field').hidden = !catalog.submission_key_required; $('submission-code').required = catalog.submission_key_required;
     const single = location.pathname.match(/^\/jobs\/([0-9a-f]{32})$/);
-    if (single) $('new-nav').removeAttribute('aria-current');
+    const compact = ['/j/', '/b/'].includes(location.pathname);
+    if (single || compact) $('new-nav').removeAttribute('aria-current');
+    if (compact) {
+      const result = await api('/api/links/resolve', 'POST', {key: location.hash.slice(1)});
+      tasks = result.jobs;
+      if (location.pathname === '/b/') savedBatchLink = location.pathname + location.hash;
+    }
     if (single && /^[0-9a-f]{64}$/.test(location.hash.slice(1))) tasks = [{ id: single[1], token: location.hash.slice(1) }];
     else if (location.hash.startsWith('#jobs=')) tasks = location.hash.slice(6).split(',').slice(0, 64).map(t => t.split(':')).filter(([id, token]) => /^[0-9a-f]{32}$/.test(id) && /^[0-9a-f]{64}$/.test(token)).map(([id, token]) => ({ id, token }));
     if (single && !tasks.length) { $('submission-view').hidden = true; showError(new URLSearchParams(location.search).has('report') ? 'This report link has expired or is incomplete. Reopen the complete private task link from your email or saved links to view or download your report.' : 'This task needs its complete private link, including the part after #.', 'global-error'); }
@@ -671,3 +680,18 @@ async function pollTasks() {
 }
 setTimeout(pollTasks, 10000);
 init();
+
+async function refreshServerStatus() {
+  const keys = ['running', 'queued', 'total', 'succeeded', 'failed', 'cancelled', 'archived'];
+  try {
+    const response = await fetch('/api/statistics', {credentials: 'omit', cache: 'no-store'});
+    if (!response.ok) throw new Error('Status unavailable');
+    const data = await response.json();
+    if (keys.some(key => !Number.isSafeInteger(data[key]) || data[key] < 0)) throw new Error('Invalid counts');
+    for (const key of keys) $('jobs-' + key).textContent = data[key].toLocaleString();
+  } catch {
+    for (const key of keys) $('jobs-' + key).textContent = '—';
+  }
+  setTimeout(refreshServerStatus, document.hidden ? 60000 : 15000);
+}
+refreshServerStatus();
