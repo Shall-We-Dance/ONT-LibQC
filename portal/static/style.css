@@ -273,9 +273,8 @@ button.structure-block:hover{border-color:currentColor}
 #tasks-view .task-actions .task-utility:not(.danger-confirm){background:transparent;border-color:transparent;color:var(--muted)}
 #tasks-view .task-actions .copy-private-link{margin-left:auto}
 #tasks-view .task-actions .task-utility:not(.danger-confirm):hover:not(:disabled){background:var(--wash);color:var(--ink)}
-#tasks-view .task-actions .delete-report:not(.danger-confirm):hover:not(:disabled){color:var(--danger)}
-#tasks-view .task-actions .cancel-analysis.task-utility{background:#fff1f0;border-color:#e8bab5;color:#a5372b}
-#tasks-view .task-actions .cancel-analysis.task-utility:hover:not(:disabled){background:#ffe3df;border-color:#d89188;color:#8a2820}
+#tasks-view .task-actions .task-utility:is(.cancel-analysis,.delete-report):not(.danger-confirm){background:#fff1f0;border-color:#e8bab5;color:#a5372b}
+#tasks-view .task-actions .task-utility:is(.cancel-analysis,.delete-report):not(.danger-confirm):hover:not(:disabled){background:#ffe3df;border-color:#d89188;color:#8a2820}
 #tasks-view .task-actions .danger-confirm{color:#fff;background:var(--danger);border-color:var(--danger)}
 #tasks-view .task-actions .danger-confirm:hover:not(:disabled){background:#8e2525;border-color:#8e2525}
 #tasks-view details{margin-top:18px;padding-top:12px}
