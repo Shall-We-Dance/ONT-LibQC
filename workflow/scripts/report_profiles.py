@@ -73,42 +73,55 @@ def read_gene_profile(path):
 
 
 def size_comparison(series):
-    left, right, top, bottom = 64, 744, 55, 300
+    # Match the individual electropherogram: the same grids, type and baseline.
+    left, right, top, bottom = 64, 744, 64, 314
     maximum = max(row['sizes'][0][-1] for row in series)
     upper = math.log1p(maximum / 50)
     x = lambda bp: left + math.log1p(bp / 50) / upper * (right-left)
-    svg = svg_start(780, 370, 'Full-library size profiles')
+    svg = svg_start(780, 390, 'Full-library size profiles')
+    svg[3] = "<text x='64' y='28' font-size='19' font-weight='600'>Full-library size profiles</text>"
+    svg.append(text(left, 46, 'ONT-derived · length-weighted', 'start', 13, '#576574'))
     for value in (0, 25, 50, 75, 100):
         y = bottom - value / 100 * (bottom-top)
-        svg += [f"<line x1='{left}' x2='{right}' y1='{y}' y2='{y}' stroke='#e4eaf0'/>", text(left-10, y+4, value, 'end')]
-    ticks = [v for v in (0, 100, 200, 300, 500, 1000, 2000, 5000, 10000) if v <= maximum]
-    for value in ticks: svg.append(text(x(value), bottom+22, f'{value:,}'))
+        svg += [f"<line x1='{left}' x2='{right}' y1='{y}' y2='{y}' stroke='#e1e7eb'/>", text(left-12, y+4, value, 'end', 13, '#485460')]
+    for value in (0, 50, 100, 150, 200, 300, 500, 700, 1000, 1500, 2000, 3000, 5000, 10000):
+        if value > maximum: continue
+        svg += [f"<line x1='{x(value):.3f}' x2='{x(value):.3f}' y1='{top}' y2='{bottom}' stroke='#edf0f2'/>", text(x(value), bottom+21, f'{value:,}', size=13, color='#111')]
+    for row in series:
+        xs, ys = row['sizes']
+        points = ' '.join(f'{x(bp):.3f},{bottom-v/100*(bottom-top):.3f}' for bp,v in zip(xs,ys))
+        svg.append(f"<polygon points='{x(xs[0]):.3f},{bottom} {points} {x(xs[-1]):.3f},{bottom}' fill='{row['color']}' opacity='.06'/>")
     for row in series:
         xs, ys = row['sizes']
         svg.append(polyline([x(v) for v in xs], [bottom-v/100*(bottom-top) for v in ys], row['color'], row['id']))
-    svg += [text((left+right)/2, 350, 'Full-library length (bp)'), "<text x='18' y='178' transform='rotate(-90 18 178)' text-anchor='middle' font-size='12' fill='#526579'>Relative signal (peak = 100)</text>", '</svg>']
+    svg += [f"<line x1='{left}' x2='{right}' y1='{bottom}' y2='{bottom}' stroke='#586069'/>",
+            text((left+right)/2, bottom+45, 'Fragment size (bp; nonlinear size axis)', size=14, color='#111'),
+            "<text x='23' y='189' transform='rotate(-90 23 189)' text-anchor='middle' font-size='14'>Relative signal (a.u.; peak = 100)</text>", '</svg>']
     return ''.join(svg)
 
 
 def virtual_lanes(series):
-    width = 94 + 42*len(series);top, bottom = 55, 300
+    width = 100 + 44*len(series);top, bottom = 64, 314
     maximum = max(row['sizes'][0][-1] for row in series);upper = math.log1p(maximum/50)
     y = lambda bp: bottom - math.log1p(bp/50)/upper*(bottom-top)
-    svg = svg_start(width, 370, 'Virtual gel')
+    svg = svg_start(width, 390, 'Virtual gel')
+    svg[3] = "<text x='68' y='28' font-size='19' font-weight='600'>Virtual gel</text>"
     for value in sorted({0, 100, 300, 1000, maximum}):
-        if value <= maximum: svg.append(text(52, y(value)+4, f'{value:,.0f}', 'end', 11))
+        if value <= maximum:
+            svg += [text(54, y(value)+4, f'{value:,.0f}', 'end', 13, '#485460'),
+                    f"<line x1='59' x2='64' y1='{y(value):.3f}' y2='{y(value):.3f}' stroke='#586069'/>"]
     for i, row in enumerate(series):
-        xs, ys = row['sizes'];lane_x=68+i*42;lane_w=30
+        xs, ys = row['sizes'];lane_x=68+i*44;lane_w=32
         svg.append(f"<g data-scope='{html.escape(row['id'], quote=True)}'><title>{html.escape(row['label'])}</title>")
         for j, signal in enumerate(ys):
             y0 = y(xs[j]) if j == len(xs)-1 else (y(xs[j])+y(xs[j+1]))/2
             y1 = y(xs[j]) if j == 0 else (y(xs[j])+y(xs[j-1]))/2
             shade=round(248-205*signal/100)
             svg.append(f"<rect x='{lane_x}' y='{y0:.3f}' width='{lane_w}' height='{y1-y0:.3f}' fill='rgb({shade},{shade},{shade})'/>")
-        svg += [f"<rect x='{lane_x}' y='{top}' width='{lane_w}' height='{bottom-top}' fill='none' stroke='#aab4bc'/>",
+        svg += [f"<rect x='{lane_x}' y='{top}' width='{lane_w}' height='{bottom-top}' fill='none' stroke='#aab4bc' stroke-width='.8'/>",
                 f"<rect x='{lane_x}' y='{top-7}' width='{lane_w}' height='4' fill='{row['color']}'/>",
-                text(lane_x+lane_w/2, bottom+22, row['id'], size=11, color=row['color']), '</g>']
-    svg += [text(width/2, 350, 'Fragment length (bp)', size=11), '</svg>']
+                text(lane_x+lane_w/2, bottom+23, row['id'], size=13, color=row['color']), '</g>']
+    svg += [text(width/2, bottom+45, 'Fragment size (bp)', size=14, color='#111'), '</svg>']
     return ''.join(svg)
 
 
