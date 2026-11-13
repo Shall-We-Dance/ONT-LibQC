@@ -47,10 +47,11 @@ with tempfile.TemporaryDirectory() as tmp:
       status=page.locator('#server-status').bounding_box();lab=page.locator('.topbar .lab-button').bounding_box()
       if width<=740:
        brand=page.locator('.topbar .brand').bounding_box()
-       assert brand['x']+brand['width']<=lab['x']
-       assert abs((brand['y']+brand['height']/2)-(lab['y']+lab['height']/2))<2
-       assert status['y']>=lab['y']+lab['height']
-       assert abs(status['x']+status['width']-lab['x']-lab['width'])<2
+       assert status['y']>=brand['y']+brand['height']
+       assert status['x']+status['width']<=lab['x']
+       assert abs((status['y']+status['height']/2)-(lab['y']+lab['height']/2))<2
+       actions=page.locator('.topbar-actions').bounding_box()
+       assert abs(lab['x']+lab['width']-actions['x']-actions['width'])<2
        counts=page.locator('.server-counts>span').all()
        assert abs(counts[0].bounding_box()['y']-counts[1].bounding_box()['y'])<2
       else:
