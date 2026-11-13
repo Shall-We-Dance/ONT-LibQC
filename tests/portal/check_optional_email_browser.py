@@ -83,12 +83,18 @@ with tempfile.TemporaryDirectory() as directory:
                         assert 'No email will be sent.' in page.locator('#tasks-description').inner_text()
                         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
                         job_ids=page.evaluate('tasks.map(t => t.id)');return_link=page.url
-                        button=page.get_by_role('button',name='Save private link' if amount==1 else 'Save private links',exact=True)
-                        with page.expect_download() as pending:button.click()
-                        download=pending.value;assert download.failure() is None
-                        saved=Path(download.path()).read_text()
-                        assert saved.count('/j/#')==amount
-                        assert ('/j/#' if amount==1 else '/b/#') in return_link
+                        # Stub clipboard deterministically on both browser engines.
+                        page.evaluate("Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.copiedPrivateLink=text;}}})")
+                        button=page.locator('#save-links')
+                        assert button.inner_text()=='Copy private link'
+                        button.click();wait_js(page,"Boolean(window.copiedPrivateLink)")
+                        saved=page.evaluate('window.copiedPrivateLink')
+                        assert saved==return_link
+                        page.evaluate("navigator.clipboard.writeText=async()=>{throw Error('Clipboard denied')}; document.execCommand=()=>false;")
+                        button.click()
+                        assert page.locator('#private-link-copy').is_visible()
+                        assert page.locator('#private-link-copy').input_value()==return_link
+                        assert ('/j/#' if amount==1 else '/b/#') in saved
                         for job_id in job_ids:
                             row=store.get(job_id)
                             assert row['email']=='' and row['mail_status']=='disabled' and row['mail_attempts']==0

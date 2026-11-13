@@ -67,9 +67,10 @@
 </section>
 <section id="tasks-view" hidden>
 <div class="tasks-heading">
-<h1 id="tasks-title">Analysis</h1><button type="button" class="secondary" id="save-links">Save private links</button>
+<h1 id="tasks-title">Analysis</h1><button type="button" class="secondary" id="save-links">Copy private link</button>
 <p id="tasks-summary" class="tasks-summary" role="status" hidden></p>
-<p id="tasks-description">Save your private link to return to this analysis.</p>
+<p id="tasks-description">Copy your private link to return to this analysis.</p>
+<input id="private-link-copy" type="text" readonly hidden aria-label="Private link; select and copy" autocomplete="off">
 </div>
 <div id="task-list" class="task-list" aria-live="polite"></div>
 <p class="field-note tasks-privacy">Anyone with a private link can access that task. Share it only with people you trust.</p>

@@ -10,6 +10,7 @@ from starlette.concurrency import run_in_threadpool
 from .settings import Settings
 from .report_files import REPORT_FILE_SUFFIXES
 from .report_entry import online_report_links
+from .report_download import archive_filename
 from .schema import Submission, BatchSubmission, SAFE_NAME, schema_payload
 from .security import RequestGate, RequestSecurity, client_address
 from .store import Store, ACTIVE, token_for, client_key, report_grant, valid_report_grant
@@ -300,7 +301,7 @@ def create_app(settings=None):
         else:connection.execute('INSERT OR IGNORE INTO report_links VALUES (?,?,?,?)',values)
         return '/r/'+key
 
-    def safe_report(root,file,links=None):
+    def safe_report(root,file,links=None,download_name=None):
         if '\\' in file or any(part in {'.','..'} or part.startswith('.') for part in file.split('/')):
             raise HTTPException(404,'File not found')
         root=root.resolve(); path=root/file
@@ -311,7 +312,7 @@ def create_app(settings=None):
         if path.suffix not in allowed: raise HTTPException(404,'File not found')
         media={'.svg':'image/svg+xml','.html':'text/html','.css':'text/css','.js':'text/javascript'}.get(path.suffix)
         if path.suffix in {'.zip','.gz','.tsv','.csv','.bed','.json','.txt','.md','.pdf'}:
-            return FileResponse(path,media_type='application/pdf' if path.suffix=='.pdf' else 'application/octet-stream',filename=path.name)
+            return FileResponse(path,media_type='application/pdf' if path.suffix=='.pdf' else 'application/octet-stream',filename=download_name if file == "report.zip" and download_name else path.name)
         if path.suffix=='.html' and path.stat().st_size>s.max_html_bytes: raise HTTPException(413,'Report page exceeds the display limit; download the ZIP instead')
         if path.suffix=='.html' and links:
             # Give figures, tables and downloads short read-only links too. The
@@ -374,7 +375,8 @@ def create_app(settings=None):
         row,link=record
         with store.connect() as c:
             return safe_report(s.state/'reports'/row['id'],link['file'],
-                               lambda file:report_link(row['id'],file,min(link['expires'],int(row['expires'])),c))
+                               lambda file:report_link(row['id'],file,min(link['expires'],int(row['expires'])),c),
+                               download_name=archive_filename(s.state/'reports'/row['id'],json.loads(row['options'] or '{}').get('sample'),row['created']) if link['file']=='report.zip' else None)
 
     def authorized_report_image(scope):
         """Exempt actual accessible images, never opaque links on trust alone."""

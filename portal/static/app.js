@@ -534,8 +534,8 @@ function renderTasks() {
   $('tasks-description').textContent = unavailable
     ? 'Reports cannot be restored after deletion. The removal reason is shown below.'
     : (tasks.length && tasks.every(t => t.job?.mail_status === 'disabled') ? 'No email will be sent. ' : '')
-      + (single ? 'Save your private link to return to this analysis.' : 'Save your private links to return to these analyses.');
-  $('save-links').textContent = single ? 'Save private link' : 'Save private links';
+      + (single ? 'Copy your private link to return to this analysis.' : 'Copy one private link to return to these analyses.');
+  $('save-links').textContent = Date.now() < privateLinkCopiedUntil ? 'Link copied' : 'Copy private link';
   $('page-loading').hidden = true; $('submission-view').hidden = true; $('tasks-view').hidden = false;
   syncChildren($('task-list'), tasks.map(updateTaskView));
 }
@@ -561,7 +561,26 @@ async function refreshTasks() {
   } finally { refreshing = false; renderTasks(); }
 }
 function saveText(name, text) { const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' })); const a = node('a', { href: url, download: name }); document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
-$('save-links').addEventListener('click', () => saveText(tasks.length === 1 ? 'ont-libqc-private-link.txt' : 'ont-libqc-private-links.txt', tasks.map(t => (t.job?.sample || t.name || t.id) + '\n' + privateLink(t)).join('\n\n')));
+let privateLinkCopiedUntil = 0;
+$('save-links').addEventListener('click', async () => {
+  if (!tasks.length) return;
+  const button = $('save-links');
+  button.disabled = true;
+  try {
+    if (tasks.length > 1 && !savedBatchLink) await compactPrivateLink();
+    const link = savedBatchLink && (tasks.length > 1 || location.pathname === '/b/') ? location.origin + savedBatchLink : tasks.length === 1 ? privateLink(tasks[0]) : location.href;
+    const field = $('private-link-copy');
+    field.value = link;
+    try { await navigator.clipboard.writeText(link); }
+    catch {
+      field.hidden = false; field.focus(); field.select();
+      if (!document.execCommand('copy')) { button.textContent = 'Select and copy link'; return; }
+    }
+    field.hidden = true;
+    privateLinkCopiedUntil = Date.now() + 3000;
+    button.textContent = 'Link copied';
+  } finally { button.disabled = false; }
+});
 $('data-policy').checked = false;
 $('data-policy').addEventListener('change', updateCount);
 window.addEventListener('pageshow', event => {

@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from ont_portal.app import create_app
 from ont_portal.report_entry import direct_report
+from ont_portal.report_download import archive_filename
 from ont_portal.schema import Options
 from ont_portal.settings import Settings
 from ont_portal.store import report_grant, token_for, valid_report_grant
@@ -77,6 +78,25 @@ class ReportAccessTests(unittest.TestCase):
         with patch('time.time',return_value=self.now+3700):
             self.assertEqual(self.task()['report_url'],job['report_url'])
             self.assertEqual(self.client.get(job['report_url']).status_code,200)
+
+    def test_archive_download_uses_sample_and_analysis_date(self):
+        root=self.settings.state/'reports'/JID
+        path=root/'data/summary/provenance.json';path.parent.mkdir(parents=True,exist_ok=True)
+        path.write_text(json.dumps({'created_utc':'2026-01-01T01:00:00Z','analyses':{SAMPLE:{'analysis_completed_utc':'2026-02-03T04:00:00Z'}}}))
+        response=self.client.get(self.task()['download_url'])
+        self.assertEqual(response.status_code,200)
+        self.assertIn('report_example_2026-02-03.zip',response.headers['content-disposition'])
+        self.assertEqual(response.content,(root/'report.zip').read_bytes())
+        # Other downloadable files keep their own names.
+        grant=report_grant(self.settings.secret,JID,int(self.now)+100)
+        response=self.client.get(f'/reports/{JID}/data.tsv?view={grant}')
+        self.assertIn('data.tsv',response.headers['content-disposition'])
+
+    def test_archive_name_has_safe_sample_and_missing_metadata_fallback(self):
+        root=self.settings.state/'reports'/JID
+        name=archive_filename(root,'../../bad\r\nInjected: true',0)
+        self.assertEqual(name,'report_sample_1970-01-01.zip')
+        self.assertEqual(archive_filename(root,'Valid_sample',0),'report_Valid_sample_1970-01-01.zip')
 
     def test_read_only_capabilities_cannot_access_or_change_tasks(self):
         key=self.task()['report_url'].rsplit('/',1)[1]
