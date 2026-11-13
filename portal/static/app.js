@@ -773,6 +773,7 @@ async function refreshServerStatus() {
     for (const key of keys) $('jobs-' + key).textContent = '—';
     $('jobs-history-chart').replaceChildren(node('p', {}, 'History is temporarily unavailable.'));
   }
+  $('jobs-queued-mobile').textContent = $('jobs-queued').textContent;
   setTimeout(refreshServerStatus, document.hidden ? 60000 : 15000);
 }
 refreshServerStatus();

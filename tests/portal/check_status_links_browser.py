@@ -37,7 +37,7 @@ with tempfile.TemporaryDirectory() as tmp:
       context=browser.new_context(viewport={'width':width,'height':900});urls=[];errors=[]
       context.on('request',lambda request:urls.append(request.url));page=context.new_page();page.on('pageerror',lambda error:errors.append(str(error)))
       page.goto(origin)
-      page.get_by_text('Jobs running: 1',exact=True).wait_for();page.get_by_text('Jobs queued: 1',exact=True).wait_for()
+      page.get_by_text('Jobs running: 1',exact=True).wait_for()
       page.locator('#server-status summary').click()
       assert page.locator('#jobs-total').inner_text()=='5'
       assert page.locator('#jobs-history-chart svg').count()==1
@@ -47,14 +47,18 @@ with tempfile.TemporaryDirectory() as tmp:
       status=page.locator('#server-status').bounding_box();lab=page.locator('.topbar .lab-button').bounding_box()
       if width<=740:
        brand=page.locator('.topbar .brand').bounding_box()
-       assert status['y']>=brand['y']+brand['height']
+       assert brand['x']+brand['width']<=status['x']
+       assert abs((brand['y']+brand['height']/2)-(status['y']+status['height']/2))<2
        assert status['x']+status['width']<=lab['x']
        assert abs((status['y']+status['height']/2)-(lab['y']+lab['height']/2))<2
        actions=page.locator('.topbar-actions').bounding_box()
        assert abs(lab['x']+lab['width']-actions['x']-actions['width'])<2
-       counts=page.locator('.server-counts>span').all()
-       assert abs(counts[0].bounding_box()['y']-counts[1].bounding_box()['y'])<2
+       assert not page.locator('.server-counts>span').nth(1).is_visible()
+       assert page.locator('.job-history-queued').is_visible()
+       assert page.locator('#jobs-queued-mobile').inner_text()=='1'
       else:
+       assert page.get_by_text('Jobs queued: 1',exact=True).is_visible()
+       assert not page.locator('.job-history-queued').is_visible()
        assert status['x']+status['width'] <= lab['x']
        assert abs((status['y']+status['height']/2)-(lab['y']+lab['height']/2))<2
       # Browser engines serialize sin(pi) differently; wait for the same final rotation.
