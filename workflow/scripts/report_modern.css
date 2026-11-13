@@ -203,3 +203,7 @@ code{border-radius:3px;background:#f0f4f6;overflow-wrap:anywhere}
 .note.ecoli-calibration-note{margin:24px 0;padding:16px 18px;border:1px solid #dce5f0;border-radius:8px;background:#fff;box-shadow:none;line-height:1.65}
 .note.ecoli-calibration-note p{margin:0}
 .note.ecoli-calibration-note p+p{margin-top:10px}
+
+/* Paired sample/background bars need a full-width panel. */
+.analysis-plots .region-composition{grid-column:1/-1;width:100%;max-width:950px;justify-self:center;box-sizing:border-box}
+.analysis-plots .region-composition img{height:auto;width:100%}

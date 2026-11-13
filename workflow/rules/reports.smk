@@ -14,6 +14,8 @@ rule reports:
         rna_script="workflow/scripts/rna_qc.py",
         rna_renderer="workflow/scripts/rna_report.py",
         mixture_renderer="workflow/scripts/report_sublibrary.py",
+        region_renderer="workflow/scripts/report_regions.py",
+        te_annotations=sorted({reference_for(sample)["te_bed"] for sample in CHROMATIN if reference_for(sample).get("te_bed")}),
         rna=expand(f"{OUT}/qc/rna/{{sample}}", sample=RNA),
         rna_preparation=expand(f"{OUT}/qc/rna_preparation/{{sample}}.json", sample=RNA),
         structure_model="workflow/scripts/library_structure.py",

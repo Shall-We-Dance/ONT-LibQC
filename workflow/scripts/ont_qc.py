@@ -25,6 +25,7 @@ from library_structure import normalize_structure, umi_lengths, handles, extract
 from report_library_structure import family_label
 from report_brand import brand_bar, copy_mark, favicon
 from report_export import add_pdf_export
+from report_regions import region_counts as annotation_region_counts, svg_region_bars, load_te_bed, prepare_background
 
 
 def rc(seq):
@@ -801,31 +802,6 @@ def interval_overlaps(intervals, start, end):
     index = bisect.bisect_left(intervals, (end,))
     return index > 0 and intervals[index - 1][1] > start
 
-
-def annotation_region_counts(records, promoters, genes, primary_names, mapq, promoter_window):
-    """Return observed promoter/gene-body/distal fractions for report visualization only."""
-    primary = set(primary_names)
-    eligible = [record for record in records.values() if record["mapq"] >= mapq and record["chrom"] in primary]
-    promoter_count = gene_count = 0
-    for record in eligible:
-        chrom = record["chrom"]
-        if interval_overlaps(promoters.get(chrom), record["start"], record["end"]):
-            promoter_count += 1
-        elif interval_overlaps(genes.get(chrom), record["start"], record["end"]):
-            gene_count += 1
-    total = len(eligible)
-    distal = total - promoter_count - gene_count
-    return {
-        "annotation_mapped_reads": total,
-        "promoter_proximal_reads": promoter_count,
-        "promoter_proximal_rate": promoter_count / total if total and (promoters or genes) else None,
-        "gene_body_reads": gene_count,
-        "gene_body_rate": gene_count / total if total and (promoters or genes) else None,
-        "intergenic_reads": distal,
-        "intergenic_rate": distal / total if total and (promoters or genes) else None,
-        "promoter_window_bp": promoter_window,
-        "annotation_region_definition": "mutually exclusive: promoter proximal takes precedence over gene body",
-    }
 
 
 def write_karyoploter(records, chrom_sizes, chromosome_names, mapq, bins_per_longest,
@@ -1926,41 +1902,6 @@ REPORT_TOOLTIP_SCRIPT = """<script>
 </script>"""
 
 
-def svg_region_bars(metric, title):
-    """Show mutually exclusive genomic-region fractions on a common 0–100% scale."""
-    rows = [("Promoter", "promoter_proximal"), ("Gene body", "gene_body"), ("Distal", "intergenic")]
-    width, height, bar_x, bar_width = 640, 240, 144, 320
-    total = metric.get("annotation_mapped_reads", 0)
-    window = metric.get("promoter_window_bp")
-    window_label = (f"{window / 1000:g} kb" if window >= 1000 else f"{window:g} bp") if window is not None else None
-    descriptions = {"promoter_proximal": "Overlaps the promoter" + (f" (TSS ±{window_label})" if window_label else "") + "; assigned first.",
-                    "gene_body": "Overlaps a gene body and no promoter.",
-                    "intergenic": "Outside both promoters and gene bodies."}
-    available = total > 0 and all(metric.get(key + "_rate") is not None for _, key in rows)
-    svg = [f"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 {width} {height}' role='img' aria-label='{html.escape(title, quote=True)}' style='font-family:Arial,Helvetica,sans-serif'>",
-           f"<title>{html.escape(title)}</title>",
-           "<metadata id='genomic-region-metrics'>" + html.escape(json.dumps(metric, sort_keys=True)) + "</metadata>",
-           "<rect width='100%' height='100%' fill='white'/>",
-           f"<text x='22' y='28' font-size='17' fill='#203040'>{html.escape(title)}</text>"]
-    for index, (label, key) in enumerate(rows):
-        y = 64 + index * 46
-        rate = metric.get(key + "_rate") if available else None
-        count = metric.get(key + "_reads") if available else None
-        value = f"{rate:.1%}" if rate is not None else "—"
-        count_text = f" ({count:,})" if count is not None else ""
-        svg.append(f"<g><title>{html.escape(label + ': ' + value + count_text + '. ' + descriptions[key])}</title>"
-                   f"<text x='22' y='{y + 14}' font-size='14' fill='#34495e'>{label}</text>"
-                   f"<rect x='{bar_x}' y='{y}' width='{bar_width}' height='20' rx='3' fill='#eef2f6'/>")
-        if rate is not None:
-            svg.append(f"<rect x='{bar_x}' y='{y}' width='{bar_width * rate:.3f}' height='20' rx='3' fill='#3276b5'/>")
-        svg.append(f"<text x='618' y='{y + 14}' text-anchor='end' font-size='14' fill='#34495e'>{value}"
-                   f"<tspan font-size='12' fill='#65758c'>{count_text}</tspan></text></g>")
-    footer = f"n={total:,} MAPQ-pass alignments" if available else "No usable annotation data"
-    if available and window_label:
-        footer += f" · Promoter: TSS ±{window_label}"
-    svg.append(f"<text x='22' y='216' font-size='11' fill='#65758c'>{html.escape(footer)}</text></svg>")
-    return ''.join(svg)
-
 
 def svg_contact_funnel(metric, title):
     stages = [
@@ -2231,7 +2172,7 @@ def profile_scope_html(label, raw_name, insert_name, region_name, karyotype_name
     primary = card(assets['weighted'], 'ONT full-library profile (length-weighted)', 'length-weighted-profile')
     counts = card(assets['count'], 'ONT full-library profile (count-based)', 'full-library-count-card')
     counts += card(raw_name, 'Raw molecule size (count-based)') + card(insert_name, 'Insert size (count-based)')
-    analysis = card(region_name, 'Genomic regions') if region_name else ''
+    analysis = card(region_name, 'Genomic regions', 'region-composition') if region_name else ''
     if gene_name:
         analysis += card(gene_name, 'CPM-normalized TSS to TES profile')
     downloads = ' · '.join(f"<a href='assets/{html.escape(assets[key], quote=True)}'>{title}</a>" for key, title in
@@ -2347,6 +2288,7 @@ def cmd_report(args):
     report_mapq=int(report_params.get("mapq", 20))
     karyotype_bins=int(report_params.get("karyotype_bins_per_longest_chromosome", 250))
     annotation_cache={}
+    region_background_cache={}
     for sample in samples:
         with open(out/"qc"/"metrics"/f"{sample}.json") as handle: metric=json.load(handle)
         ranges = assay_reference_ranges(cfg, metric["assay"])
@@ -2381,6 +2323,15 @@ def cmd_report(args):
             if annotation_key not in annotation_cache:
                 annotation_cache[annotation_key]=load_gene_annotation(report_annotation, report_chrom_sizes, promoter_window)
             report_promoters, report_genes=annotation_cache[annotation_key]
+        region_extra={}
+        if metric["assay"] == "chromatin":
+            te_path=report_reference.get('te_bed')
+            background_key=(annotation_key,te_path)
+            if background_key not in region_background_cache:
+                te=load_te_bed(te_path,report_chrom_sizes)
+                region_background_cache[background_key]=(te,prepare_background(report_promoters,report_genes,report_primary,report_chrom_sizes,te))
+            te,background=region_background_cache[background_key]
+            region_extra=dict(sizes=report_chrom_sizes,te=te,background=background,te_source=report_reference.get('te_source'))
         report_assignments={}
         scope_allowed={}
         if metric.get("sub_libraries"):
@@ -2392,12 +2343,12 @@ def cmd_report(args):
         for sub_scope in metric.get("sub_libraries", []):
             allowed=scope_allowed.get(sub_scope["scope_id"], set())
             scope_records[sub_scope["scope_id"]]={qname: rec for qname, rec in report_records.items() if base_unit_id(qname) in allowed}
-        region_metrics=annotation_region_counts(report_records, report_promoters, report_genes, report_primary, report_mapq, promoter_window) if metric["assay"] == "chromatin" else {}
+        region_metrics=annotation_region_counts(report_records, report_promoters, report_genes, report_primary, report_mapq, promoter_window, **region_extra) if metric["assay"] == "chromatin" else {}
         sub_region_metrics={}
         for sub_scope in metric.get("sub_libraries", []):
             scoped_records=scope_records[sub_scope["scope_id"]]
             if metric["assay"] == "chromatin":
-                sub_region_metrics[sub_scope["scope_id"]]=annotation_region_counts(scoped_records, report_promoters, report_genes, report_primary, report_mapq, promoter_window)
+                sub_region_metrics[sub_scope["scope_id"]]=annotation_region_counts(scoped_records, report_promoters, report_genes, report_primary, report_mapq, promoter_window, **region_extra)
         gene_profile_assets={}
         if metric["assay"] == "chromatin":
             gene_profile_source=out/"plots"/"gene_profile"/f"{sample}.TSS_TES.svg"
