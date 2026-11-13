@@ -230,5 +230,17 @@
     "synthetic": false,
     "source": "Existing ONT QC reports; numerical measurements and displayed sample figures are retained.",
     "paths": "Execution paths in metadata are portable placeholders. Raw inputs and reference indexes are not included."
+  },
+  "analyses": {
+    "HL240": {
+      "pipeline_version": null,
+      "pipeline_sha256": null,
+      "analysis_completed_utc": "2026-09-10T17:52:51.934957+00:00"
+    },
+    "HL120": {
+      "pipeline_version": null,
+      "pipeline_sha256": null,
+      "analysis_completed_utc": "2026-09-10T17:52:51.934957+00:00"
+    }
   }
 }

@@ -10,6 +10,7 @@ rule resolved_report_config:
 
 rule reports:
     input:
+        provenance_script="workflow/scripts/report_provenance.py",
         script="workflow/scripts/ont_qc.py",
         rna_script="workflow/scripts/rna_qc.py",
         rna_renderer="workflow/scripts/rna_report.py",

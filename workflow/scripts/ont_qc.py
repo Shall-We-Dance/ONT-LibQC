@@ -26,6 +26,7 @@ from report_library_structure import family_label
 from report_brand import brand_bar, copy_mark, favicon
 from report_mitochondrial import coverage_html as mitochondrial_coverage_html
 from report_export import add_pdf_export
+from report_provenance import capture_analysis, analysis_record, analysis_label
 from report_regions import region_counts as annotation_region_counts, svg_region_bars, load_te_bed, prepare_background
 
 
@@ -1337,6 +1338,7 @@ def cmd_metrics(args):
         metrics["ligation_method"]=ligation["method"]
         metrics["ligation_evidence_status"]=ligation["status"]
     metrics["metric_schema_version"] = 3
+    metrics["analysis_provenance"] = capture_analysis()
     pairing = adapter.get("index_pairing", {})
     metrics["sub_libraries"] = []
     if pairing.get("mode") == "multiplexed_library":
@@ -2280,6 +2282,8 @@ def cmd_report(args):
     with open(args.config) as handle: cfg=yaml.safe_load(handle)
     samples=list(cfg["samples"]); ranges=merged_reference_ranges(cfg); out=Path(args.out)
     (out/"reports"/"assets").mkdir(parents=True,exist_ok=True); (out/"plots"/"summary").mkdir(parents=True,exist_ok=True); (out/"summary").mkdir(parents=True,exist_ok=True)
+    prior_provenance_path=out/"summary"/"provenance.json"
+    prior_provenance=json.loads(prior_provenance_path.read_text()) if prior_provenance_path.exists() else {}
     copy_mark(out/"reports"/"assets")
     metrics=[]
     report_tools=cfg.get("tools", {})
@@ -2458,10 +2462,8 @@ def cmd_report(args):
             detail_keys=["short_unmapped_units","both_legs_mapped","both_legs_mapping_rate","mapq_pass_pairs","mapq_pass_pair_rate","same_fragment_pairs","same_fragment_filter_pass_pairs","same_fragment_filter_pass_rate","contact_deduplication_retention","cis_contacts","trans_contacts","long_range_cis_contacts","long_range_within_cis_fraction","cis_lt1kb","cis_1_10kb","cis_10_100kb","cis_ge100kb"]
             funnel_details = "<details class='metric-group'><summary>Contact counts and filtering details</summary>"+scoped_table_html(scopes,detail_keys,{})+"</details>"
         settings=metric.get('metric_settings',metric_profile())
-        definition_label=f"{settings['metric_profile']} · MAPQ ≥{settings['mapq']}"
-        if metric['assay']=='chromatin':definition_label+=f" · {settings['collision_qc_bin_size']/1000:g} kb bins"
-        elif metric['assay']=='microc':definition_label+=f" · {settings['dedup_tolerance_bp']} bp deduplication"
-        else:definition_label+=" · RNA/CLIP beta · no deduplication"
+        metric['analysis_provenance']=analysis_record(metric, prior_provenance)
+        definition_label=analysis_label(metric['analysis_provenance'])
         from custom_regions import report_html as custom_region_report
         custom_html=custom_region_report(out,sample,report_assembly,report_chrom_sizes,report_primary,scope_records,scopes,cfg['samples'][sample],Path(__file__).resolve().parents[2],report_mapq) if metric['assay']=='chromatin' else ""
         rna_html = ""
@@ -2536,7 +2538,9 @@ def cmd_report(args):
     rows=''.join(f"<tr><td><a href='../reports/{m['sample']}.html'>{html.escape(m['sample'])}</a></td><td>{html.escape(m['assay'])}</td><td>{html.escape(str(m.get('reference_assembly','')))}</td><td>{m['raw_reads']:,}</td><td>{display_value('mean_read_q',m.get('mean_read_q'),ranges)}</td><td>{display_value('complete_read_rate',m.get('complete_read_rate'),ranges)}</td><td>{display_value('raw_n50_bp',m.get('raw_n50_bp'),ranges)}</td><td>{display_value('insert_median_bp',m.get('insert_median_bp'),ranges)}</td><td>{display_value('primary_mapping_rate',m.get('primary_mapping_rate'),ranges)}</td><td>{display_value('adapter_dimer_rate',m.get('adapter_dimer_rate'),ranges)}</td></tr>" for m in metrics)
     index=f"""<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Library reports · ONT-LibQC</title>{favicon('../reports/assets/ont-libqc-mark.svg')}<style>{REPORT_CSS}</style></head><body>{brand_bar('../reports/assets/ont-libqc-mark.svg', 'Library reports')}<header class='report-hero'><h1>Library reports</h1><p>Sequencing and library quality across samples.</p></header><div class='note'>Open a sample for its complete report, including Chromatin, Micro-C or RNA/CLIP beta metrics.</div>{rna_cohort_html}<img class='summary-plot' src='../plots/summary/all_samples_qc.svg' alt='All samples technical QC summary'><div class='table-scroll' tabindex='0'><table><tr><th>Sample</th><th>Assay</th><th>Assembly</th><th>Raw reads</th><th>Mean Q</th><th>Complete</th><th>Raw N50</th><th>Insert median</th><th>Mapping</th><th>Adapter dimer</th></tr>{rows}</table></div><p><a href='qc_metrics.tsv'>Download total-library TSV</a> · <a href='sublibrary_qc_metrics.tsv'>Download sublibrary TSV</a></p>{REPORT_TOOLTIP_SCRIPT}</body></html>"""
     (out/"summary"/"index.html").write_text(index)
-    json_dump({"created_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    json_dump({"created_utc": prior_provenance.get("created_utc") or datetime.datetime.now(datetime.timezone.utc).isoformat(),
+               "report_generated_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+               "analyses": {m["sample"]: m["analysis_provenance"] for m in metrics},
                "config": cfg, "python_version": sys.version,
                "metric_schema_version": 3,
                "metric_definitions": {"native": metric_profile(), "matched_comparison": metric_profile("matched_comparison")},
