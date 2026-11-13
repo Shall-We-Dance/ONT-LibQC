@@ -19,12 +19,16 @@ function bedDropIsDirectory(event) {
   return [...(event.dataTransfer?.items || [])].some(item => (item.getAsEntry?.() || item.webkitGetAsEntry?.())?.isDirectory);
 }
 function parseBed(text, sizes, primary) {
-  const rows=[],seen=new Set(),keep=new Set(primary);let skipped=0,duplicates=0,unknown=[];
+  const rows=[],seen=new Set(),keep=new Set(primary);const renamed=new Map();let skipped=0,duplicates=0,renamed_rows=0,unknown=[];
   for (const [i,line] of text.split(/\r?\n/).entries()) {
     if (!line.trim() || /^(#|track|browser)/.test(line)) continue;
     const v=line.trim().split(/\s+/),s=Number(v[1]),e=Number(v[2]);
     if(v.length<3 || !/^\d+$/.test(v[1]) || !/^\d+$/.test(v[2]) || !Number.isSafeInteger(s) || !Number.isSafeInteger(e)) throw Error(`BED line ${i+1}: integer coordinates required`);
     if(s<0 || e<=s) throw Error(`BED line ${i+1}: invalid interval`);
+    if(!Object.prototype.hasOwnProperty.call(sizes,v[0])){
+      const alternate=v[0].startsWith('chr')?v[0].slice(3):'chr'+v[0];
+      if(Object.prototype.hasOwnProperty.call(sizes,alternate)){renamed.set(v[0],alternate);renamed_rows++;v[0]=alternate;}
+    }
     if(!Object.prototype.hasOwnProperty.call(sizes,v[0])){unknown.push({line:i+1,chrom:v[0],start:s,end:e,reason:'chromosome_absent_from_reference'});continue;}
     if(s<0 || e<=s || e>sizes[v[0]]) throw Error(`BED line ${i+1}: invalid or out-of-reference interval`);
     const strand=v.length>=6?v[5]:'.';if(!['+','-','.'].includes(strand)) throw Error(`BED line ${i+1}: invalid strand`);
@@ -33,7 +37,7 @@ function parseBed(text, sizes, primary) {
     rows.push({chrom:v[0],start:s,end:e,strand});if(rows.length>100000) throw Error('Use at most 100,000 regions per browser profile');
   }
   if(!rows.length) throw Error('No regions on configured primary chromosomes');
-  return {rows,skipped,duplicates,unknown};
+  return {rows,skipped,duplicates,unknown,renamed_rows,renamed_chromosomes:Object.fromEntries(renamed)};
 }
 function makeTrack(records) {
   const events=new Map();for(const [s,e] of records){events.set(s,(events.get(s)||0)+1);events.set(e,(events.get(e)||0)-1);}
@@ -130,7 +134,7 @@ runButton.addEventListener('click',async()=>{
     parts.push(`<text x="24" y="${t+ph/2}" transform="rotate(-90 24 ${t+ph/2})" text-anchor="middle" font-size="14">Mean coverage (CPM)</text><text x="${l}" y="${h-18}" fill="#586a79" font-size="12">Equal region weights; shaded band = SEM across regions. ${point?'Distance from interval midpoint; no body scaling.':'Region bodies are scaled.'}</text></svg>`);
     const svg=parts.join('');output.innerHTML=svg;
     const tsv='bin\tmean_cpm\tsem_across_regions\tregions_in_bin\n'+p.mean.map((v,i)=>[i,v??'NA',p.sem[i]??'NA',p.regions_per_bin[i]].join('\t')).join('\n')+'\n';
-    for(const [label,content,mime,ext] of [['Download SVG',svg,'image/svg+xml','svg'],['Download data',tsv,'text/tab-separated-values','tsv'],['Download provenance',JSON.stringify({sample:payload.sample,scope:scope.name,assembly:payload.reference,bed_name:file.name,parameters:params,retained_regions:bed.rows.length,excluded_unknown_contigs:bed.unknown,skipped_nonprimary:bed.skipped,duplicate_intervals_removed:bed.duplicates,eligible_alignments:p.eligible_alignments,normalization:'exact mean base coverage; CPM by scope primary nuclear alignments; equally weighted regions'},null,2),'application/json','json']]){
+    for(const [label,content,mime,ext] of [['Download SVG',svg,'image/svg+xml','svg'],['Download data',tsv,'text/tab-separated-values','tsv'],['Download provenance',JSON.stringify({sample:payload.sample,scope:scope.name,assembly:payload.reference,bed_name:file.name,parameters:params,retained_regions:bed.rows.length,renamed_chromosomes:bed.renamed_chromosomes,renamed_rows:bed.renamed_rows,excluded_unknown_contigs:bed.unknown,skipped_nonprimary:bed.skipped,duplicate_intervals_removed:bed.duplicates,eligible_alignments:p.eligible_alignments,normalization:'exact mean base coverage; CPM by scope primary nuclear alignments; equally weighted regions'},null,2),'application/json','json']]){
       const a=document.createElement('a'),url=URL.createObjectURL(new Blob([content],{type:mime}));urls.push(url);a.href=url;a.download=payload.sample+'.'+scope.name+'.custom_regions.'+ext;a.textContent=label;downloads.appendChild(a);
     }
   }catch(e){if(version===selectionVersion)message.textContent=e.message;}

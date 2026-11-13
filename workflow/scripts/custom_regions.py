@@ -19,7 +19,7 @@ def mode_description(params):
 
 
 def parse_bed(text,sizes,primary):
-    rows=[];seen=set();skipped=duplicates=0;unknown=[]
+    rows=[];seen=set();skipped=duplicates=renamed_rows=0;unknown=[];renamed={}
     for number,line in enumerate(text.splitlines(),1):
         if not line.strip() or line.startswith(('#','track','browser')):continue
         v=line.split()
@@ -27,6 +27,10 @@ def parse_bed(text,sizes,primary):
         try:start,end=int(v[1]),int(v[2])
         except ValueError:raise ValueError(f'BED line {number}: coordinates must be integers')
         if start<0 or end<=start:raise ValueError(f'BED line {number}: invalid interval')
+        if v[0] not in sizes:
+            alternate=v[0][3:] if v[0].startswith('chr') else 'chr'+v[0]
+            if alternate in sizes:
+                renamed[v[0]]=alternate;renamed_rows+=1;v[0]=alternate
         if v[0] not in sizes:
             unknown.append(dict(line=number,chrom=v[0],start=start,end=end,reason='chromosome_absent_from_reference'));continue
         if start<0 or end<=start or end>sizes[v[0]]:raise ValueError(f'BED line {number}: invalid or out-of-reference interval')
@@ -37,7 +41,7 @@ def parse_bed(text,sizes,primary):
         if key in seen:duplicates+=1;continue
         seen.add(key);rows.append(dict(chrom=v[0],start=start,end=end,strand=strand,name=v[3] if len(v)>3 else f'region_{number}'))
     if not rows:raise ValueError('No regions on configured primary chromosomes')
-    return rows,dict(retained_regions=len(rows),skipped_nonprimary=skipped,duplicate_intervals_removed=duplicates,excluded_unknown_contigs=unknown)
+    return rows,dict(retained_regions=len(rows),skipped_nonprimary=skipped,duplicate_intervals_removed=duplicates,excluded_unknown_contigs=unknown,renamed_chromosomes=renamed,renamed_rows=renamed_rows)
 
 def aligned_blocks(record):
     if not record.get('cigar'):return [(record['start'],record['end'])]

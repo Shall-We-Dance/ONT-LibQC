@@ -76,6 +76,18 @@ def draw_custom_bed(page):
     page.locator('#custom-assembly').check()
     page.locator('#custom-run').click()
     page.locator('#custom-output svg').wait_for(state='visible')
+    canonical_svg = page.locator('#custom-output svg').evaluate('(node) => node.outerHTML')
+    chrom, rest = bed.split('\t', 1)
+    alternate = chrom[3:] if chrom.startswith('chr') else 'chr' + chrom
+    page.locator('#custom-bed').set_input_files({
+        'name': 'export-example.bed', 'mimeType': 'text/plain',
+        'buffer': (alternate + '\t' + rest).encode(),
+    })
+    wait_js(page, '!document.getElementById("custom-run").disabled')
+    page.locator('#custom-assembly').check()
+    page.locator('#custom-run').click()
+    page.locator('#custom-output svg').wait_for(state='visible')
+    assert page.locator('#custom-output svg').evaluate('(node) => node.outerHTML') == canonical_svg, 'Chromosome prefix changed the custom profile'
     return page.locator('#custom-output').inner_html()
 
 
