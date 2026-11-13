@@ -380,7 +380,21 @@ code{border-radius:3px;background:#f0f4f6;overflow-wrap:anywhere}
 .note.ecoli-calibration-note{margin:24px 0;padding:16px 18px;border:1px solid #dce5f0;border-radius:8px;background:#fff;box-shadow:none;line-height:1.65}
 .note.ecoli-calibration-note p{margin:0}
 .note.ecoli-calibration-note p+p{margin-top:10px}
-</style><style id='region-background-layout'>.analysis-plots .region-composition{grid-column:1/-1;width:100%;max-width:950px;justify-self:center;box-sizing:border-box}.analysis-plots .region-composition img{height:auto;width:100%}</style></head><body>
+</style><style id="region-paired-layout">/* Keep genomic composition and its metaplot together on wide screens. */
+.analysis-plots .region-composition{width:100%;box-sizing:border-box}
+.analysis-plots .region-composition img{height:auto;width:100%}
+@media screen and (min-width:851px){
+ .analysis-plots:has(.region-composition){grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);align-items:stretch}
+ .analysis-plots:has(.region-composition)>.plot-card{margin:0;min-width:0;display:flex;flex-direction:column;padding:12px}
+ .analysis-plots:has(.region-composition)>.plot-card>a{display:flex;align-items:center;flex:1;min-width:0}
+ .analysis-plots:has(.region-composition)>.plot-card img{width:100%;height:auto;object-fit:contain}
+ .analysis-plots:has(.region-composition) .figure-link{margin-top:10px}
+}
+@media screen and (max-width:850px){
+ .analysis-plots:has(.region-composition){grid-template-columns:minmax(0,1fr)}
+ .analysis-plots:has(.region-composition)>.plot-card{margin:0;min-width:0}
+}
+</style></head><body>
 <div class="report-brand"><div class="brand-name"><img src="../assets/ont-libqc-mark.svg" width="36" height="36" alt=""><span>ONT<span class="brand-light">-LibQC</span></span></div><span class="brand-context">Example report</span></div>
 <header class='report-hero'><div class="report-export-controls"><select id="report-export-content" aria-label="PDF contents" title="Overview includes visible sections; all details includes the complete report and metric notes"><option value="overview">Overview</option><option value="full">All details</option></select><button type="button" id="report-export-pdf" aria-describedby="report-export-status"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 2v10m-4-4 4 4 4-4M3 13v4h14v-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Export PDF</span></button></div><h1 class='sample-name'>HL240</h1><div class='hero-meta'><span>Chromatin</span><span>hg38</span><span>2,936 raw molecules</span><span>ont_native · MAPQ ≥20 · 10 kb bins</span></div></header><p id="report-export-status" class="report-export-status" role="status" aria-live="polite"></p>
 <nav class='report-nav'><a href='#sequencing'>Sequencing</a><a href='#library-shape'>Library quality</a><a href='#assay-qc'>Assay metrics</a><a href='#custom-regions'>Custom regions</a><a href='#spike-screen'>Candidate screen</a><a href='../index.html'>Example reports</a></nav>

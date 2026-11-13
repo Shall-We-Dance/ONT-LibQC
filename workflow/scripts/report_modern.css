@@ -204,6 +204,17 @@ code{border-radius:3px;background:#f0f4f6;overflow-wrap:anywhere}
 .note.ecoli-calibration-note p{margin:0}
 .note.ecoli-calibration-note p+p{margin-top:10px}
 
-/* Paired sample/background bars need a full-width panel. */
-.analysis-plots .region-composition{grid-column:1/-1;width:100%;max-width:950px;justify-self:center;box-sizing:border-box}
+/* Keep genomic composition and its metaplot together on wide screens. */
+.analysis-plots .region-composition{width:100%;box-sizing:border-box}
 .analysis-plots .region-composition img{height:auto;width:100%}
+@media screen and (min-width:851px){
+ .analysis-plots:has(.region-composition){grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);align-items:stretch}
+ .analysis-plots:has(.region-composition)>.plot-card{margin:0;min-width:0;display:flex;flex-direction:column;padding:12px}
+ .analysis-plots:has(.region-composition)>.plot-card>a{display:flex;align-items:center;flex:1;min-width:0}
+ .analysis-plots:has(.region-composition)>.plot-card img{width:100%;height:auto;object-fit:contain}
+ .analysis-plots:has(.region-composition) .figure-link{margin-top:10px}
+}
+@media screen and (max-width:850px){
+ .analysis-plots:has(.region-composition){grid-template-columns:minmax(0,1fr)}
+ .analysis-plots:has(.region-composition)>.plot-card{margin:0;min-width:0}
+}
