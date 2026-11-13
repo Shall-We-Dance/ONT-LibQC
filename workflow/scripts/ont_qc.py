@@ -1629,7 +1629,7 @@ METRIC_META = {
     "mycoplasma_qualifying_reads": ("Mycoplasma insert count", "Unique inserts passing target-contig, MAPQ, aligned-length, coverage and identity filters."),
     "mycoplasma_qualifying_loci": ("Mycoplasma locus count", "Distinct target genome 100-bp windows supported by qualifying inserts."),
     "mycoplasma_qualifying_fraction": ("Mycoplasma signal fraction", "Qualifying target reads divided by all screened adapter-trimmed inserts; a zero shallow result is not proof of absence."),
-    "spike_in_status": ("Spike-in candidate screen", "Automatic competitive reference screen. Foreign-sequence evidence does not prove intentional spike-in; none was added to the current libraries."),
+    "spike_in_status": ("Spike-in candidate screen", "Automatic competitive reference screen. Foreign-sequence evidence does not prove intentional spike-in; experimental metadata are required."),
     "spike_in_label": ("Candidate species", "Species with qualifying foreign-sequence assignments; same-species spike-in cannot be separated from host without specific barcodes."),
     "ligation_screened_units": ("Ligation-screened units", "All adapter-bounded non-dimer units, including unresolved cases. This is not the number of independent raw ONT molecules."),
     "ligation_resolved_units": ("Units with resolved block structure", "Query coverage >=80%, minimum aligned block 40 bp, MAPQ >=20 and <255, identity >=85%, and no unexplained query gap >30 bp."),
@@ -2035,11 +2035,14 @@ def call_class(call):
     return "red"
 
 
-def traffic_html(scope, ranges=None):
-    ranges=ranges or DEFAULT_REFERENCE_RANGES
+def traffic_html(scope, ranges=None, assay=None):
+    ranges=DEFAULT_REFERENCE_RANGES if ranges is None else ranges
+    assay=assay or scope.get("assay")
     label=scope.get("scope_name",scope.get("scope_id","Total"))
     seq_call=scope.get("sequencing_yield_call")
     shape_keys=["adapter_dimer_rate","primary_mapping_rate"]
+    if assay == "chromatin":
+        shape_keys.extend(["usable_fragment_rate", "mitochondrial_fraction"])
     if scope.get("scope_id", "total") == "total": shape_keys.append("complete_read_rate")
     evaluated=[metric_light_class(k,scope.get(k),ranges) for k in shape_keys if scope.get(k) is not None and ranges.get(k)]
     if str(seq_call or "").startswith(("inconclusive", "insufficient")) or scope.get("raw_reads",0) < scope.get("metric_settings",metric_profile())["minimum_raw_reads"] or scope.get("library_units",0) < scope.get("metric_settings",metric_profile())["minimum_complete_units"]:
@@ -2048,7 +2051,14 @@ def traffic_html(scope, ranges=None):
     elif "amber" in evaluated:shape_call="warning"
     elif evaluated:shape_call="pass"
     else:shape_call=scope.get("adapter_dimer_call") or "insufficient_evidence"
-    items=[("Sequencing",seq_call,"Yield screen; inspect read quality and molecule recovery below."),("Library quality",shape_call,"Combined adapter-dimer burden, primary mapping and total-library adapter recovery checks; not a biological enrichment or ligation success certificate.")]
+    quality_tip="Combined adapter-dimer burden, primary mapping and total-library adapter recovery checks."
+    if assay == "chromatin":
+        quality_tip+=" Includes usable fragment rate and mitochondrial fraction."
+    flagged=[f"{METRIC_META[k][0]}: {display_value(k, scope[k], ranges)} ({'outside range' if metric_light_class(k,scope[k],ranges)=='red' else 'borderline'})."
+             for k in shape_keys if scope.get(k) is not None and ranges.get(k) and metric_light_class(k,scope[k],ranges) in {"red", "amber"}]
+    quality_tip+=" Not a biological enrichment or ligation success certificate."
+    if flagged: quality_tip+=" "+" ".join(flagged)
+    items=[("Sequencing",seq_call,"Yield screen; inspect read quality and molecule recovery below."),("Library quality",shape_call,quality_tip)]
     return f"<section class='scope-card'><h3>{html.escape(label)}</h3>"+''.join(f"<div class='traffic' title='{html.escape(tip,quote=True)}'><span class='light {call_class(v)}'></span><b>{html.escape(k)}</b><em>{html.escape(str(v or 'NA').replace('_',' ').capitalize())}</em></div>" for k,v,tip in items)+"</section>"
 
 
@@ -2195,7 +2205,7 @@ def identity_panel_html(metric, pairing, pairs, unit_rows=None):
             f"<div class='identity-item'><small>Top-pair percentage</small><strong>{html.escape(top_text)}</strong></div></div>"
             "<div class='cutoff-note'>Percentages are among index-informative units."
             f"<details><summary>Library classification</summary><p>A dominant i5–i7 pair is single_library at ≥{pairing.get('single_library_fraction', .9):.0%}, or when it is the only resolved pair. See overall assignment and ambiguous/unassigned fractions below.</p></details></div></section>"
-            "<section class='identity-card'><h3>Physical index pairs</h3><div class='pair-table-scroll' tabindex='0' aria-label='Physical index pairs'><table class='pair-table'><tr><th>Library</th><th>Adapter</th><th>i5 (P5 side)</th><th>i7 (P7 side)</th><th title='Among index-informative units'>Percentage</th></tr>"
+            "<section class='identity-card'><h3>Physical index pairs</h3><div class='pair-table-scroll' tabindex='0' aria-label='Physical index pairs'><table class='pair-table'><tr><th>Library</th><th>Adapter</th><th>i5</th><th>i7</th><th title='Among index-informative units'>Percentage</th></tr>"
             + "".join(pair_rows) + "</table></div></section></div>")
 
 
@@ -2248,6 +2258,23 @@ def rna_screening_html(scopes):
             + "<p class='muted'>Not configured = not run. No signal detected applies only to the screened inserts. Foreign-sequence hits may include spike-in.</p></section>")
 
 
+def ecoli_calibration_note_html(screen):
+    """Explain reagent carry-over only when E. coli is part of the screen."""
+    candidates=screen.get("candidates") or {}
+    if not any(key in {"e_coli", "ecoli", "escherichia_coli"}
+               or str(candidate.get("label", "")).lower().startswith(("escherichia coli", "e. coli"))
+               for key,candidate in candidates.items()):
+        return ""
+    return ("<aside class='note ecoli-calibration-note'><p><strong>E. coli and enzyme carry-over.</strong> "
+            "E. coli DNA may carry over from pA/G-MNase (CUT&amp;RUN) or pA/G-Tn5 (CUT&amp;Tag) preparations "
+            "and can serve as a spike-in-like calibration reference. Use comparable cell inputs and the same enzyme batch and amount; "
+            "confirm sufficient E. coli counts before normalization. Detection alone does not establish the source.</p>"
+            "<p>References: <a href='https://doi.org/10.7554/eLife.46314' target='_blank' rel='noopener noreferrer'>"
+            "Meers et al., eLife (2019)</a> · "
+            "<a href='https://doi.org/10.1038/s41467-019-09982-5' target='_blank' rel='noopener noreferrer'>"
+            "Kaya-Okur et al., Nature Communications (2019)</a>.</p></aside>")
+
+
 def extension_report_html(out, sample, scopes, metric):
     sections=[]
     if metric["assay"] in {"rnaseq", "clip"}:
@@ -2267,10 +2294,10 @@ def extension_report_html(out, sample, scopes, metric):
                 fraction=display_value("spike_in_fraction",candidate.get("fraction"),{})
                 tooltip="Same species as the host; a spike-in cannot be distinguished" if status=="HOST_NOT_DISTINGUISHABLE" else "No spike-in was declared. This is sequence evidence only; a positive signal may have another source."
                 rows.append(f"<tr><td>{label}</td><td>{html.escape(candidate['role'].replace('_',' '))}</td><td>{fmt(candidate.get('reads'))}</td><td>{fraction}</td><td>{fmt(candidate.get('loci'))}</td><td>{metric_reading_html(status,light,tooltip)}</td></tr>")
-            declaration="Spike-in was declared in the sample configuration." if screen.get("declared_spike_in") else "No spike-in was added to these libraries."
+            declaration="Spike-in was declared in the sample configuration." if screen.get("declared_spike_in") else "No spike-in was declared in the sample configuration."
             tip=declaration+" Candidate signals are exploratory foreign-sequence evidence; they do not establish intentional spike-in. Host, candidate species and microbial decoys compete in one reference. Same-species spike-in and unlisted synthetic standards are not identifiable by this panel."
             scoped_screen=scoped_table_html(scopes,["spike_in_status","spike_in_screened_reads","spike_in_reads","spike_in_fraction"],{}) if len(scopes)>1 else ""
-            sections.append("<section class='report-section' id='spike-screen'><h2>Spike-in candidate screen <span class='metric-tip info-icon' tabindex='0' data-tip='"+html.escape(tip,quote=True)+"'>?</span></h2><p class='muted'>"+fmt(screen.get("screened_reads"))+" screened inserts · "+("Spike-in declared" if screen.get("declared_spike_in") else "No spike-in declared")+"</p><div class='table-scroll'><table><tr><th>Reference candidate</th><th>Role</th><th>Insert count</th><th>Fraction</th><th title='Distinct 100-bp reference windows with qualifying alignments'>Locus count</th><th>Result</th></tr>"+''.join(rows)+"</table></div>"+scoped_screen+f"<p><a href='../qc/spike_in/{sample}.assignments.tsv.gz'>Per-unit assignments</a> · <a href='../qc/spike_in/{sample}.json'>Screen details</a></p></section>")
+            sections.append("<section class='report-section' id='spike-screen'><h2>Spike-in candidate screen <span class='metric-tip info-icon' tabindex='0' data-tip='"+html.escape(tip,quote=True)+"'>?</span></h2><p class='muted'>"+fmt(screen.get("screened_reads"))+" screened inserts · "+("Spike-in declared" if screen.get("declared_spike_in") else "No spike-in declared")+"</p><div class='table-scroll'><table><tr><th>Reference candidate</th><th>Role</th><th>Insert count</th><th>Fraction</th><th title='Distinct 100-bp reference windows with qualifying alignments'>Locus count</th><th>Result</th></tr>"+''.join(rows)+"</table></div>"+ecoli_calibration_note_html(screen)+scoped_screen+f"<p><a href='../qc/spike_in/{sample}.assignments.tsv.gz'>Per-unit assignments</a> · <a href='../qc/spike_in/{sample}.json'>Screen details</a></p></section>")
 
     if metric["assay"]=="microc" and metric.get("ligation_screened_units") is not None:
         plots=[]
@@ -2450,7 +2477,7 @@ def cmd_report(args):
                 funnel_assets.append(distance_asset.name)
         pairing=metric.get("index_pairing",{}); pairs=pairing.get("pairs",[])
         if pairing.get("mode")=="single_library" and pairs: pairs=[max(pairs,key=lambda x:x.get("informative_support",0))]
-        top=''.join(traffic_html(x, ranges) for x in scopes)
+        top=''.join(traffic_html(x, ranges, metric["assay"]) for x in scopes)
         from report_sublibrary import render_sublibrary_composition
         mixture_html = render_sublibrary_composition(metric)
         ont_keys=["raw_reads","sequencing_yield_call","mean_read_q","raw_median_bp","raw_n50_bp","complete_read_rate"]

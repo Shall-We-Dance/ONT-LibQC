@@ -198,3 +198,8 @@ code{border-radius:3px;background:#f0f4f6;overflow-wrap:anywhere}
  .qc-metrics .reference-interval{min-width:150px}.report-section{padding:16px}
 }
 @media(prefers-reduced-motion:reduce){.metric-group>summary::before{transition:none}}
+
+/* A restrained information box for the calibration explanation. */
+.note.ecoli-calibration-note{margin:24px 0;padding:16px 18px;border:1px solid #dce5f0;border-radius:8px;background:#fff;box-shadow:none;line-height:1.65}
+.note.ecoli-calibration-note p{margin:0}
+.note.ecoli-calibration-note p+p{margin-top:10px}
