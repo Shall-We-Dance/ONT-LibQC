@@ -233,14 +233,16 @@
   },
   "analyses": {
     "HL240": {
-      "pipeline_version": null,
+      "pipeline_version": "v1.0.0",
       "pipeline_sha256": null,
-      "analysis_completed_utc": "2026-09-10T17:52:51.934957+00:00"
+      "analysis_completed_utc": "2026-09-10T17:52:51.934957+00:00",
+      "release_version_source": "legacy_release_series"
     },
     "HL120": {
-      "pipeline_version": null,
+      "pipeline_version": "v1.0.0",
       "pipeline_sha256": null,
-      "analysis_completed_utc": "2026-09-10T17:52:51.934957+00:00"
+      "analysis_completed_utc": "2026-09-10T17:52:51.934957+00:00",
+      "release_version_source": "legacy_release_series"
     }
   }
 }

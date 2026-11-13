@@ -3,6 +3,9 @@ import datetime
 import hashlib
 from pathlib import Path
 
+# Keep aligned with the GitHub release tag when publishing a new release.
+RELEASE_VERSION = "v1.0.0"
+
 
 def capture_analysis(root=None, now=None):
     root = Path(root) if root is not None else Path(__file__).resolve().parents[2]
@@ -18,19 +21,24 @@ def capture_analysis(root=None, now=None):
         digest.update(len(name).to_bytes(8, 'big') + name + len(blob).to_bytes(8, 'big') + blob)
     code_hash = digest.hexdigest()
     timestamp = now or datetime.datetime.now(datetime.timezone.utc)
-    return {'pipeline_version': 'build.' + code_hash[:12], 'pipeline_sha256': code_hash,
+    return {'pipeline_version': RELEASE_VERSION, 'pipeline_build': 'build.' + code_hash[:12], 'pipeline_sha256': code_hash,
             'analysis_completed_utc': timestamp.astimezone(datetime.timezone.utc).isoformat()}
 
 
 def analysis_record(metric, provenance=None):
     provenance = provenance or {}
     recorded = metric.get('analysis_provenance') or provenance.get('analyses', {}).get(metric.get('sample'), {})
-    if recorded:
-        return dict(recorded)
-    # Historical data does not identify the source revision. Never label it as
-    # the current build merely because the report presentation was refreshed.
-    return {'pipeline_version': None, 'pipeline_sha256': None,
-            'analysis_completed_utc': provenance.get('created_utc')}
+    result = dict(recorded) if recorded else {
+        'pipeline_sha256': None, 'analysis_completed_utc': provenance.get('created_utc')}
+    version = result.get('pipeline_version')
+    if not version or version.startswith('build.'):
+        # Legacy headers used source fingerprints. These reports are assigned
+        # to the v1.0.0 release series; do not invent a historical code hash.
+        if version:
+            result.setdefault('pipeline_build', version)
+        result['pipeline_version'] = 'v1.0.0'
+        result['release_version_source'] = 'legacy_release_series'
+    return result
 
 
 def analysis_label(record):
