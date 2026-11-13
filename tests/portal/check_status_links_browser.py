@@ -37,7 +37,7 @@ with tempfile.TemporaryDirectory() as tmp:
       context=browser.new_context(viewport={'width':width,'height':900});urls=[];errors=[]
       context.on('request',lambda request:urls.append(request.url));page=context.new_page();page.on('pageerror',lambda error:errors.append(str(error)))
       page.goto(origin)
-      page.get_by_text('Jobs running: 1',exact=True).wait_for();page.get_by_text('Jobs waiting to run: 1',exact=True).wait_for()
+      page.get_by_text('Jobs running: 1',exact=True).wait_for();page.get_by_text('Jobs queued: 1',exact=True).wait_for()
       page.locator('#server-status summary').click()
       assert page.locator('#jobs-total').inner_text()=='5'
       assert page.locator('#jobs-history-chart svg').count()==1

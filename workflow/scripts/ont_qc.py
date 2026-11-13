@@ -1626,8 +1626,8 @@ METRIC_META = {
     "aligner": ("Aligner", "Reference aligner selected for this assay."),
     "mycoplasma_status": ("Mycoplasma signal screen", "Opportunistic competitive-alignment signal screen; NOT_DETECTED_AT_THIS_DEPTH does not exclude contamination."),
     "mycoplasma_screened_reads": ("Mycoplasma-screened inserts", "Adapter-trimmed full inserts competitively aligned against host, eight common cell-culture Mollicutes and bacterial decoys."),
-    "mycoplasma_qualifying_reads": ("Mycoplasma-supporting reads", "Unique inserts passing target-contig, MAPQ, aligned-length, coverage and identity filters."),
-    "mycoplasma_qualifying_loci": ("Mycoplasma-supporting loci", "Distinct target genome 100-bp windows supported by qualifying inserts."),
+    "mycoplasma_qualifying_reads": ("Mycoplasma insert count", "Unique inserts passing target-contig, MAPQ, aligned-length, coverage and identity filters."),
+    "mycoplasma_qualifying_loci": ("Mycoplasma locus count", "Distinct target genome 100-bp windows supported by qualifying inserts."),
     "mycoplasma_qualifying_fraction": ("Mycoplasma signal fraction", "Qualifying target reads divided by all screened adapter-trimmed inserts; a zero shallow result is not proof of absence."),
     "spike_in_status": ("Spike-in candidate screen", "Automatic competitive reference screen. Foreign-sequence evidence does not prove intentional spike-in; none was added to the current libraries."),
     "spike_in_label": ("Candidate species", "Species with qualifying foreign-sequence assignments; same-species spike-in cannot be separated from host without specific barcodes."),
@@ -2076,11 +2076,11 @@ def scoped_value_html(key, value, ranges, descriptive=False):
         if status.startswith("INCONCLUSIVE"):
             state = "Inconclusive: low screen depth"
         elif status.startswith("NOT_DETECTED"):
-            state = "No supporting signal at this depth"
+            state = "No signal detected at this depth"
         else:
-            state = "Mycoplasma-supporting signal detected" if light == "red" else "Not configured"
+            state = "Mycoplasma signal detected" if light == "red" else "Not configured"
     elif key in {"mycoplasma_qualifying_reads", "mycoplasma_qualifying_loci", "mycoplasma_qualifying_fraction"}:
-        state = "Mycoplasma-supporting signal detected" if light == "red" else "No supporting signal at this depth"
+        state = "Mycoplasma signal detected" if light == "red" else "No signal detected at this depth"
     elif key == "spike_in_status":
         state = "Candidate foreign-sequence evidence; intentional spike-in requires experimental metadata" if str(value) in {"CANDIDATE_SIGNAL", "TRACE"} else "No candidate signal at this depth" if value == "NOT_DETECTED" else "Reference screening result; experimental spike-in intent cannot be inferred"
     else:
@@ -2270,7 +2270,7 @@ def extension_report_html(out, sample, scopes, metric):
             declaration="Spike-in was declared in the sample configuration." if screen.get("declared_spike_in") else "No spike-in was added to these libraries."
             tip=declaration+" Candidate signals are exploratory foreign-sequence evidence; they do not establish intentional spike-in. Host, candidate species and microbial decoys compete in one reference. Same-species spike-in and unlisted synthetic standards are not identifiable by this panel."
             scoped_screen=scoped_table_html(scopes,["spike_in_status","spike_in_screened_reads","spike_in_reads","spike_in_fraction"],{}) if len(scopes)>1 else ""
-            sections.append("<section class='report-section' id='spike-screen'><h2>Spike-in candidate screen <span class='metric-tip info-icon' tabindex='0' data-tip='"+html.escape(tip,quote=True)+"'>?</span></h2><p class='muted'>"+fmt(screen.get("screened_reads"))+" screened inserts · "+("Spike-in declared" if screen.get("declared_spike_in") else "No spike-in declared")+"</p><div class='table-scroll'><table><tr><th>Reference candidate</th><th>Role</th><th>Inserts</th><th>Fraction</th><th>Supported loci</th><th>Result</th></tr>"+''.join(rows)+"</table></div>"+scoped_screen+f"<p><a href='../qc/spike_in/{sample}.assignments.tsv.gz'>Per-unit assignments</a> · <a href='../qc/spike_in/{sample}.json'>Screen details</a></p></section>")
+            sections.append("<section class='report-section' id='spike-screen'><h2>Spike-in candidate screen <span class='metric-tip info-icon' tabindex='0' data-tip='"+html.escape(tip,quote=True)+"'>?</span></h2><p class='muted'>"+fmt(screen.get("screened_reads"))+" screened inserts · "+("Spike-in declared" if screen.get("declared_spike_in") else "No spike-in declared")+"</p><div class='table-scroll'><table><tr><th>Reference candidate</th><th>Role</th><th>Insert count</th><th>Fraction</th><th title='Distinct 100-bp reference windows with qualifying alignments'>Locus count</th><th>Result</th></tr>"+''.join(rows)+"</table></div>"+scoped_screen+f"<p><a href='../qc/spike_in/{sample}.assignments.tsv.gz'>Per-unit assignments</a> · <a href='../qc/spike_in/{sample}.json'>Screen details</a></p></section>")
 
     if metric["assay"]=="microc" and metric.get("ligation_screened_units") is not None:
         plots=[]
