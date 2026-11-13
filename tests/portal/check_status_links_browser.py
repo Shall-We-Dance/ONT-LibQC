@@ -33,7 +33,7 @@ with tempfile.TemporaryDirectory() as tmp:
    for engine in sys.argv[2:] or ['chromium','webkit']:
     browser=getattr(p,engine).launch(**({'executable_path':os.environ['ONT_WEBKIT_EXECUTABLE']} if engine=='webkit' and os.environ.get('ONT_WEBKIT_EXECUTABLE') else {}))
     try:
-     for width in (1440,900,390):
+     for width in (1440,900,390,320):
       context=browser.new_context(viewport={'width':width,'height':900});urls=[];errors=[]
       context.on('request',lambda request:urls.append(request.url));page=context.new_page();page.on('pageerror',lambda error:errors.append(str(error)))
       page.goto(origin)
@@ -45,8 +45,16 @@ with tempfile.TemporaryDirectory() as tmp:
       assert page.locator('#jobs-history-chart .history-line').get_attribute('d').count(' V ')==5
       assert page.locator('.topbar .topbar-actions > #server-status + .lab-button').count()==1
       status=page.locator('#server-status').bounding_box();lab=page.locator('.topbar .lab-button').bounding_box()
-      assert status['x']+status['width'] <= lab['x']
-      assert abs((status['y']+status['height']/2)-(lab['y']+lab['height']/2))<2
+      if width<=740:
+       brand=page.locator('.topbar .brand').bounding_box()
+       assert brand['x']+brand['width']<=lab['x']
+       assert abs((brand['y']+brand['height']/2)-(lab['y']+lab['height']/2))<2
+       assert status['y']>=lab['y']+lab['height']
+       counts=page.locator('.server-counts>span').all()
+       assert abs(counts[0].bounding_box()['y']-counts[1].bounding_box()['y'])<2
+      else:
+       assert status['x']+status['width'] <= lab['x']
+       assert abs((status['y']+status['height']/2)-(lab['y']+lab['height']/2))<2
       # Browser engines serialize sin(pi) differently; wait for the same final rotation.
       page.wait_for_function("""() => {
        const m = new DOMMatrixReadOnly(getComputedStyle(document.querySelector('.status-chevron')).transform);

@@ -337,13 +337,14 @@ button.structure-block:hover{border-color:currentColor}
  .portal-topbar>nav{grid-column:1/-1;grid-row:2}
 }
 @media(max-width:740px){
- .portal-topbar{grid-template-columns:minmax(0,1fr);gap:8px}
+ .portal-topbar{grid-template-columns:minmax(0,1fr) auto;gap:8px}
  .portal-topbar>.brand{grid-column:1;grid-row:1}
- .portal-topbar>.topbar-actions{grid-column:1;grid-row:2;justify-content:space-between}
- .portal-topbar>nav{grid-column:1;grid-row:3}
- .portal-topbar .lab-button{min-height:40px}
- .server-counts{display:grid;gap:1px}
- .server-counts>span+span{padding-left:0;border:0}
+ .portal-topbar>.topbar-actions{display:contents}
+ .portal-topbar .lab-button{grid-column:2;grid-row:1;justify-self:end;min-height:40px}
+ .portal-topbar .server-status{grid-column:1/-1;grid-row:2;justify-self:start;max-width:100%}
+ .portal-topbar>nav{grid-column:1/-1;grid-row:3;flex-wrap:wrap}
+ .server-counts{display:flex;gap:12px;flex-wrap:nowrap}
+ .server-counts>span+span{padding-left:12px;border-left:1px solid #dce5f0}
  .server-status>summary{padding:7px 10px;gap:14px;font-size:11px}
  .job-history{left:0;right:auto;width:350px;max-width:calc(100vw - 36px);transform-origin:top left}
 }
