@@ -44,6 +44,7 @@ with tempfile.TemporaryDirectory() as tmp:
       assert page.locator('#jobs-history-chart circle').count()==0
       assert page.locator('#jobs-history-chart .history-line').get_attribute('d').count(' V ')==5
       assert page.locator('.topbar .topbar-actions > #server-status + .lab-button').count()==1
+      page.screenshot(path=str(OUTPUT/f'{engine}-{width}-counts.png'))
       status=page.locator('#server-status').bounding_box();lab=page.locator('.topbar .lab-button').bounding_box()
       if width<=740:
        brand=page.locator('.topbar .brand').bounding_box()
@@ -72,7 +73,20 @@ with tempfile.TemporaryDirectory() as tmp:
       for text in ('Completed','Failed','Cancelled','Earlier archived jobs'):assert text not in page.locator('#server-status').inner_text()
       assert 'private' not in page.locator('#server-status').inner_text().lower()
       assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-      page.screenshot(path=str(OUTPUT/f'{engine}-{width}-counts.png'))
+      if width==320:
+       # Ubuntu's wider fallback font exposed a real overlap missed locally.
+       font=page.evaluate('document.body.style.fontFamily')
+       page.evaluate('document.body.style.fontFamily = "DejaVu Sans, sans-serif"')
+       page.locator('#jobs-running').evaluate('(e)=>e.textContent="12"')
+       brand=page.locator('.topbar .brand').bounding_box()
+       status=page.locator('#server-status').bounding_box()
+       lab=page.locator('.topbar .lab-button').bounding_box()
+       page.screenshot(path=str(OUTPUT/f'{engine}-{width}-wide-font.png'))
+       assert brand['x']+brand['width']<=status['x'], {'brand':brand,'status':status}
+       assert status['x']+status['width']<=lab['x'], {'status':status,'lab':lab}
+       assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+       page.evaluate('(font)=>document.body.style.fontFamily=font',font)
+       page.locator('#jobs-running').evaluate('(e)=>e.textContent="1"')
       page.keyboard.press('Escape')
       assert not page.locator('#server-status').evaluate('el => el.open')
       assert page.locator('#server-status summary').evaluate('el => el === document.activeElement')

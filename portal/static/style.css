@@ -354,5 +354,5 @@ button.structure-block:hover{border-color:currentColor}
  .job-history-queued{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-bottom:12px;margin-bottom:14px;border-bottom:1px solid #edf1f6;font-size:13px;line-height:1.4}
  .job-history-queued strong{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
 }
-@media(max-width:380px){.portal-topbar{padding-inline:12px;column-gap:6px}.portal-topbar>.brand{font-size:18px;gap:5px}.portal-topbar>.brand img{width:24px;height:24px}.portal-topbar>.topbar-actions{gap:5px}.server-status>summary{padding:6px 5px;font-size:10px}.portal-topbar .lab-button{padding-inline:6px;font-size:11px}.job-history{right:12px;max-width:calc(100vw - 24px)}}
+@media(max-width:380px){.portal-topbar{padding-inline:8px;column-gap:4px}.portal-topbar>.brand{font-size:18px;gap:4px}.portal-topbar>.brand img{width:24px;height:24px}.portal-topbar>.topbar-actions{gap:4px}.server-status>summary{padding:6px 4px;font-size:10px}.portal-topbar .lab-button{padding-inline:4px;font-size:11px}.job-history{right:12px;max-width:calc(100vw - 24px)}}
 @media(prefers-reduced-motion:reduce){.server-status[open] .job-history{animation:none}.status-chevron,.server-status>summary{transition:none}}
