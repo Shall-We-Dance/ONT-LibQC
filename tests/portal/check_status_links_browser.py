@@ -50,6 +50,7 @@ with tempfile.TemporaryDirectory() as tmp:
        assert brand['x']+brand['width']<=lab['x']
        assert abs((brand['y']+brand['height']/2)-(lab['y']+lab['height']/2))<2
        assert status['y']>=lab['y']+lab['height']
+       assert abs(status['x']+status['width']-lab['x']-lab['width'])<2
        counts=page.locator('.server-counts>span').all()
        assert abs(counts[0].bounding_box()['y']-counts[1].bounding_box()['y'])<2
       else:

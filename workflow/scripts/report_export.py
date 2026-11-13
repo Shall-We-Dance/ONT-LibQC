@@ -42,7 +42,15 @@ def add_pdf_export(document, *, refresh=False):
 .report-export-status:empty{display:none}
 .report-print-definitions,.report-print-note{display:none}
 .report-hero::after{content:"";display:table;clear:both}
-@media(max-width:520px){.report-export-controls{float:none;display:flex;justify-content:flex-end;margin:0 0 12px}}
+@media screen and (max-width:520px){
+.report-hero:has(>.report-export-controls){display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px 14px;align-items:start}
+.report-hero>.report-export-controls{grid-column:2;grid-row:1;float:none;flex-direction:column;align-items:flex-end;gap:6px;margin:0}
+.report-hero>.report-export-controls button{order:-1}
+.report-hero>.report-export-controls select{max-width:120px;padding:6px 8px;font-size:12px}
+.report-hero:has(>.report-export-controls)>h1{grid-column:1;grid-row:1;min-width:0;margin:0;padding-top:2px;line-height:1.4}
+.report-hero:has(>.report-export-controls)>.hero-meta{grid-column:1/-1;margin-top:0}
+.report-hero:has(>.report-export-controls)::after{display:none}
+}
 '''
     styles = screen_css + '\n' + (ROOT / 'report_print.css').read_text()
     document = document.replace('</head>', '<style id="report-export-style">' + styles + '</style></head>', 1)

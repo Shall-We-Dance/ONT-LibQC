@@ -341,12 +341,12 @@ button.structure-block:hover{border-color:currentColor}
  .portal-topbar>.brand{grid-column:1;grid-row:1}
  .portal-topbar>.topbar-actions{display:contents}
  .portal-topbar .lab-button{grid-column:2;grid-row:1;justify-self:end;min-height:40px}
- .portal-topbar .server-status{grid-column:1/-1;grid-row:2;justify-self:start;max-width:100%}
+ .portal-topbar .server-status{grid-column:1/-1;grid-row:2;justify-self:end;max-width:100%}
  .portal-topbar>nav{grid-column:1/-1;grid-row:3;flex-wrap:wrap}
  .server-counts{display:flex;gap:12px;flex-wrap:nowrap}
  .server-counts>span+span{padding-left:12px;border-left:1px solid #dce5f0}
  .server-status>summary{padding:7px 10px;gap:14px;font-size:11px}
- .job-history{left:0;right:auto;width:350px;max-width:calc(100vw - 36px);transform-origin:top left}
+ .job-history{left:auto;right:0;width:350px;max-width:calc(100vw - 36px);transform-origin:top right}
 }
 @media(max-width:320px){.topbar-actions{gap:8px}.server-status>summary{gap:6px;padding:6px 8px}.portal-topbar .lab-button{padding-inline:8px;font-size:12px}}
 @media(prefers-reduced-motion:reduce){.server-status[open] .job-history{animation:none}.status-chevron,.server-status>summary{transition:none}}
