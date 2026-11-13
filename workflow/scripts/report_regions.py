@@ -114,18 +114,16 @@ def prepare_background(promoters,genes,primary,sizes,te=None):
 
 
 def svg_region_bars(metric,title):
-    rows=[('Promoter','promoter_proximal'),('Gene body','gene_body'),('Distal','intergenic'),('TE overlap','te')]
-    w,h,bx,bw=820,340,145,265;ink='#34495e';muted='#65758c'
+    rows=[('Promoter','promoter_proximal'),('Gene body','gene_body'),('Distal','intergenic')]
+    w,h,bx,bw=820,280,145,265;ink='#34495e';muted='#65758c'
     svg=[f"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 {w} {h}' role='img' aria-label='{html.escape(title,quote=True)}' style='font-family:Arial,Helvetica,sans-serif'>",
         f'<title>{html.escape(title)}</title>',"<metadata id='genomic-region-metrics'>"+html.escape(json.dumps(metric,sort_keys=True))+'</metadata>',
         "<rect width='100%' height='100%' fill='white'/>",f"<text x='22' y='28' font-size='17' fill='#203040'>{html.escape(title)}</text>"]
     for x,label in [(540,'Sample'),(665,'Background'),(798,'Enrichment')]:svg.append(f"<text x='{x}' y='61' text-anchor='end' font-size='12' fill='{muted}'>{label}</text>")
     percent=lambda x:('—' if x is None else f'{x:.1%}' if x==0 or x>=.001 else f'{100*x:.3g}%')
     for i,(label,key) in enumerate(rows):
-        y=80+i*47+(8 if key=='te' else 0);rate=metric.get(key+'_rate');bg=metric.get(key+'_background_rate');fold=metric.get(key+'_enrichment');count=metric.get(key+'_reads')
-        if key=='te':svg.append("<line x1='22' x2='798' y1='215' y2='215' stroke='#e3e9ef'/>")
+        y=80+i*47;rate=metric.get(key+'_rate');bg=metric.get(key+'_background_rate');fold=metric.get(key+'_enrichment');count=metric.get(key+'_reads')
         tooltip=f'{label}: sample {percent(rate)}, background {percent(bg)}.'
-        if key=='te':tooltip+=' TE overlaps are independent of the three genomic regions.'
         svg.append(f"<g><title>{html.escape(tooltip)}</title><text x='22' y='{y+15}' font-size='14' fill='{ink}'>{label}</text>")
         for j,(value,color) in enumerate([(rate,'#3276b5'),(bg,'#aebccc')]):
             yy=y+j*12;svg.append(f"<rect x='{bx}' y='{yy}' width='{bw}' height='9' rx='2' fill='#eef2f6'/>")
@@ -135,8 +133,7 @@ def svg_region_bars(metric,title):
         svg.append('</g>')
     total=metric.get('annotation_mapped_reads',0);window=metric.get('promoter_window_bp',2000)
     footer=f'n={total:,} MAPQ-pass alignments · Promoter: TSS ±{window/1000:g} kb'
-    svg.append(f"<text x='22' y='288' font-size='11' fill='{muted}'>{html.escape(footer)}</text>")
-    note='Background matches chromosome and fragment length. TE overlaps may also be promoter or gene body.'
-    if not metric.get('te_annotation_available'):note='Background matches chromosome and fragment length. TE annotation unavailable for this reference.'
-    svg.append(f"<text x='22' y='309' font-size='11' fill='{muted}'>{note}</text></svg>")
+    svg.append(f"<text x='22' y='234' font-size='11' fill='{muted}'>{html.escape(footer)}</text>")
+    note='Background matches chromosome and fragment length.'
+    svg.append(f"<text x='22' y='255' font-size='11' fill='{muted}'>{note}</text></svg>")
     return ''.join(svg)

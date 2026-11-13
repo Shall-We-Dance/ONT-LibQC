@@ -32,7 +32,7 @@ class RegionEnrichmentTests(unittest.TestCase):
         no_reads=region_counts({}, {'c':[(1,3)]},{},['c'],20,2000,{'c':10},{'c':[(1,3)]})
         self.assertIsNone(no_reads['te_rate']);self.assertIsNone(no_reads['te_enrichment']);self.assertEqual(no_reads['te_genome_rate'],.2)
         svg=svg_region_bars(missing,'Test <sample>');ET.fromstring(svg)
-        self.assertIn('TE annotation unavailable',svg);self.assertNotIn('nan',svg)
+        self.assertNotIn('TE overlap', [node.text for node in ET.fromstring(svg).iter('{http://www.w3.org/2000/svg}text')]);self.assertNotIn('nan',svg)
 
     def test_background_matches_chromosome_and_length_distribution(self):
         r={'r':dict(chrom='a',start=0,end=5,mapq=60)}

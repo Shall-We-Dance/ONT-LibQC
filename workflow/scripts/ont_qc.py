@@ -24,6 +24,7 @@ from qc_reference_guide import context as reference_context, reference_notes_htm
 from library_structure import normalize_structure, umi_lengths, handles, extract_umis, adapter_families, POSITIONS as UMI_POSITIONS
 from report_library_structure import family_label
 from report_brand import brand_bar, copy_mark, favicon
+from report_mitochondrial import coverage_html as mitochondrial_coverage_html
 from report_export import add_pdf_export
 from report_regions import region_counts as annotation_region_counts, svg_region_bars, load_te_bed, prepare_background
 
@@ -1696,6 +1697,8 @@ def is_percent_metric(key, ranges):
 
 
 def display_value(key, value, ranges):
+    if value == "inconclusive_low_yield":
+        return "low"
     if key == "adapter_family" and value is not None:
         return family_label(value)
     if key == "mycoplasma_status" and value == "NOT_DETECTED_AT_THIS_DEPTH":
@@ -2000,7 +2003,7 @@ def traffic_html(scope, ranges=None, assay=None):
     quality_tip+=" Not a biological enrichment or ligation success certificate."
     if flagged: quality_tip+=" "+" ".join(flagged)
     items=[("Sequencing",seq_call,"Yield screen; inspect read quality and molecule recovery below."),("Library quality",shape_call,quality_tip)]
-    return f"<section class='scope-card'><h3>{html.escape(label)}</h3>"+''.join(f"<div class='traffic' title='{html.escape(tip,quote=True)}'><span class='light {call_class(v)}'></span><b>{html.escape(k)}</b><em>{html.escape(str(v or 'NA').replace('_',' ').capitalize())}</em></div>" for k,v,tip in items)+"</section>"
+    return f"<section class='scope-card'><h3>{html.escape(label)}</h3>"+''.join(f"<div class='traffic' title='{html.escape(tip,quote=True)}'><span class='light {call_class(v)}'></span><b>{html.escape(k)}</b><em>{html.escape(display_value(k, v, ranges).replace('_',' ').capitalize())}</em></div>" for k,v,tip in items)+"</section>"
 
 
 def metric_reading_html(rendered, light, state):
@@ -2152,7 +2155,7 @@ def identity_panel_html(metric, pairing, pairs, unit_rows=None):
 
 
 def profile_scope_html(label, raw_name, insert_name, region_name, karyotype_name, gene_name=None,
-                       *, full_library_assets):
+                       *, full_library_assets, mitochondrial_html=""):
     def card(name, alt, extra_class=''):
         name = html.escape(name, quote=True)
         alt = html.escape(alt, quote=True)
@@ -2187,7 +2190,7 @@ def profile_scope_html(label, raw_name, insert_name, region_name, karyotype_name
             (f"<div class='plots analysis-plots'>{analysis}</div>" if analysis else '') +
             "<details class='chromosome-detail'><summary>Chromosome coverage · auxiliary diagnostic</summary>"
             "<p>Inspect broad coverage imbalance and isolated concentration. Gene density and shallow coverage alone cannot establish target-specific enrichment or copy-number changes.</p>"
-            f"<img src='assets/{html.escape(karyotype_name, quote=True)}' alt='Mapped reads by chromosome karyotype'></details></section>")
+            f"<img src='assets/{html.escape(karyotype_name, quote=True)}' alt='Mapped reads by chromosome karyotype'>{mitochondrial_html}</details></section>")
 
 
 def rna_screening_html(scopes):
@@ -2315,7 +2318,7 @@ def cmd_report(args):
         primary_arg=primary_arg if isinstance(primary_arg, str) else ",".join(primary_arg)
         mito_arg=report_reference.get("mitochondrial_chromosomes", "auto")
         mito_arg=mito_arg if isinstance(mito_arg, str) else ",".join(mito_arg)
-        report_primary, _=resolve_chromosome_sets(report_chrom_sizes, primary_arg, mito_arg)
+        report_primary, report_mito=resolve_chromosome_sets(report_chrom_sizes, primary_arg, mito_arg)
         report_annotation=report_reference.get("annotation", "")
         annotation_key=(report_annotation, tuple(report_chrom_sizes.items()), tuple(report_primary), promoter_window)
         report_promoters, report_genes = {}, {}
@@ -2404,7 +2407,8 @@ def cmd_report(args):
             profile_sections.append(profile_scope_html(label, raw_asset.name, insert_asset.name,
                                                        region_asset.name if metric["assay"] == "chromatin" else None, karyotype_asset.name,
                                                        gene_profile_assets[scope_id].name if scope_id in gene_profile_assets else None,
-                                                       full_library_assets=full_library_assets))
+                                                       full_library_assets=full_library_assets,
+                                                       mitochondrial_html=mitochondrial_coverage_html(scope_records.get(scope_id, {}), report_chrom_sizes, report_mito, report_mapq, scope, report_primary)))
         from report_profiles import render_profiles_card
         profiles_html=render_profiles_card(sample, scopes, profile_sections, out/'reports/assets', out/'qc/gene_profile')
         pairtools_html = ""
