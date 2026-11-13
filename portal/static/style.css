@@ -317,14 +317,15 @@ button.structure-block:hover{border-color:currentColor}
 .server-status>summary:focus-visible{outline:2px solid var(--blue);outline-offset:3px}
 .status-chevron{flex:none;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;transition:transform var(--motion-ui) var(--motion-ease)}
 .server-status[open] .status-chevron{transform:rotate(180deg)}
-.job-history{position:absolute;z-index:30;right:0;top:calc(100% + 10px);width:350px;padding:18px 20px 14px;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 5px 14px #24364b08,0 16px 36px #24364b0d;transform-origin:top right}
+.job-history{position:absolute;z-index:30;right:0;top:calc(100% + 10px);width:350px;padding:18px 20px 16px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 5px 14px #24364b08,0 16px 36px #24364b0d;transform-origin:top right}
 .server-status[open] .job-history{animation:history-in var(--motion-enter) var(--motion-ease)}
 @keyframes history-in{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:translateY(0)}}
-.job-history-total{display:flex;justify-content:space-between;align-items:baseline;color:var(--ink);font-size:14px}
-.job-history-total strong{font-size:25px;font-weight:600;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
-.jobs-history-chart{margin-top:12px}.jobs-history-chart svg{display:block;width:100%;height:auto;overflow:visible}
-.jobs-history-chart text{fill:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
-.jobs-history-chart .history-grid{stroke:var(--line);stroke-width:1}
+.job-history-total{display:flex;justify-content:space-between;align-items:center;gap:16px;padding-bottom:14px;border-bottom:1px solid #edf1f6;color:var(--ink);line-height:1.2}
+.job-history-total>span{font-size:13px;font-weight:600;letter-spacing:.01em;color:#526579}
+.job-history-total strong{font-size:26px;font-weight:550;letter-spacing:-.035em;font-variant-numeric:lining-nums tabular-nums;line-height:1}
+.jobs-history-chart{margin-top:16px}.jobs-history-chart svg{display:block;width:100%;height:auto;overflow:visible}
+.jobs-history-chart text{fill:#6b7d92;font-family:inherit;font-size:10.5px;font-weight:400;font-variant-numeric:lining-nums tabular-nums}
+.jobs-history-chart .history-grid{stroke:#e8edf4;stroke-width:1}
 .jobs-history-chart .history-line{fill:none;stroke:var(--blue);stroke-width:2;stroke-linejoin:round}
 .jobs-history-chart .history-area{fill:var(--blue);fill-opacity:.06}
 .jobs-history-chart p{font-size:13px;margin:16px 0;color:var(--muted)}
