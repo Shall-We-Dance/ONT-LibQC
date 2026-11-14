@@ -445,11 +445,11 @@ function taskView(task) {
   if (job.status === 'succeeded' && !deletionPending && job.report_url && job.download_url) {
     const reportClick = event => followReportLink(event, task, 'report_url');
     const downloadClick = event => followReportLink(event, task, 'download_url');
-    actions.append(node('a', { class: 'primary button', href: job.report_url, target: '_blank', rel: 'noopener', 'aria-label': 'Open ' + (job.sample || 'sample') + ' report', title: 'Opens in a new tab', onclick: reportClick, onauxclick: reportClick }, 'Open report'), node('a', { class: 'secondary button', href: job.download_url, 'aria-label': 'Download report ZIP', onclick: downloadClick, onauxclick: downloadClick }, 'Download ZIP'));
+    actions.append(node('a', { class: 'primary button', href: job.report_url, target: '_blank', rel: 'noopener', 'aria-label': 'Open ' + (job.sample || 'sample') + ' report', title: 'Opens in a new tab', onclick: reportClick, onauxclick: reportClick }, 'Open report'), node('a', { class: 'secondary button', href: job.download_url, 'aria-label': 'Download report ZIP', onclick: downloadClick, onauxclick: downloadClick }, 'Download'));
     const expires = new Date(job.expires * 1000);
     card.append(node('p', { class: 'field-note task-expiry' }, 'Available until ', node('time', { datetime: expires.toISOString() }, expires.toLocaleString())));
   }
-  actions.append(node('button', { type: 'button', class: 'secondary task-utility copy-private-link', onclick: async event => { try { await navigator.clipboard.writeText(privateLink(task)); event.target.textContent = 'Link copied'; } catch { saveText('ont-libqc-private-link.txt', privateLink(task)); } } }, 'Copy private link'));
+  actions.append(node('button', { type: 'button', class: 'secondary task-utility copy-private-link', onclick: async event => { try { await navigator.clipboard.writeText(privateLink(task)); event.target.textContent = 'Link copied'; } catch { saveText('ont-libqc-private-link.txt', privateLink(task)); } } }, 'Copy link'));
   if (['created', 'uploaded', 'queued', 'running'].includes(job.status) && !task.uploading) actions.append(node('button', { type: 'button', class: 'secondary task-utility cancel-analysis', onclick: async () => { try { await api('/api/jobs/' + task.id + '/cancel', 'POST', {}, task.token); await refreshTask(task); } catch (e) { task.failure = e.message; renderTasks(); } } }, 'Cancel analysis'));
   if (['succeeded', 'failed', 'cancelled'].includes(job.status)) {
     const warning = node('p', { class: 'deletion-warning', id: 'delete-warning-' + task.id, role: 'status', hidden: true }, 'Permanently deletes this report and its files. This cannot be undone.');
@@ -535,7 +535,7 @@ function renderTasks() {
     ? 'Reports cannot be restored after deletion. The removal reason is shown below.'
     : (tasks.length && tasks.every(t => t.job?.mail_status === 'disabled') ? 'No email will be sent. ' : '')
       + (single ? 'Copy your private link to return to this analysis.' : 'Copy one private link to return to these analyses.');
-  $('save-links').textContent = Date.now() < privateLinkCopiedUntil ? 'Link copied' : 'Copy private link';
+  $('save-links').textContent = Date.now() < privateLinkCopiedUntil ? 'Link copied' : 'Copy link';
   $('page-loading').hidden = true; $('submission-view').hidden = true; $('tasks-view').hidden = false;
   syncChildren($('task-list'), tasks.map(updateTaskView));
 }
