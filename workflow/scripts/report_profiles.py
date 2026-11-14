@@ -21,7 +21,7 @@ CSS = '''
 .profile-comparison-grid .comparison-gel img{position:absolute;inset:0;width:100%;height:100%}
 .profile-comparison .comparison-metaplot{max-width:850px;margin:12px auto 0}
 .profile-genomic-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start;margin-top:12px}
-.profile-genomic-grid .comparison-metaplot{max-width:none;margin:0}
+.profile-genomic-grid .comparison-metaplot{max-width:none;margin:0;grid-column:1/-1}
 @media(max-width:1000px){.profile-genomic-grid{grid-template-columns:minmax(0,1fr)}}
 @media print{.profile-genomic-grid{display:block}.profile-genomic-grid .plot-card{margin-bottom:4mm}}
 .profile-comparison .figure-link{margin-top:6px;font-size:11px}
@@ -133,7 +133,7 @@ def virtual_lanes(series):
     return ''.join(svg)
 
 
-def gene_comparison(series):
+def _gene_panel(series):
     rows = [row for row in series if row.get('gene')]
     if not rows: return None
     labels, bins, _ = rows[0]['gene']
@@ -181,6 +181,28 @@ def gene_comparison(series):
     svg.append('</svg>')
     return ''.join(svg)
 
+
+
+def gene_comparison(series):
+    """Small multiples retain CPM values and use an independent y axis per panel."""
+    rows = [row for row in series if row.get('gene')]
+    if not rows:
+        return None
+    labels, bins, _ = rows[0]['gene']
+    if any(row['gene'][:2] != (labels, bins) for row in rows):
+        raise ValueError('Sublibrary gene profiles must share the same bin coordinates')
+    columns = min(2, len(rows))
+    width, height = 820 * columns, 440 * math.ceil(len(rows) / columns)
+    result = [f"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 {width} {height}' role='img' aria-label='Sublibrary TSS–TES profiles with independent y axes'>",
+              '<title>Sublibrary TSS–TES profiles · independent CPM axes</title>']
+    for i, row in enumerate(rows):
+        panel = _gene_panel([row])
+        panel = panel.replace('profile-frame', f'profile-frame-{i}')
+        panel = panel.replace('TSS–TES metaplot', html.escape(str(row['label']), quote=True))
+        panel = panel.replace('<svg ', f"<svg x='{820*(i%columns)}' y='{440*(i//columns)}' width='820' height='440' data-panel='{html.escape(row['id'],quote=True)}' ", 1)
+        result.append(panel)
+    result.append('</svg>')
+    return ''.join(result)
 
 
 def read_region_metrics(path):
@@ -260,7 +282,8 @@ def render_profiles_card(sample, scopes, scope_html, asset_dir, gene_dir, asset_
         parts.append("<div class='profile-genomic-grid'>"+figure(name,'Sublibrary genomic region proportions, backgrounds and enrichment','comparison-regions'))
     if meta:
         name=f'{sample}.sublibraries.TSS_TES.svg';(asset_dir/name).write_text(meta)
-        parts.append(figure(name,'Sublibrary TSS–TES profiles on a shared CPM axis','comparison-metaplot'))
+        parts.append(figure(name,'Sublibrary TSS–TES profiles with independent CPM axes','comparison-metaplot'))
+        parts.append("<p class='comparison-note'>Each metaplot has its own y-axis range; CPM values and SEM bands are unchanged.</p>")
         missing=[r['label'] for r in series if not r['gene']]
         if missing:parts.append("<p class='comparison-note'>No mapped profile: "+esc(', '.join(missing))+'.</p>')
     if regions:parts.append('</div>')
