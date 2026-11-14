@@ -164,7 +164,7 @@ def library_structure_html(metric, adapter_summary=None, unit_rows=None, *, adap
         return "<div class='library-diagram-scroll' tabindex='0' aria-label='Library sequences; scroll horizontally to view the full diagram'><div class='library-diagram'>" + ''.join(parts) + "</div></div>" + grip_note
 
     mode = 'Auto detection' if structure['mode'] == 'auto' else 'Customized'
-    sections = ["<details class='metric-group library-structure-report' open><summary>Library structure "
+    sections = ["<details class='metric-group library-structure-report'><summary>Library structure "
                 f"<span class='library-mode'>{mode}</span></summary><div class='library-structure-body'>",
                 diagram(rows),
                 "<p class='library-diagram-note'>i5/i7 show resolved index sequences. Short arrows mark read starts and directions, not read lengths. Full P5/P7 and adapter sequences are listed below.</p>"]

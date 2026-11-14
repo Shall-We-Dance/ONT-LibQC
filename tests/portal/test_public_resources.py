@@ -102,6 +102,25 @@ class ResourceBudgetTests(unittest.IsolatedAsyncioTestCase):
                 self.release.set()
                 self.assertEqual((await pending).status_code, 200)
 
+    async def test_authorized_images_do_not_consume_rate_or_concurrency_budgets(self):
+        image='/r/authorized-image/hold'
+        gate=RequestGate(self.app,settings(Path(self.tmp.name),resource_request_burst=1,
+                         max_resource_requests_per_client=1,max_resource_requests=1),
+                         report_image=lambda scope:scope['path']==image)
+        # Hold many images open simultaneously, beyond both resource limits.
+        async with self.client(gate) as client:
+            pending=[asyncio.create_task(client.get(image)) for _ in range(96)]
+            try:
+                await self.started_count(96)
+                self.assertEqual(gate.resources.active,0)
+                self.assertEqual((await client.get('/static/style.css')).status_code,200)
+                self.assertEqual((await client.get('/static/app.js')).status_code,429)
+                self.assertEqual((await client.get('/api/catalog')).status_code,200)
+            finally:
+                self.release.set()
+                responses=await asyncio.gather(*pending)
+            self.assertTrue(all(response.status_code==200 for response in responses))
+
 
 class PublicExamplesTests(unittest.TestCase):
     def setUp(self):

@@ -88,7 +88,7 @@ def render_source_evidence(data, metrics, prefix):
     status = source.get('status_counts', {})
     rows = [
         ('Selected-genome mapping', number(metrics['mapped_units']) + ' / ' + number(metrics['units']), percent(metrics['mapped_fraction']) + ' · ' + str(data.get('assembly') or 'Unspecified assembly')),
-        ('Independent RNA-panel support', number(assigned) + ' / ' + number(denominator), percent(assigned / denominator if denominator else None) + ' of all recovered units'),
+        ('RNA-panel assigned units', number(assigned) + ' / ' + number(denominator), percent(assigned / denominator if denominator else None) + ' of all recovered units'),
         ('Several candidate reference organisms', number(ambiguous) + ' / ' + number(assigned), percent(ambiguous / assigned if assigned else None) + ' of panel-assigned units'),
         ('No qualifying panel match', number(status.get('unassigned', 0)), 'A limited panel cannot establish that these units are non-ribosomal'),
         ('Not screened / unavailable', number(sum(count for state, count in status.items() if state not in {'assigned', 'unassigned'})), 'Retained in the all-recovered-unit denominator'),
@@ -96,11 +96,11 @@ def render_source_evidence(data, metrics, prefix):
     parts.append(table(('Evidence', 'Observed units', 'Denominator / meaning'), rows))
     classes = source.get('class_counts', {})
     if classes:
-        parts.append(table(('RNA class supported by the panel', 'Units', 'Fraction of recovered units'),
+        parts.append(table(('RNA class assigned by the panel', 'Units', 'Fraction of recovered units'),
                            [(name, number(count), percent(count / denominator if denominator else None)) for name, count in sorted(classes.items(), key=lambda item: -item[1])]))
     candidates = source.get('candidate_taxa_counts', {})
     if candidates:
-        parts.append(table(('Candidate reference organism(s)', 'Supported units', 'Fraction of recovered units'),
+        parts.append(table(('Candidate reference organism(s)', 'Unit count', 'Fraction of recovered units'),
                            [(name.replace(',', ' / ') or 'Unresolved candidate', number(count), percent(count / denominator if denominator else None)) for name, count in sorted(candidates.items(), key=lambda item: -item[1])]))
     comparison = source.get('reference_comparison') or {}
     if comparison:
@@ -115,7 +115,7 @@ def render_source_evidence(data, metrics, prefix):
                 count = comparison.get(key)
                 comparison_rows.append((label, number(count), percent(count / denominator if count is not None and denominator else None)))
             parts.append('<p class="muted">Selected assembly: ' + esc(comparison.get('assembly') or data.get('assembly') or 'Unspecified') + ' · expected reference organism: ' + esc(comparison.get('host_reference_taxon') or 'Unspecified') + '.</p>')
-            parts.append(table(('RNA-panel candidate relationship', 'Supported units', 'Fraction of recovered units'), comparison_rows))
+            parts.append(table(('RNA-panel candidate relationship', 'Unit count', 'Fraction of recovered units'), comparison_rows))
         parts.append('<p class="muted">' + esc(comparison.get('interpretation', 'Candidate relationships describe the limited reference panel; they do not establish a sample organism, contamination, or an incorrect reference.')) + '</p>')
     parts.append('<p class="muted">Use these two evidence sources when reviewing the selected reference. Low genome mapping also depends on sequence quality and alignment filters. Conserved rRNA may support several reference organisms; candidate labels do not confirm a species or diagnose contamination.</p>')
     parts.append('<p class="muted">Panel assignments and genome-annotation evidence overlap. Their percentages must not be added. Each row listing several candidate organisms represents one unresolved candidate set, not separate assignments to every organism.</p>')
@@ -290,7 +290,7 @@ def render_rna_section(summary_path, relative_prefix=None, scope_labels=None):
             ('Ribosomal-family evidence', number(ribosomal) + ' / ' + number(metrics['units']), percent(ribosomal / metrics['units'] if metrics['units'] else None) + '; annotation or RNA-panel evidence, each unit counted once'),
             ('Physical P5→P7 sense fraction', percent(metrics['physical_sense_fraction']), number(metrics['strand_informative_units']) + ' informative units; 95% CI ' + confidence),
             ('Spliced units', number(metrics['spliced_units']) + ' / ' + number(metrics['splice_denominator_units']), 'Primary unique MAPQ-pass units'),
-            ('Annotated junction support', number(metrics['annotated_junction_observations']) + ' / ' + number(metrics['junction_observations']), percent(metrics['annotated_junction_fraction'])),
+            ('Annotated junctions', number(metrics['annotated_junction_observations']) + ' / ' + number(metrics['junction_observations']), percent(metrics['annotated_junction_fraction'])),
             ('Exonic / intronic / intergenic matched bases', ' / '.join(percent(value / bases if bases else None) for value in (exon, regions['intron'], regions['intergenic'])), number(bases) + ' matched bases; untyped genic bases reported separately'),
             ('Terminal A-run ≥8 bp', number(tail_n) + ' / ' + number(tail_total), percent(tail_n / tail_total if tail_total else None) + '; observed homopolymer, not poly(A) selection or tail-length identification'),
             ('Median physical insert', number(metrics['insert_median_bp']) + ' bp', percent(metrics['short_insert_fraction_lt100']) + ' shorter than 100 bp'),
@@ -307,12 +307,12 @@ def render_rna_section(summary_path, relative_prefix=None, scope_labels=None):
         motif = metrics['motifs']
         if data['assay'] == 'clip':
             parts.append(render_motifs(motif))
-        parts.append('<details class="rna-auxiliary"><summary>Supporting counts, UMI and methods</summary>')
+        parts.append('<details class="rna-auxiliary"><summary>Counts, UMI and methods</summary>')
         if data['assay'] == 'clip':
             parts.append('<h4>Motif method</h4><p>' + esc(motif['interpretation']) + '. ' + esc(motif.get('background', '')) + '.</p>')
             if motif.get('engine') == 'HOMER' and motif.get('motifs'):
                 parts.append(table(('Motif', 'HOMER log10 P (discovery score)'), [(row['motif'], number(row['homer_log10_p'], 2)) for row in motif['motifs']]))
-        parts.append(table(('Evidence', 'Observed', 'Support / interpretation'), rows))
+        parts.append(table(('Evidence', 'Observed', 'Denominator / interpretation'), rows))
         parts.append(render_structure_evidence(preparation, scope, scope_labels, prefix))
         parts.append(render_source_evidence(data, metrics, prefix))
         if scope == 'total':

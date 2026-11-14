@@ -1,5 +1,5 @@
 """Public HTTP service. It cannot run tools or access the Docker socket/reference data."""
-import asyncio, html, hmac, json, mimetypes, os, re, shutil, time, uuid
+import asyncio, html, hmac, json, mimetypes, os, posixpath, re, shutil, time, uuid
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
 from fastapi import FastAPI, Request, HTTPException
@@ -10,9 +10,11 @@ from starlette.concurrency import run_in_threadpool
 from .settings import Settings
 from .report_files import REPORT_FILE_SUFFIXES
 from .report_entry import online_report_links
+from .report_download import archive_filename
 from .schema import Submission, BatchSubmission, SAFE_NAME, schema_payload
 from .security import RequestGate, RequestSecurity, client_address
 from .store import Store, ACTIVE, token_for, client_key, report_grant, valid_report_grant
+from .short_links import KEY, link_key, key_hash, job_link, batch_link
 
 JOB_ID = re.compile(r'^[0-9a-f]{32}$')
 APP_CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
@@ -38,11 +40,14 @@ def create_app(settings=None):
     async def bad_input(request,exc):
         return JSONResponse({'detail':'; '.join('.'.join(str(x) for x in e['loc'][1:])+': '+e['msg'] for e in exc.errors())},422)
 
-    def owned(request,job_id,report=False):
-        if not JOB_ID.fullmatch(job_id): raise HTTPException(404,'Task not found')
+    def task_authenticated(request,job_id):
         auth=request.headers.get('authorization','')
         token=auth[7:] if auth.startswith('Bearer ') else ''
-        authenticated=bool(re.fullmatch(r'[0-9a-f]{64}',token) and hmac.compare_digest(token,token_for(s.secret,job_id)))
+        return bool(re.fullmatch(r'[0-9a-f]{64}',token) and hmac.compare_digest(token,token_for(s.secret,job_id)))
+
+    def owned(request,job_id,report=False):
+        if not JOB_ID.fullmatch(job_id): raise HTTPException(404,'Task not found')
+        authenticated=task_authenticated(request,job_id)
         if report and not authenticated:
             authenticated=valid_report_grant(s.secret,job_id,request.query_params.get('view',''))
         if not authenticated:
@@ -55,8 +60,7 @@ def create_app(settings=None):
         opts=json.loads(row['options']) if row['options'] else {}
         # Only authenticated task responses contain these short-lived, read-only links.
         available=row['status']=='succeeded' and row['expires']>time.time()
-        access_expires=min(int(time.time())+3590,int(row['expires'])) if available else None
-        query='?view='+report_grant(s.secret,row['id'],access_expires) if available else ''
+        access_expires=int(row['expires']) if available else None
         with store.connect() as c:
             ahead=c.execute("SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running') AND created<?",(row['created'],)).fetchone()[0]
         return {k:row[k] for k in ('id','status','created','updated','filename','expected_bytes','received_bytes','error','progress','mail_status','expires','bed_ready')} | {
@@ -66,9 +70,11 @@ def create_app(settings=None):
             # natural expiry timestamps even after private task details are erased.
             'deletion_reason':('manual' if row['expires']==0 else 'retention') if row['status']=='expired' else None,
             'deletion_requested':row['status']!='expired' and row['expires']==0,
-            'report_url':f"/reports/{row['id']}/samples/{opts['sample']}.html{query}" if available and re.fullmatch(SAFE_NAME,opts.get('sample','')) else None,
-            'download_url':f"/reports/{row['id']}/report.zip{query}" if available else None,
+            'report_url':report_link(row['id'],f"samples/{opts['sample']}.html",access_expires) if available and re.fullmatch(SAFE_NAME,opts.get('sample','')) else None,
+            'download_url':report_link(row['id'],'report.zip',access_expires) if available else None,
             'report_access_expires':access_expires,
+            'private_link':job_link(s.secret,row),
+            'stage':row.get('stage') if row['status']=='running' else None,
         }
 
     @api.get('/healthz')
@@ -79,6 +85,71 @@ def create_app(settings=None):
         return s.public_catalog | schema_payload() | {'max_upload_bytes':s.max_upload_bytes,'max_expanded_bytes':s.max_expanded_bytes,'max_reads':s.max_reads,'max_files':s.max_files,'pipeline_url':s.pipeline_url,
             'retention_days':s.retention_days,'mail_enabled':s.mail_enabled,'submission_key_required':bool(s.submission_key),
             'worker_online':store.worker_alive(), 'examples':example_inputs}
+
+    @api.get('/api/statistics')
+    async def statistics():
+        return await run_in_threadpool(store.statistics)
+
+    @api.post('/api/links/resolve')
+    async def resolve_link(request: Request):
+        try: data = await request.json()
+        except ValueError: raise HTTPException(404, 'Private link not found')
+        key = data.get('key') if isinstance(data, dict) else None
+        if not isinstance(key, str) or not KEY.fullmatch(key):
+            raise HTTPException(404, 'Private link not found')
+        digest = key_hash(key)
+        with store.connect() as c:
+            rows = c.execute('SELECT * FROM jobs WHERE short_link_hash=?', (digest,)).fetchall()
+            if not rows:
+                batch = c.execute('SELECT batch_id FROM batch_links WHERE key_hash=?', (digest,)).fetchone()
+                if batch:
+                    rows = c.execute('SELECT * FROM jobs WHERE batch_id=? ORDER BY created LIMIT 64', (batch[0],)).fetchall()
+                else:
+                    saved = c.execute('SELECT job_ids FROM saved_links WHERE key_hash=?', (digest,)).fetchone()
+                    if saved:
+                        rows = [c.execute('SELECT * FROM jobs WHERE id=?', (jid,)).fetchone() for jid in json.loads(saved[0])]
+                        if not all(rows): rows = []
+        if not rows: raise HTTPException(404, 'Private link not found')
+        return {'jobs': [{'id': row['id'], 'token': token_for(s.secret,row['id']),
+                          'private_link': job_link(s.secret,dict(row))} for row in rows]}
+
+    @api.post('/api/links/compact')
+    async def compact_link(request: Request):
+        try: data = await request.json()
+        except ValueError: raise HTTPException(404, 'Private link not found')
+        entries = data.get('jobs') if isinstance(data, dict) else None
+        if not isinstance(entries, list) or not 1 <= len(entries) <= 64:
+            raise HTTPException(404, 'Private link not found')
+        ids = []
+        for entry in entries:
+            jid, token = (entry.get('id'), entry.get('token')) if isinstance(entry, dict) else (None, None)
+            if (not isinstance(jid, str) or not JOB_ID.fullmatch(jid)
+                    or not isinstance(token, str) or not re.fullmatch(r'[0-9a-f]{64}', token)
+                    or not hmac.compare_digest(token, token_for(s.secret, jid))):
+                raise HTTPException(404, 'Private link not found')
+            if jid not in ids: ids.append(jid)
+        with store.connect(immediate=True) as c:
+            rows = [c.execute('SELECT batch_id FROM jobs WHERE id=?', (jid,)).fetchone() for jid in ids]
+            if not all(rows):
+                raise HTTPException(404, 'Private link not found')
+            # Legacy batches have no registered short key. Register it without
+            # disclosing it here; selection links still cover only supplied IDs.
+            for batch in {row['batch_id'] for row in rows if row['batch_id']}:
+                c.execute('INSERT OR IGNORE INTO batch_links VALUES (?,?)',
+                          (batch, key_hash(link_key(s.secret, 'batch', batch))))
+            jobs = []
+            for jid in ids:
+                key = link_key(s.secret, 'job', jid)
+                c.execute('UPDATE jobs SET short_link_hash=? WHERE id=?', (key_hash(key), jid))
+                jobs.append({'id': jid, 'token': token_for(s.secret, jid), 'private_link': '/j/#' + key})
+            link = jobs[0]['private_link']
+            if len(ids) > 1:
+                # The capability covers exactly the authenticated selection, even
+                # for subsets or links combining tasks from different batches.
+                key = link_key(s.secret, 'selection', ','.join(ids))
+                c.execute('INSERT OR IGNORE INTO saved_links VALUES (?,?)', (key_hash(key), json.dumps(ids)))
+                link = '/b/#' + key
+        return {'jobs': jobs, 'private_link': link}
 
     def create_jobs(request, submissions):
         amount=len(submissions)
@@ -124,12 +195,15 @@ def create_app(settings=None):
                     raise HTTPException(503,'The queue is full. Please try again later.')
                 if shutil.disk_usage(s.state).free-reserved-requested<s.min_free_bytes:
                     raise HTTPException(503,'Storage is temporarily full. Please try again later.')
+                c.execute('INSERT INTO batch_links VALUES (?,?)',(batch_id,key_hash(link_key(s.secret,'batch',batch_id))))
                 for entry in submissions:
                     jid=uuid.uuid4().hex
                     folder=s.state/'uploads'/jid; folder.mkdir(mode=0o700); folders.append(folder)
-                    c.execute('INSERT INTO jobs (id,created,updated,status,email,filename,expected_bytes,options,client,expires,mail_status,batch_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
-                        (jid,now+len(result)/1_000_000,now,'created',entry.email,entry.filename,entry.size,entry.options.model_dump_json(),client,now+s.retention_days*86400,mail_status,batch_id))
-                    result.append({'id':jid,'token':token_for(s.secret,jid),'status':'created','mail_status':mail_status})
+                    c.execute('INSERT INTO jobs (id,created,updated,status,email,filename,expected_bytes,options,client,expires,mail_status,batch_id,short_link_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                        (jid,now+len(result)/1_000_000,now,'created',entry.email,entry.filename,entry.size,entry.options.model_dump_json(),client,now+s.retention_days*86400,mail_status,batch_id,key_hash(link_key(s.secret,'job',jid))))
+                    result.append({'id':jid,'token':token_for(s.secret,jid),'status':'created','mail_status':mail_status,
+                                   'private_link':'/j/#'+link_key(s.secret,'job',jid),
+                                   'batch_link':'/b/#'+link_key(s.secret,'batch',batch_id)})
                 for _,_,subject in quotas:
                     c.execute('INSERT INTO admission_events VALUES (?,?,?)',(subject,now,amount))
         except BaseException:
@@ -214,7 +288,20 @@ def create_app(settings=None):
         if row['expires']>time.time():store.update(job_id,expires=0)
         return {'status':'deletion_requested'}
 
-    def safe_report(root,file,grant=None):
+    def report_link(job_id,file,expires,connection=None):
+        # A separate, read-only capability for one file; never resolves to a task
+        # token or grants cancellation/deletion access. Only hashes are stored.
+        expires=int(expires)
+        key=link_key(s.secret,'report',f'{job_id}:{expires}:{file}')
+        values=(key_hash(key),job_id,file,expires)
+        if connection is None:
+            with store.connect() as c:
+                c.execute('DELETE FROM report_links WHERE expires<=?',(time.time(),))
+                c.execute('INSERT OR IGNORE INTO report_links VALUES (?,?,?,?)',values)
+        else:connection.execute('INSERT OR IGNORE INTO report_links VALUES (?,?,?,?)',values)
+        return '/r/'+key
+
+    def safe_report(root,file,links=None,download_name=None):
         if '\\' in file or any(part in {'.','..'} or part.startswith('.') for part in file.split('/')):
             raise HTTPException(404,'File not found')
         root=root.resolve(); path=root/file
@@ -225,16 +312,18 @@ def create_app(settings=None):
         if path.suffix not in allowed: raise HTTPException(404,'File not found')
         media={'.svg':'image/svg+xml','.html':'text/html','.css':'text/css','.js':'text/javascript'}.get(path.suffix)
         if path.suffix in {'.zip','.gz','.tsv','.csv','.bed','.json','.txt','.md','.pdf'}:
-            return FileResponse(path,media_type='application/pdf' if path.suffix=='.pdf' else 'application/octet-stream',filename=path.name)
+            return FileResponse(path,media_type='application/pdf' if path.suffix=='.pdf' else 'application/octet-stream',filename=download_name if file == "report.zip" and download_name else path.name)
         if path.suffix=='.html' and path.stat().st_size>s.max_html_bytes: raise HTTPException(413,'Report page exceeds the display limit; download the ZIP instead')
-        if path.suffix=='.html' and grant:
-            # Carry short-lived, report-only access on local links, including figures
-            # and downloads. Sandboxed reports do not need browser storage or cookies.
+        if path.suffix=='.html' and links:
+            # Give figures, tables and downloads short read-only links too. The
+            # original relative links remain untouched in the downloaded bundle.
             def local_link(match):
                 attr,quote,url=match.groups();parts=urlsplit(html.unescape(url))
                 if parts.scheme or parts.netloc or not parts.path:return match.group(0)
-                query=dict(parse_qsl(parts.query));query['view']=grant
-                target=urlunsplit(('', '', parts.path, urlencode(query), parts.fragment))
+                file_path=posixpath.normpath(posixpath.join(posixpath.dirname(file),parts.path))
+                if file_path.startswith(('/', '../')) or '\\' in file_path:raise HTTPException(404,'File not found')
+                query=dict(parse_qsl(parts.query));query.pop('view',None)
+                target=urlunsplit(('', '', links(file_path), urlencode(query), parts.fragment))
                 return attr+'='+quote+html.escape(target,quote=True)+quote
             body=re.sub(r"\b(href|src)\s*=\s*(['\"])(.*?)\2",local_link,online_report_links(path.read_text(),file),flags=re.I)
             return HTMLResponse(body)
@@ -247,17 +336,72 @@ def create_app(settings=None):
         except HTTPException as error:
             document=request.headers.get('sec-fetch-dest')=='document' or 'text/html' in request.headers.get('accept','')
             if error.status_code==404 and JOB_ID.fullmatch(job_id) and document:
-                return RedirectResponse(f'/jobs/{job_id}?report=1',status_code=303)
+                return RedirectResponse('/r/',status_code=303)
             raise
         if row['expires']<time.time(): raise HTTPException(410,'This report has expired')
         if row['status']!='succeeded': raise HTTPException(404,'The report is not available')
-        # Renew resource grants on authorized document navigation. After a grant
-        # expires, the original private task link can issue a new one without cookies.
-        grant=report_grant(s.secret,job_id,min(int(time.time())+3590,int(row['expires'])))
+        # Preserve the old grant's lifetime; conversion cannot turn a temporary
+        # read-only URL into a permanent task-management credential.
+        expires=int(row['expires'])
+        if not task_authenticated(request,job_id):
+            expires=min(expires,int(request.query_params['view'].split('.',1)[0]))
         if file=='index.html':
             sample=json.loads(row['options']).get('sample','')
-            if re.fullmatch(SAFE_NAME,sample):return RedirectResponse(f'/reports/{job_id}/samples/{sample}.html?view={grant}',status_code=307)
-        return safe_report(s.state/'reports'/job_id,file,grant)
+            if re.fullmatch(SAFE_NAME,sample):file=f'samples/{sample}.html'
+        safe_report(s.state/'reports'/job_id,file)  # Validate before registering an alias.
+        return RedirectResponse(report_link(job_id,file,expires),status_code=303)
+
+    @api.get('/r/')
+    async def unavailable_report():
+        return HTMLResponse("<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Report link unavailable · ONT-LibQC</title><link rel='stylesheet' href='/static/style.css'></head><body><main><h1>Report link unavailable</h1><p>This report link has expired or is incomplete. Reopen the private analysis link from your email or saved links.</p><p><a href='/'>New analysis</a></p></main></body></html>")
+
+    def short_report_record(key):
+        if not KEY.fullmatch(key):return None
+        with store.connect() as c:
+            link=c.execute('SELECT * FROM report_links WHERE key_hash=?',(key_hash(key),)).fetchone()
+        row=store.get(link['job_id']) if link else None
+        if not link or link['expires']<=time.time() or not row or row['expires']<=time.time() or row['status']!='succeeded':
+            return None
+        return row,link
+
+    @api.get('/r/{key}')
+    async def short_report(request:Request,key:str):
+        if not KEY.fullmatch(key):raise HTTPException(404,'Report not found')
+        record=short_report_record(key)
+        if record is None:
+            document=request.headers.get('sec-fetch-dest')=='document' or 'text/html' in request.headers.get('accept','')
+            if document:return RedirectResponse('/r/',status_code=303)
+            raise HTTPException(404,'Report not found or expired')
+        row,link=record
+        with store.connect() as c:
+            return safe_report(s.state/'reports'/row['id'],link['file'],
+                               lambda file:report_link(row['id'],file,min(link['expires'],int(row['expires'])),c),
+                               download_name=archive_filename(s.state/'reports'/row['id'],json.loads(row['options'] or '{}').get('sample'),row['created']) if link['file']=='report.zip' else None)
+
+    def authorized_report_image(scope):
+        """Exempt actual accessible images, never opaque links on trust alone."""
+        path=scope['path']
+        try:
+            if path.startswith('/r/'):
+                record=short_report_record(path[3:])
+                if record is None:return False
+                row,link=record;root=s.state/'reports'/row['id'];file=link['file']
+            elif path.startswith('/reports/'):
+                parts=path.split('/',3)
+                if len(parts)!=4:return False
+                _,_,job_id,file=parts
+                if Path(file).suffix not in {'.svg','.png'}:return False
+                row=owned(Request(scope),job_id,report=True)
+                if row['status']!='succeeded' or row['expires']<=time.time():return False
+                root=s.state/'reports'/job_id
+            elif path.startswith('/example/'):
+                root=s.examples;file=path[len('/example/'):]
+            else:return False
+            if Path(file).suffix not in {'.svg','.png'}:return False
+            safe_report(root,file)
+            return True
+        except HTTPException:
+            return False
 
     @api.get('/example/{file:path}')
     async def example(file:str): return safe_report(s.examples,file or 'index.html')
@@ -291,8 +435,10 @@ def create_app(settings=None):
 
     @api.get('/')
     @api.get('/jobs/{job_id}')
+    @api.get('/j/')
+    @api.get('/b/')
     async def index(): return FileResponse(s.static/'index.html')
-    api.add_middleware(RequestGate, settings=s)
+    api.add_middleware(RequestGate, settings=s, report_image=authorized_report_image)
     api.add_middleware(RequestSecurity, settings=s, app_csp=APP_CSP, report_csp=REPORT_CSP,
                        public_csp=PUBLIC_CSP, example_index_csp=EXAMPLE_INDEX_CSP)
     return api

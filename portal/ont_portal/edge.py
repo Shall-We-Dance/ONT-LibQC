@@ -4,6 +4,31 @@ from urllib.parse import urlsplit
 import ipaddress, re, ssl, subprocess
 
 
+def exempt_report_image_limits(config):
+    """Upgrade only image request maps; capacity and connection limits are unchanged.
+
+    The image destination is an edge routing hint. Backend authorization and
+    SVG/PNG file validation independently control exemption, so forged hints
+    cannot exempt report documents, ZIP downloads or invalid capabilities there.
+    """
+    maps = r'''    map "$request_method:$uri:$http_sec_fetch_dest" $resource_request {
+        default 0;
+        ~^(GET|HEAD):/(reports|example)/[^:]*\.(svg|png):[^:]*$ 2;
+        "~^(GET|HEAD):/r/[A-Za-z0-9_-]{22}:image$" 2;
+        ~^(GET|HEAD):/(reports|r|example|static|example-inputs)/ 1;
+    }
+    map $resource_request $api_client { default $binary_remote_addr; 1 ""; 2 ""; }
+    map $resource_request $api_server { default $server_name; 1 ""; 2 ""; }
+    map $resource_request $resource_client { default ""; 1 $binary_remote_addr; }
+    map $resource_request $resource_server { default ""; 1 $server_name; }
+'''
+    pattern = (r'^    map "\$request_method:\$uri[^"\n]*" \$resource_request \{.*?'
+               r'^    map \$resource_request \$resource_server \{[^}\n]*\}\n')
+    updated,count=re.subn(pattern,lambda _:maps,config,flags=re.M|re.S)
+    if count!=1:raise ValueError('Expected exactly one resource request map block')
+    return updated
+
+
 def separate_resource_limits(config, limits):
     """Give read-only reports/static downloads their own bounded edge budget.
 
@@ -26,6 +51,7 @@ def separate_resource_limits(config, limits):
 '''
     config = config.replace('    limit_conn_zone $binary_remote_addr zone=client_connections:1m;',
         maps + '    limit_conn_zone $api_client zone=client_connections:1m;')
+    config = exempt_report_image_limits(config)
     config = config.replace('limit_conn_zone $server_name zone=all_connections:', 'limit_conn_zone $api_server zone=all_connections:')
     config = config.replace('limit_req_zone $binary_remote_addr zone=client_requests:', 'limit_req_zone $api_client zone=client_requests:')
     config = config.replace('limit_req_zone $server_name zone=all_requests:', 'limit_req_zone $api_server zone=all_requests:')

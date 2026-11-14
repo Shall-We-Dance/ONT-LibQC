@@ -69,7 +69,7 @@ with tempfile.TemporaryDirectory() as directory:
                         page.goto(private)
                         report_link=page.get_by_role('link',name='Open '+sample+' report')
                         report_link.wait_for()
-                        assert '?view=' in report_link.get_attribute('href')
+                        assert '/r/' in report_link.get_attribute('href') and '?view=' not in report_link.get_attribute('href')
                         with page.expect_popup() as opened:report_link.click()
                         report=opened.value;report.wait_for_load_state('load')
                         wait_js(report,"Array.from(document.images).every(img => img.complete && img.naturalWidth > 0)")
@@ -87,7 +87,7 @@ with tempfile.TemporaryDirectory() as directory:
                         page.evaluate('tasks[0].job.report_access_expires = 0')
                         with page.expect_popup() as renewed:report_link.click()
                         report=renewed.value
-                        report.wait_for_url('**/reports/**');report.wait_for_load_state('load')
+                        report.wait_for_url('**/r/*');report.wait_for_load_state('load')
                         wait_js(report,"Array.from(document.images).every(img => img.complete && img.naturalWidth > 0)")
                         assert report.evaluate('window.opener === null')
                         report.close()

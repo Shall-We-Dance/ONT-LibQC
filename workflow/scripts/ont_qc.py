@@ -25,6 +25,8 @@ from library_structure import normalize_structure, umi_lengths, handles, extract
 from report_library_structure import family_label
 from report_brand import brand_bar, copy_mark, favicon
 from report_export import add_pdf_export
+from report_provenance import capture_analysis, analysis_record, analysis_label
+from report_regions import region_counts as annotation_region_counts, svg_region_bars, load_te_bed, prepare_background
 
 
 def rc(seq):
@@ -802,36 +804,11 @@ def interval_overlaps(intervals, start, end):
     return index > 0 and intervals[index - 1][1] > start
 
 
-def annotation_region_counts(records, promoters, genes, primary_names, mapq, promoter_window):
-    """Return observed promoter/gene-body/distal fractions for report visualization only."""
-    primary = set(primary_names)
-    eligible = [record for record in records.values() if record["mapq"] >= mapq and record["chrom"] in primary]
-    promoter_count = gene_count = 0
-    for record in eligible:
-        chrom = record["chrom"]
-        if interval_overlaps(promoters.get(chrom), record["start"], record["end"]):
-            promoter_count += 1
-        elif interval_overlaps(genes.get(chrom), record["start"], record["end"]):
-            gene_count += 1
-    total = len(eligible)
-    distal = total - promoter_count - gene_count
-    return {
-        "annotation_mapped_reads": total,
-        "promoter_proximal_reads": promoter_count,
-        "promoter_proximal_rate": promoter_count / total if total and (promoters or genes) else None,
-        "gene_body_reads": gene_count,
-        "gene_body_rate": gene_count / total if total and (promoters or genes) else None,
-        "intergenic_reads": distal,
-        "intergenic_rate": distal / total if total and (promoters or genes) else None,
-        "promoter_window_bp": promoter_window,
-        "annotation_region_definition": "mutually exclusive: promoter proximal takes precedence over gene body",
-    }
-
 
 def write_karyoploter(records, chrom_sizes, chromosome_names, mapq, bins_per_longest,
-                      rscript, script, genes_bed, output, title, assembly, gene_window_bp=250000):
-    """Render MAPQ-pass primary alignments with Bioconductor karyoploteR."""
-    names = [name for name in chromosome_names if name in chrom_sizes]
+                      rscript, script, genes_bed, output, title, assembly, gene_window_bp=250000, mitochondrial=()):
+    """Render nuclear and mitochondrial chromosomes on the same karyoploteR scales."""
+    names = list(dict.fromkeys(name for name in [*chromosome_names, *sorted(mitochondrial)] if name in chrom_sizes))
     if not names:
         raise ValueError("Karyotype plotting requires at least one configured chromosome")
     longest = max(chrom_sizes[name] for name in names)
@@ -839,7 +816,7 @@ def write_karyoploter(records, chrom_sizes, chromosome_names, mapq, bins_per_lon
     eligible = []
     name_set = set(names)
     for record in records.values():
-        if record["chrom"] not in name_set or record["mapq"] < mapq:
+        if record["chrom"] not in name_set or not mapq <= record["mapq"] < 255:
             continue
         midpoint = min(chrom_sizes[record["chrom"]],
                        max(1, (record["start"] + record["end"]) // 2 + 1))
@@ -862,6 +839,16 @@ def write_karyoploter(records, chrom_sizes, chromosome_names, mapq, bins_per_lon
             raise RuntimeError(f"karyoploteR failed for {title}: {detail}")
     if not Path(output).exists():
         raise RuntimeError(f"karyoploteR did not create {output}")
+    counts = {name: [0] * math.ceil(chrom_sizes[name] / window_size) for name in names}
+    for chromosome, position in eligible:
+        counts[chromosome][(position - 1) // window_size] += 1
+    metadata = {"coordinate_scale": "shared", "density_scale": "shared", "window_size_bp": window_size,
+                "chromosome_lengths": {name: chrom_sizes[name] for name in names},
+                "midpoint_counts": counts, "mapq": mapq}
+    svg = Path(output).read_text()
+    svg = svg.replace('<svg', '<svg data-chromosome-scales="shared"', 1)
+    svg = svg.replace('</svg>', '<metadata id="chromosome-coverage">' + html.escape(json.dumps(metadata)) + '</metadata></svg>')
+    Path(output).write_text(svg)
     return {"mapped_reads": len(eligible), "window_size_bp": window_size}
 
 def bin_stats(records, sizes, bin_size):
@@ -1360,6 +1347,7 @@ def cmd_metrics(args):
         metrics["ligation_method"]=ligation["method"]
         metrics["ligation_evidence_status"]=ligation["status"]
     metrics["metric_schema_version"] = 3
+    metrics["analysis_provenance"] = capture_analysis()
     pairing = adapter.get("index_pairing", {})
     metrics["sub_libraries"] = []
     if pairing.get("mode") == "multiplexed_library":
@@ -1626,10 +1614,10 @@ METRIC_META = {
     "aligner": ("Aligner", "Reference aligner selected for this assay."),
     "mycoplasma_status": ("Mycoplasma signal screen", "Opportunistic competitive-alignment signal screen; NOT_DETECTED_AT_THIS_DEPTH does not exclude contamination."),
     "mycoplasma_screened_reads": ("Mycoplasma-screened inserts", "Adapter-trimmed full inserts competitively aligned against host, eight common cell-culture Mollicutes and bacterial decoys."),
-    "mycoplasma_qualifying_reads": ("Mycoplasma-supporting reads", "Unique inserts passing target-contig, MAPQ, aligned-length, coverage and identity filters."),
-    "mycoplasma_qualifying_loci": ("Mycoplasma-supporting loci", "Distinct target genome 100-bp windows supported by qualifying inserts."),
+    "mycoplasma_qualifying_reads": ("Mycoplasma insert count", "Unique inserts passing target-contig, MAPQ, aligned-length, coverage and identity filters."),
+    "mycoplasma_qualifying_loci": ("Mycoplasma locus count", "Distinct target genome 100-bp windows supported by qualifying inserts."),
     "mycoplasma_qualifying_fraction": ("Mycoplasma signal fraction", "Qualifying target reads divided by all screened adapter-trimmed inserts; a zero shallow result is not proof of absence."),
-    "spike_in_status": ("Spike-in candidate screen", "Automatic competitive reference screen. Foreign-sequence evidence does not prove intentional spike-in; none was added to the current libraries."),
+    "spike_in_status": ("Spike-in candidate screen", "Automatic competitive reference screen. Foreign-sequence evidence does not prove intentional spike-in; experimental metadata are required."),
     "spike_in_label": ("Candidate species", "Species with qualifying foreign-sequence assignments; same-species spike-in cannot be separated from host without specific barcodes."),
     "ligation_screened_units": ("Ligation-screened units", "All adapter-bounded non-dimer units, including unresolved cases. This is not the number of independent raw ONT molecules."),
     "ligation_resolved_units": ("Units with resolved block structure", "Query coverage >=80%, minimum aligned block 40 bp, MAPQ >=20 and <255, identity >=85%, and no unexplained query gap >30 bp."),
@@ -1720,6 +1708,8 @@ def is_percent_metric(key, ranges):
 
 
 def display_value(key, value, ranges):
+    if value == "inconclusive_low_yield":
+        return "low"
     if key == "adapter_family" and value is not None:
         return family_label(value)
     if key == "mycoplasma_status" and value == "NOT_DETECTED_AT_THIS_DEPTH":
@@ -1926,41 +1916,6 @@ REPORT_TOOLTIP_SCRIPT = """<script>
 </script>"""
 
 
-def svg_region_bars(metric, title):
-    """Show mutually exclusive genomic-region fractions on a common 0–100% scale."""
-    rows = [("Promoter", "promoter_proximal"), ("Gene body", "gene_body"), ("Distal", "intergenic")]
-    width, height, bar_x, bar_width = 640, 240, 144, 320
-    total = metric.get("annotation_mapped_reads", 0)
-    window = metric.get("promoter_window_bp")
-    window_label = (f"{window / 1000:g} kb" if window >= 1000 else f"{window:g} bp") if window is not None else None
-    descriptions = {"promoter_proximal": "Overlaps the promoter" + (f" (TSS ±{window_label})" if window_label else "") + "; assigned first.",
-                    "gene_body": "Overlaps a gene body and no promoter.",
-                    "intergenic": "Outside both promoters and gene bodies."}
-    available = total > 0 and all(metric.get(key + "_rate") is not None for _, key in rows)
-    svg = [f"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 {width} {height}' role='img' aria-label='{html.escape(title, quote=True)}' style='font-family:Arial,Helvetica,sans-serif'>",
-           f"<title>{html.escape(title)}</title>",
-           "<metadata id='genomic-region-metrics'>" + html.escape(json.dumps(metric, sort_keys=True)) + "</metadata>",
-           "<rect width='100%' height='100%' fill='white'/>",
-           f"<text x='22' y='28' font-size='17' fill='#203040'>{html.escape(title)}</text>"]
-    for index, (label, key) in enumerate(rows):
-        y = 64 + index * 46
-        rate = metric.get(key + "_rate") if available else None
-        count = metric.get(key + "_reads") if available else None
-        value = f"{rate:.1%}" if rate is not None else "—"
-        count_text = f" ({count:,})" if count is not None else ""
-        svg.append(f"<g><title>{html.escape(label + ': ' + value + count_text + '. ' + descriptions[key])}</title>"
-                   f"<text x='22' y='{y + 14}' font-size='14' fill='#34495e'>{label}</text>"
-                   f"<rect x='{bar_x}' y='{y}' width='{bar_width}' height='20' rx='3' fill='#eef2f6'/>")
-        if rate is not None:
-            svg.append(f"<rect x='{bar_x}' y='{y}' width='{bar_width * rate:.3f}' height='20' rx='3' fill='#3276b5'/>")
-        svg.append(f"<text x='618' y='{y + 14}' text-anchor='end' font-size='14' fill='#34495e'>{value}"
-                   f"<tspan font-size='12' fill='#65758c'>{count_text}</tspan></text></g>")
-    footer = f"n={total:,} MAPQ-pass alignments" if available else "No usable annotation data"
-    if available and window_label:
-        footer += f" · Promoter: TSS ±{window_label}"
-    svg.append(f"<text x='22' y='216' font-size='11' fill='#65758c'>{html.escape(footer)}</text></svg>")
-    return ''.join(svg)
-
 
 def svg_contact_funnel(metric, title):
     stages = [
@@ -2035,11 +1990,14 @@ def call_class(call):
     return "red"
 
 
-def traffic_html(scope, ranges=None):
-    ranges=ranges or DEFAULT_REFERENCE_RANGES
+def traffic_html(scope, ranges=None, assay=None):
+    ranges=DEFAULT_REFERENCE_RANGES if ranges is None else ranges
+    assay=assay or scope.get("assay")
     label=scope.get("scope_name",scope.get("scope_id","Total"))
     seq_call=scope.get("sequencing_yield_call")
     shape_keys=["adapter_dimer_rate","primary_mapping_rate"]
+    if assay == "chromatin":
+        shape_keys.extend(["usable_fragment_rate", "mitochondrial_fraction"])
     if scope.get("scope_id", "total") == "total": shape_keys.append("complete_read_rate")
     evaluated=[metric_light_class(k,scope.get(k),ranges) for k in shape_keys if scope.get(k) is not None and ranges.get(k)]
     if str(seq_call or "").startswith(("inconclusive", "insufficient")) or scope.get("raw_reads",0) < scope.get("metric_settings",metric_profile())["minimum_raw_reads"] or scope.get("library_units",0) < scope.get("metric_settings",metric_profile())["minimum_complete_units"]:
@@ -2048,13 +2006,27 @@ def traffic_html(scope, ranges=None):
     elif "amber" in evaluated:shape_call="warning"
     elif evaluated:shape_call="pass"
     else:shape_call=scope.get("adapter_dimer_call") or "insufficient_evidence"
-    items=[("Sequencing",seq_call,"Yield screen; inspect read quality and molecule recovery below."),("Library quality",shape_call,"Combined adapter-dimer burden, primary mapping and total-library adapter recovery checks; not a biological enrichment or ligation success certificate.")]
-    return f"<section class='scope-card'><h3>{html.escape(label)}</h3>"+''.join(f"<div class='traffic' title='{html.escape(tip,quote=True)}'><span class='light {call_class(v)}'></span><b>{html.escape(k)}</b><em>{html.escape(str(v or 'NA').replace('_',' ').capitalize())}</em></div>" for k,v,tip in items)+"</section>"
+    quality_tip="Combined adapter-dimer burden, primary mapping and total-library adapter recovery checks."
+    if assay == "chromatin":
+        quality_tip+=" Includes usable fragment rate and mitochondrial fraction."
+    flagged=[f"{METRIC_META[k][0]}: {display_value(k, scope[k], ranges)} ({'outside range' if metric_light_class(k,scope[k],ranges)=='red' else 'borderline'})."
+             for k in shape_keys if scope.get(k) is not None and ranges.get(k) and metric_light_class(k,scope[k],ranges) in {"red", "amber"}]
+    quality_tip+=" Not a biological enrichment or ligation success certificate."
+    if flagged: quality_tip+=" "+" ".join(flagged)
+    items=[("Sequencing",seq_call,"Yield screen; inspect read quality and molecule recovery below."),("Library quality",shape_call,quality_tip)]
+    return f"<section class='scope-card'><h3>{html.escape(label)}</h3>"+''.join(f"<div class='traffic' title='{html.escape(tip,quote=True)}'><span class='light {call_class(v)}'></span><b>{html.escape(k)}</b><em>{html.escape(display_value(k, v, ranges).replace('_',' ').capitalize())}</em></div>" for k,v,tip in items)+"</section>"
 
 
 def metric_reading_html(rendered, light, state):
-    return (f"<div class='metric-cell'><div class='metric-reading metric-tip metric-status' tabindex='0' data-tip='{html.escape(state, quote=True)}'>"
-            f"<span class='light {light}' aria-hidden='true'></span><span>{html.escape(rendered)}</span></div></div>")
+    unavailable = rendered in {"Not attributable", "Sample-level"}
+    classes = " metric-unavailable" if unavailable else ""
+    marker = "" if light == "gray" else f"<span class='light {light}' aria-hidden='true'></span>"
+    value = "—" if unavailable else rendered.replace("NOT_CONFIGURED", "Not configured")
+    if "_" in value and value.isupper():
+        value = value.replace("_", " ").capitalize()
+    return (f"<div class='metric-cell'><div class='metric-reading metric-tip metric-status{classes}' tabindex='0' data-tip='{html.escape(state, quote=True)}'"
+            f" aria-label='{html.escape(rendered + ': ' + state, quote=True)}'>"
+            f"{marker}<span>{html.escape(value)}</span></div></div>")
 
 
 def scoped_value_html(key, value, ranges, descriptive=False):
@@ -2069,11 +2041,11 @@ def scoped_value_html(key, value, ranges, descriptive=False):
         if status.startswith("INCONCLUSIVE"):
             state = "Inconclusive: low screen depth"
         elif status.startswith("NOT_DETECTED"):
-            state = "No supporting signal at this depth"
+            state = "No signal detected at this depth"
         else:
-            state = "Mycoplasma-supporting signal detected" if light == "red" else "Not configured"
+            state = "Mycoplasma signal detected" if light == "red" else "Not configured"
     elif key in {"mycoplasma_qualifying_reads", "mycoplasma_qualifying_loci", "mycoplasma_qualifying_fraction"}:
-        state = "Mycoplasma-supporting signal detected" if light == "red" else "No supporting signal at this depth"
+        state = "Mycoplasma signal detected" if light == "red" else "No signal detected at this depth"
     elif key == "spike_in_status":
         state = "Candidate foreign-sequence evidence; intentional spike-in requires experimental metadata" if str(value) in {"CANDIDATE_SIGNAL", "TRACE"} else "No candidate signal at this depth" if value == "NOT_DETECTED" else "Reference screening result; experimental spike-in intent cannot be inferred"
     else:
@@ -2159,33 +2131,42 @@ def pair_label(pair):
     return f"{pair.get('name',pair.get('scope_id','library'))}: i5 {pair.get('i5') or '∅'} / i7 {pair.get('i7') or '∅'} ({(pair.get('support_fraction') or 0):.1%})"
 
 
-def identity_panel_html(metric, pairing, pairs):
+def identity_panel_html(metric, pairing, pairs, unit_rows=None):
+    from report_library_structure import family_label
+    families = collections.defaultdict(collections.Counter)
+    for row in unit_rows or []:
+        if row.get('assignment_status') == 'assigned' and row.get('scope_id') and row.get('family'):
+            families[row['scope_id']][row['family']] += 1
     mode=str(pairing.get("mode","unresolved"))
     mode_label=mode.replace("_"," ").title()
     top=pairing.get("top_pair_fraction")
     top_text="NA" if top is None else f"{top:.1%}"
     pair_rows=[]
     for pair in pairs:
+        matched = families.get(pair.get('scope_id'), {})
+        adapter = ' / '.join(family_label(name) for name in sorted(matched, key=lambda name: (-matched[name], name))) or 'Unresolved'
         pair_rows.append("<tr>" + "".join([
             f"<td><strong>{html.escape(str(pair.get('name',pair.get('scope_id','library'))))}</strong></td>",
+            f"<td>{html.escape(adapter)}</td>",
             f"<td><code>{html.escape(str(pair.get('i5') or '∅'))}</code></td>",
             f"<td><code>{html.escape(str(pair.get('i7') or '∅'))}</code></td>",
             f"<td>{(pair.get('support_fraction') or 0):.1%}</td>"]) + "</tr>")
     if not pair_rows:
-        pair_rows=["<tr><td colspan='4'>No confident i5–i7 pair resolved</td></tr>"]
+        pair_rows=["<tr><td colspan='5'>No confident i5–i7 pair resolved</td></tr>"]
     return ("<div class='identity-panel'><section class='identity-card'><h3>Library identity</h3><div class='identity-grid'>"
             f"<div class='identity-item'><small>Reference assembly</small><strong>{html.escape(str(metric.get('reference_assembly','unspecified')))}</strong></div>"
             f"<div class='identity-item'><small>Assay</small><strong>{html.escape({'chromatin':'Chromatin','microc':'Micro-C'}.get(metric.get('assay'),str(metric.get('assay','unknown'))))}</strong></div>"
             f"<div class='identity-item'><small>Library mode</small><span class='mode-badge'>{html.escape(mode_label)}</span></div>"
-            f"<div class='identity-item'><small>Top-pair support</small><strong>{html.escape(top_text)}</strong></div></div>"
-            f"<div class='cutoff-note'>A dominant i5–i7 pair is single_library at ≥{pairing.get('single_library_fraction', .9):.0%} informative support, or when it is the only supported pair. Pair support is conditional on index-informative units; inspect overall assignment and ambiguous/unassigned fractions below.</div></section>"
-            "<section class='identity-card'><h3>Physical index pairs</h3><div class='pair-table-scroll' tabindex='0' aria-label='Physical index pairs'><table class='pair-table'><tr><th>Library</th><th>i5 (P5 side)</th><th>i7 (P7 side)</th><th>Support</th></tr>"
+            f"<div class='identity-item'><small>Top-pair percentage</small><strong>{html.escape(top_text)}</strong></div></div>"
+            "<div class='cutoff-note'>Percentages are among index-informative units."
+            f"<details><summary>Library classification</summary><p>A dominant i5–i7 pair is single_library at ≥{pairing.get('single_library_fraction', .9):.0%}, or when it is the only resolved pair. See overall assignment and ambiguous/unassigned fractions below.</p></details></div></section>"
+            "<section class='identity-card'><h3>Physical index pairs</h3><div class='pair-table-scroll' tabindex='0' aria-label='Physical index pairs'><table class='pair-table'><tr><th>Library</th><th>Adapter</th><th>i5</th><th>i7</th><th title='Among index-informative units'>Percentage</th></tr>"
             + "".join(pair_rows) + "</table></div></section></div>")
 
 
 
 def profile_scope_html(label, raw_name, insert_name, region_name, karyotype_name, gene_name=None,
-                       *, full_library_assets):
+                       *, full_library_assets, mitochondrial_html=""):
     def card(name, alt, extra_class=''):
         name = html.escape(name, quote=True)
         alt = html.escape(alt, quote=True)
@@ -2205,7 +2186,7 @@ def profile_scope_html(label, raw_name, insert_name, region_name, karyotype_name
     primary = card(assets['weighted'], 'ONT full-library profile (length-weighted)', 'length-weighted-profile')
     counts = card(assets['count'], 'ONT full-library profile (count-based)', 'full-library-count-card')
     counts += card(raw_name, 'Raw molecule size (count-based)') + card(insert_name, 'Insert size (count-based)')
-    analysis = card(region_name, 'Genomic regions') if region_name else ''
+    analysis = card(region_name, 'Genomic regions', 'region-composition') if region_name else ''
     if gene_name:
         analysis += card(gene_name, 'CPM-normalized TSS to TES profile')
     downloads = ' · '.join(f"<a href='assets/{html.escape(assets[key], quote=True)}'>{title}</a>" for key, title in
@@ -2220,7 +2201,7 @@ def profile_scope_html(label, raw_name, insert_name, region_name, karyotype_name
             (f"<div class='plots analysis-plots'>{analysis}</div>" if analysis else '') +
             "<details class='chromosome-detail'><summary>Chromosome coverage · auxiliary diagnostic</summary>"
             "<p>Inspect broad coverage imbalance and isolated concentration. Gene density and shallow coverage alone cannot establish target-specific enrichment or copy-number changes.</p>"
-            f"<img src='assets/{html.escape(karyotype_name, quote=True)}' alt='Mapped reads by chromosome karyotype'></details></section>")
+            f"<img src='assets/{html.escape(karyotype_name, quote=True)}' alt='Mapped reads by chromosome karyotype'>{mitochondrial_html}</details></section>")
 
 
 def rna_screening_html(scopes):
@@ -2230,6 +2211,23 @@ def rna_screening_html(scopes):
     return ("<section class='report-section' id='contamination'><h2>Contamination screening</h2>"
             + scoped_table_html(scopes, keys, {})
             + "<p class='muted'>Not configured = not run. No signal detected applies only to the screened inserts. Foreign-sequence hits may include spike-in.</p></section>")
+
+
+def ecoli_calibration_note_html(screen):
+    """Explain reagent carry-over only when E. coli is part of the screen."""
+    candidates=screen.get("candidates") or {}
+    if not any(key in {"e_coli", "ecoli", "escherichia_coli"}
+               or str(candidate.get("label", "")).lower().startswith(("escherichia coli", "e. coli"))
+               for key,candidate in candidates.items()):
+        return ""
+    return ("<aside class='note ecoli-calibration-note'><p><strong>E. coli and enzyme carry-over.</strong> "
+            "E. coli DNA may carry over from pA/G-MNase (CUT&amp;RUN) or pA/G-Tn5 (CUT&amp;Tag) preparations "
+            "and can serve as a spike-in-like calibration reference. Use comparable cell inputs and the same enzyme batch and amount; "
+            "confirm sufficient E. coli counts before normalization. Detection alone does not establish the source.</p>"
+            "<p>References: <a href='https://doi.org/10.7554/eLife.46314' target='_blank' rel='noopener noreferrer'>"
+            "Meers et al., eLife (2019)</a> · "
+            "<a href='https://doi.org/10.1038/s41467-019-09982-5' target='_blank' rel='noopener noreferrer'>"
+            "Kaya-Okur et al., Nature Communications (2019)</a>.</p></aside>")
 
 
 def extension_report_html(out, sample, scopes, metric):
@@ -2251,10 +2249,10 @@ def extension_report_html(out, sample, scopes, metric):
                 fraction=display_value("spike_in_fraction",candidate.get("fraction"),{})
                 tooltip="Same species as the host; a spike-in cannot be distinguished" if status=="HOST_NOT_DISTINGUISHABLE" else "No spike-in was declared. This is sequence evidence only; a positive signal may have another source."
                 rows.append(f"<tr><td>{label}</td><td>{html.escape(candidate['role'].replace('_',' '))}</td><td>{fmt(candidate.get('reads'))}</td><td>{fraction}</td><td>{fmt(candidate.get('loci'))}</td><td>{metric_reading_html(status,light,tooltip)}</td></tr>")
-            declaration="Spike-in was declared in the sample configuration." if screen.get("declared_spike_in") else "No spike-in was added to these libraries."
+            declaration="Spike-in was declared in the sample configuration." if screen.get("declared_spike_in") else "No spike-in was declared in the sample configuration."
             tip=declaration+" Candidate signals are exploratory foreign-sequence evidence; they do not establish intentional spike-in. Host, candidate species and microbial decoys compete in one reference. Same-species spike-in and unlisted synthetic standards are not identifiable by this panel."
             scoped_screen=scoped_table_html(scopes,["spike_in_status","spike_in_screened_reads","spike_in_reads","spike_in_fraction"],{}) if len(scopes)>1 else ""
-            sections.append("<section class='report-section' id='spike-screen'><h2>Spike-in candidate screen <span class='metric-tip info-icon' tabindex='0' data-tip='"+html.escape(tip,quote=True)+"'>?</span></h2><p class='muted'>"+fmt(screen.get("screened_reads"))+" screened inserts · "+("Spike-in declared" if screen.get("declared_spike_in") else "No spike-in declared")+"</p><div class='table-scroll'><table><tr><th>Reference candidate</th><th>Role</th><th>Inserts</th><th>Fraction</th><th>Supported loci</th><th>Result</th></tr>"+''.join(rows)+"</table></div>"+scoped_screen+f"<p><a href='../qc/spike_in/{sample}.assignments.tsv.gz'>Per-unit assignments</a> · <a href='../qc/spike_in/{sample}.json'>Screen details</a></p></section>")
+            sections.append("<section class='report-section' id='spike-screen'><h2>Spike-in candidate screen <span class='metric-tip info-icon' tabindex='0' data-tip='"+html.escape(tip,quote=True)+"'>?</span></h2><p class='muted'>"+fmt(screen.get("screened_reads"))+" screened inserts · "+("Spike-in declared" if screen.get("declared_spike_in") else "No spike-in declared")+"</p><div class='table-scroll'><table><tr><th>Reference candidate</th><th>Role</th><th>Insert count</th><th>Fraction</th><th title='Distinct 100-bp reference windows with qualifying alignments'>Locus count</th><th>Result</th></tr>"+''.join(rows)+"</table></div>"+ecoli_calibration_note_html(screen)+scoped_screen+f"<p><a href='../qc/spike_in/{sample}.assignments.tsv.gz'>Per-unit assignments</a> · <a href='../qc/spike_in/{sample}.json'>Screen details</a></p></section>")
 
     if metric["assay"]=="microc" and metric.get("ligation_screened_units") is not None:
         plots=[]
@@ -2293,6 +2291,8 @@ def cmd_report(args):
     with open(args.config) as handle: cfg=yaml.safe_load(handle)
     samples=list(cfg["samples"]); ranges=merged_reference_ranges(cfg); out=Path(args.out)
     (out/"reports"/"assets").mkdir(parents=True,exist_ok=True); (out/"plots"/"summary").mkdir(parents=True,exist_ok=True); (out/"summary").mkdir(parents=True,exist_ok=True)
+    prior_provenance_path=out/"summary"/"provenance.json"
+    prior_provenance=json.loads(prior_provenance_path.read_text()) if prior_provenance_path.exists() else {}
     copy_mark(out/"reports"/"assets")
     metrics=[]
     report_tools=cfg.get("tools", {})
@@ -2304,6 +2304,7 @@ def cmd_report(args):
     report_mapq=int(report_params.get("mapq", 20))
     karyotype_bins=int(report_params.get("karyotype_bins_per_longest_chromosome", 250))
     annotation_cache={}
+    region_background_cache={}
     for sample in samples:
         with open(out/"qc"/"metrics"/f"{sample}.json") as handle: metric=json.load(handle)
         ranges = assay_reference_ranges(cfg, metric["assay"])
@@ -2330,7 +2331,7 @@ def cmd_report(args):
         primary_arg=primary_arg if isinstance(primary_arg, str) else ",".join(primary_arg)
         mito_arg=report_reference.get("mitochondrial_chromosomes", "auto")
         mito_arg=mito_arg if isinstance(mito_arg, str) else ",".join(mito_arg)
-        report_primary, _=resolve_chromosome_sets(report_chrom_sizes, primary_arg, mito_arg)
+        report_primary, report_mito=resolve_chromosome_sets(report_chrom_sizes, primary_arg, mito_arg)
         report_annotation=report_reference.get("annotation", "")
         annotation_key=(report_annotation, tuple(report_chrom_sizes.items()), tuple(report_primary), promoter_window)
         report_promoters, report_genes = {}, {}
@@ -2338,6 +2339,15 @@ def cmd_report(args):
             if annotation_key not in annotation_cache:
                 annotation_cache[annotation_key]=load_gene_annotation(report_annotation, report_chrom_sizes, promoter_window)
             report_promoters, report_genes=annotation_cache[annotation_key]
+        region_extra={}
+        if metric["assay"] == "chromatin":
+            te_path=report_reference.get('te_bed')
+            background_key=(annotation_key,te_path)
+            if background_key not in region_background_cache:
+                te=load_te_bed(te_path,report_chrom_sizes)
+                region_background_cache[background_key]=(te,prepare_background(report_promoters,report_genes,report_primary,report_chrom_sizes,te))
+            te,background=region_background_cache[background_key]
+            region_extra=dict(sizes=report_chrom_sizes,te=te,background=background,te_source=report_reference.get('te_source'))
         report_assignments={}
         scope_allowed={}
         if metric.get("sub_libraries"):
@@ -2349,12 +2359,12 @@ def cmd_report(args):
         for sub_scope in metric.get("sub_libraries", []):
             allowed=scope_allowed.get(sub_scope["scope_id"], set())
             scope_records[sub_scope["scope_id"]]={qname: rec for qname, rec in report_records.items() if base_unit_id(qname) in allowed}
-        region_metrics=annotation_region_counts(report_records, report_promoters, report_genes, report_primary, report_mapq, promoter_window) if metric["assay"] == "chromatin" else {}
+        region_metrics=annotation_region_counts(report_records, report_promoters, report_genes, report_primary, report_mapq, promoter_window, **region_extra) if metric["assay"] == "chromatin" else {}
         sub_region_metrics={}
         for sub_scope in metric.get("sub_libraries", []):
             scoped_records=scope_records[sub_scope["scope_id"]]
             if metric["assay"] == "chromatin":
-                sub_region_metrics[sub_scope["scope_id"]]=annotation_region_counts(scoped_records, report_promoters, report_genes, report_primary, report_mapq, promoter_window)
+                sub_region_metrics[sub_scope["scope_id"]]=annotation_region_counts(scoped_records, report_promoters, report_genes, report_primary, report_mapq, promoter_window, **region_extra)
         gene_profile_assets={}
         if metric["assay"] == "chromatin":
             gene_profile_source=out/"plots"/"gene_profile"/f"{sample}.TSS_TES.svg"
@@ -2406,12 +2416,15 @@ def cmd_report(args):
                     karyotype_bins, report_rscript, karyotype_script, report_gene_bed,
                     karyotype_asset, f"{label}: gene and mapped-read density",
                     metric.get("reference_assembly", "custom genome"),
-                    gene_window_bp=int(report_params.get("karyotype_gene_window_bp", 250000)))
+                    gene_window_bp=int(report_params.get("karyotype_gene_window_bp", 250000)),
+                    mitochondrial=report_mito)
             profile_sections.append(profile_scope_html(label, raw_asset.name, insert_asset.name,
                                                        region_asset.name if metric["assay"] == "chromatin" else None, karyotype_asset.name,
                                                        gene_profile_assets[scope_id].name if scope_id in gene_profile_assets else None,
-                                                       full_library_assets=full_library_assets))
-        profiles_html=''.join(profile_sections)
+                                                       full_library_assets=full_library_assets,
+                                                       mitochondrial_html=""))
+        from report_profiles import render_profiles_card
+        profiles_html=render_profiles_card(sample, scopes, profile_sections, out/'reports/assets', out/'qc/gene_profile')
         pairtools_html = ""
         if metric["assay"] == "microc":
             from microc_pairtools import report_html as pairtools_report
@@ -2433,7 +2446,7 @@ def cmd_report(args):
                 funnel_assets.append(distance_asset.name)
         pairing=metric.get("index_pairing",{}); pairs=pairing.get("pairs",[])
         if pairing.get("mode")=="single_library" and pairs: pairs=[max(pairs,key=lambda x:x.get("informative_support",0))]
-        top=''.join(traffic_html(x, ranges) for x in scopes)
+        top=''.join(traffic_html(x, ranges, metric["assay"]) for x in scopes)
         from report_sublibrary import render_sublibrary_composition
         mixture_html = render_sublibrary_composition(metric)
         ont_keys=["raw_reads","sequencing_yield_call","mean_read_q","raw_median_bp","raw_n50_bp","complete_read_rate"]
@@ -2459,10 +2472,8 @@ def cmd_report(args):
             detail_keys=["short_unmapped_units","both_legs_mapped","both_legs_mapping_rate","mapq_pass_pairs","mapq_pass_pair_rate","same_fragment_pairs","same_fragment_filter_pass_pairs","same_fragment_filter_pass_rate","contact_deduplication_retention","cis_contacts","trans_contacts","long_range_cis_contacts","long_range_within_cis_fraction","cis_lt1kb","cis_1_10kb","cis_10_100kb","cis_ge100kb"]
             funnel_details = "<details class='metric-group'><summary>Contact counts and filtering details</summary>"+scoped_table_html(scopes,detail_keys,{})+"</details>"
         settings=metric.get('metric_settings',metric_profile())
-        definition_label=f"{settings['metric_profile']} · MAPQ ≥{settings['mapq']}"
-        if metric['assay']=='chromatin':definition_label+=f" · {settings['collision_qc_bin_size']/1000:g} kb bins"
-        elif metric['assay']=='microc':definition_label+=f" · {settings['dedup_tolerance_bp']} bp deduplication"
-        else:definition_label+=" · RNA/CLIP beta · no deduplication"
+        metric['analysis_provenance']=analysis_record(metric, prior_provenance)
+        definition_label=analysis_label(metric['analysis_provenance'])
         from custom_regions import report_html as custom_region_report
         custom_html=custom_region_report(out,sample,report_assembly,report_chrom_sizes,report_primary,scope_records,scopes,cfg['samples'][sample],Path(__file__).resolve().parents[2],report_mapq) if metric['assay']=='chromatin' else ""
         rna_html = ""
@@ -2480,17 +2491,18 @@ def cmd_report(args):
         report=f"""<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>{sample} · ONT-LibQC</title>{favicon("assets/ont-libqc-mark.svg")}<style>{REPORT_CSS}</style></head><body>
 {brand_bar("assets/ont-libqc-mark.svg")}
 <header class='report-hero'><h1 class='sample-name'>{html.escape(sample)}</h1><div class='hero-meta'><span>{html.escape({'chromatin':'Chromatin','microc':'Micro-C','rnaseq':'RNA-seq · beta','clip':'CLIP-seq · beta'}.get(metric['assay'],metric['assay']))}</span><span>{html.escape(report_assembly)}</span><span>{metric['raw_reads']:,} raw molecules</span><span>{html.escape(definition_label)}</span></div></header>
-<nav class='report-nav'><a href='#sequencing'>Sequencing</a><a href='#library-shape'>Library quality</a>{"<a href='#rna-qc'>RNA QC · beta</a><a href='#contamination'>Contamination</a>" if rna_html else ""}{"" if rna_html else "<a href='#assay-qc'>Assay metrics</a>"}{"<a href='#custom-regions'>Custom regions</a>" if custom_html else ""}{"<a href='#pairtools'>Pairtools</a><a href='#ligation'>Ligation</a><a href='#mnase'>MNase</a>" if pairtools_html else ""}{"<a href='#spike-screen'>Candidate screen</a>" if metric.get('spike_in_mode')=='auto' or json.loads((out/'qc/spike_in'/f'{sample}.json').read_text()).get('mode')=='auto' else ''}<a href='../summary/index.html'>All samples</a></nav>
+<nav class='report-nav'><a href='#sequencing'>Sequencing</a><a href='#library-shape'>Library quality</a><a href='#profiles'>Size &amp; profiles</a>{"<a href='#rna-qc'>RNA QC · beta</a><a href='#contamination'>Contamination</a>" if rna_html else ""}{"" if rna_html else "<a href='#assay-qc'>Assay metrics</a>"}{"<a href='#custom-regions'>Custom regions</a>" if custom_html else ""}{"<a href='#pairtools'>Pairtools</a><a href='#ligation'>Ligation</a><a href='#mnase'>MNase</a>" if pairtools_html else ""}{"<a href='#spike-screen'>Candidate screen</a>" if metric.get('spike_in_mode')=='auto' or json.loads((out/'qc/spike_in'/f'{sample}.json').read_text()).get('mode')=='auto' else ''}<a href='../summary/index.html'>All samples</a></nav>
 <div class='traffic-grid'>{top}</div>
 {mixture_html}
 <section class='report-section' id='sequencing'><h2>ONT sequencing</h2>{ont_table}</section>
-<section class='report-section' id='library-shape'><h2>Library quality</h2>{identity_panel_html(metric,pairing,pairs)}
+<section class='report-section' id='library-shape'><h2>Library quality</h2>{identity_panel_html(metric,pairing,pairs,scope_profiles.get("total", {}).get("unit_rows", []))}
 {library_structure_html(metric, adapter_summary, scope_profiles.get("total", {}).get("unit_rows", []), rna_summary)}
 <div id='library-key-metrics'>{library_primary_table}</div>
 <details class='metric-group' id='library-extra-metrics'><summary>All structure and index metrics</summary>{library_table}</details>
 {reference_notes_html()}
 <details><summary>Size and adapter interpretation</summary><p>The 120–170 bp raw-size window is supportive only. Dimer-like units have a ≤{fmt(metric.get('adapter_dimer_max_bp'))}-bp central gap. Unreconstructed template matches remain candidates; resolved 11–50 bp inserts are retained. Full-library sizes include expected outer adapters and inferred physical indexes, including units with undetected outer handles. The main profile weights each recovered unit by its modeled full-library length; count-based profiles are expandable. Curves are conditional on sequencing and adapter recovery and do not measure TapeStation fluorescence or NGS molarity.</p></details>
-<div class='library-profiles' id='profiles'><h3>Size and genomic profiles</h3>{profiles_html}</div></section>
+</section>
+{profiles_html}
 {rna_html}
 {screen_html}
 {assay_html}
@@ -2536,7 +2548,9 @@ def cmd_report(args):
     rows=''.join(f"<tr><td><a href='../reports/{m['sample']}.html'>{html.escape(m['sample'])}</a></td><td>{html.escape(m['assay'])}</td><td>{html.escape(str(m.get('reference_assembly','')))}</td><td>{m['raw_reads']:,}</td><td>{display_value('mean_read_q',m.get('mean_read_q'),ranges)}</td><td>{display_value('complete_read_rate',m.get('complete_read_rate'),ranges)}</td><td>{display_value('raw_n50_bp',m.get('raw_n50_bp'),ranges)}</td><td>{display_value('insert_median_bp',m.get('insert_median_bp'),ranges)}</td><td>{display_value('primary_mapping_rate',m.get('primary_mapping_rate'),ranges)}</td><td>{display_value('adapter_dimer_rate',m.get('adapter_dimer_rate'),ranges)}</td></tr>" for m in metrics)
     index=f"""<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Library reports · ONT-LibQC</title>{favicon('../reports/assets/ont-libqc-mark.svg')}<style>{REPORT_CSS}</style></head><body>{brand_bar('../reports/assets/ont-libqc-mark.svg', 'Library reports')}<header class='report-hero'><h1>Library reports</h1><p>Sequencing and library quality across samples.</p></header><div class='note'>Open a sample for its complete report, including Chromatin, Micro-C or RNA/CLIP beta metrics.</div>{rna_cohort_html}<img class='summary-plot' src='../plots/summary/all_samples_qc.svg' alt='All samples technical QC summary'><div class='table-scroll' tabindex='0'><table><tr><th>Sample</th><th>Assay</th><th>Assembly</th><th>Raw reads</th><th>Mean Q</th><th>Complete</th><th>Raw N50</th><th>Insert median</th><th>Mapping</th><th>Adapter dimer</th></tr>{rows}</table></div><p><a href='qc_metrics.tsv'>Download total-library TSV</a> · <a href='sublibrary_qc_metrics.tsv'>Download sublibrary TSV</a></p>{REPORT_TOOLTIP_SCRIPT}</body></html>"""
     (out/"summary"/"index.html").write_text(index)
-    json_dump({"created_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    json_dump({"created_utc": prior_provenance.get("created_utc") or datetime.datetime.now(datetime.timezone.utc).isoformat(),
+               "report_generated_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+               "analyses": {m["sample"]: m["analysis_provenance"] for m in metrics},
                "config": cfg, "python_version": sys.version,
                "metric_schema_version": 3,
                "metric_definitions": {"native": metric_profile(), "matched_comparison": metric_profile("matched_comparison")},
