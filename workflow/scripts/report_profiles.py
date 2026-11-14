@@ -21,7 +21,8 @@ CSS = '''
 .profile-comparison-grid .comparison-gel img{position:absolute;inset:0;width:100%;height:100%}
 .profile-comparison .comparison-metaplot{max-width:850px;margin:12px auto 0}
 .profile-genomic-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start;margin-top:12px}
-.profile-genomic-grid .comparison-metaplot{max-width:none;margin:0;grid-column:1/-1}
+.profile-genomic-grid .comparison-metaplot{max-width:none;margin:0}
+.profile-genomic-grid>.comparison-note{grid-column:1/-1}
 @media(max-width:1000px){.profile-genomic-grid{grid-template-columns:minmax(0,1fr)}}
 @media print{.profile-genomic-grid{display:block}.profile-genomic-grid .plot-card{margin-bottom:4mm}}
 .profile-comparison .figure-link{margin-top:6px;font-size:11px}
