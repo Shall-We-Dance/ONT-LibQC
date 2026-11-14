@@ -2246,17 +2246,22 @@ def extension_report_html(out, sample, scopes, metric):
     if screen_path.exists():
         screen=json.loads(screen_path.read_text())
         if screen.get("mode") == "auto":
-            rows=[]
-            for key,candidate in screen.get("candidates",{}).items():
-                label=html.escape(candidate["label"]);status=candidate["status"]
-                light="amber" if status in {"CANDIDATE_SIGNAL","TRACE"} else "gray"
-                fraction=display_value("spike_in_fraction",candidate.get("fraction"),{})
-                tooltip="Same species as the host; a spike-in cannot be distinguished" if status=="HOST_NOT_DISTINGUISHABLE" else "No spike-in was declared. This is sequence evidence only; a positive signal may have another source."
-                rows.append(f"<tr><td>{label}</td><td>{html.escape(candidate['role'].replace('_',' '))}</td><td>{fmt(candidate.get('reads'))}</td><td>{fraction}</td><td>{fmt(candidate.get('loci'))}</td><td>{metric_reading_html(status,light,tooltip)}</td></tr>")
-            declaration="Spike-in was declared in the sample configuration." if screen.get("declared_spike_in") else "No spike-in was declared in the sample configuration."
-            tip=declaration+" Candidate signals are exploratory foreign-sequence evidence; they do not establish intentional spike-in. Host, candidate species and microbial decoys compete in one reference. Same-species spike-in and unlisted synthetic standards are not identifiable by this panel."
-            scoped_screen=scoped_table_html(scopes,["spike_in_status","spike_in_screened_reads","spike_in_reads","spike_in_fraction"],{}) if len(scopes)>1 else ""
-            sections.append("<section class='report-section' id='spike-screen'><h2>Spike-in candidate screen <span class='metric-tip info-icon' tabindex='0' data-tip='"+html.escape(tip,quote=True)+"'>?</span></h2><p class='muted'>"+fmt(screen.get("screened_reads"))+" screened inserts · "+("Spike-in declared" if screen.get("declared_spike_in") else "No spike-in declared")+"</p><div class='table-scroll'><table><tr><th>Reference candidate</th><th>Role</th><th>Insert count</th><th>Fraction</th><th title='Distinct 100-bp reference windows with qualifying alignments'>Locus count</th><th>Result</th></tr>"+''.join(rows)+"</table></div>"+ecoli_calibration_note_html(screen)+scoped_screen+f"<p><a href='../qc/spike_in/{sample}.assignments.tsv.gz'>Per-unit assignments</a> · <a href='../qc/spike_in/{sample}.json'>Screen details</a></p></section>")
+            sublibraries = metric.get("sub_libraries", [])
+            if sublibraries:
+                from report_spike_matrix import spike_matrix_html
+                sections.append(spike_matrix_html(screen, sublibraries, sample, ecoli_calibration_note_html(screen)))
+            else:
+                rows=[]
+                for key,candidate in screen.get("candidates",{}).items():
+                    label=html.escape(candidate["label"]);status=candidate["status"]
+                    light="amber" if status in {"CANDIDATE_SIGNAL","TRACE"} else "gray"
+                    fraction=display_value("spike_in_fraction",candidate.get("fraction"),{})
+                    tooltip="Same species as the host; a spike-in cannot be distinguished" if status=="HOST_NOT_DISTINGUISHABLE" else "No spike-in was declared. This is sequence evidence only; a positive signal may have another source."
+                    rows.append(f"<tr><td>{label}</td><td>{html.escape(candidate['role'].replace('_',' '))}</td><td>{fmt(candidate.get('reads'))}</td><td>{fraction}</td><td>{fmt(candidate.get('loci'))}</td><td>{metric_reading_html(status,light,tooltip)}</td></tr>")
+                declaration="Spike-in was declared in the sample configuration." if screen.get("declared_spike_in") else "No spike-in was declared in the sample configuration."
+                tip=declaration+" Candidate signals are exploratory foreign-sequence evidence; they do not establish intentional spike-in. Host, candidate species and microbial decoys compete in one reference. Same-species spike-in and unlisted synthetic standards are not identifiable by this panel."
+                scoped_screen=scoped_table_html(scopes,["spike_in_status","spike_in_screened_reads","spike_in_reads","spike_in_fraction"],{}) if len(scopes)>1 else ""
+                sections.append("<section class='report-section' id='spike-screen'><h2>Spike-in candidate screen <span class='metric-tip info-icon' tabindex='0' data-tip='"+html.escape(tip,quote=True)+"'>?</span></h2><p class='muted'>"+fmt(screen.get("screened_reads"))+" screened inserts · "+("Spike-in declared" if screen.get("declared_spike_in") else "No spike-in declared")+"</p><div class='table-scroll'><table><tr><th>Reference candidate</th><th>Role</th><th>Insert count</th><th>Fraction</th><th title='Distinct 100-bp reference windows with qualifying alignments'>Locus count</th><th>Result</th></tr>"+''.join(rows)+"</table></div>"+ecoli_calibration_note_html(screen)+scoped_screen+f"<p><a href='../qc/spike_in/{sample}.assignments.tsv.gz'>Per-unit assignments</a> · <a href='../qc/spike_in/{sample}.json'>Screen details</a></p></section>")
 
     if metric["assay"]=="microc" and metric.get("ligation_screened_units") is not None:
         plots=[]
@@ -2495,7 +2500,7 @@ def cmd_report(args):
         report=f"""<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>{sample} · ONT-LibQC</title>{favicon("assets/ont-libqc-mark.svg")}<style>{REPORT_CSS}</style></head><body>
 {brand_bar("assets/ont-libqc-mark.svg")}
 <header class='report-hero'><h1 class='sample-name'>{html.escape(sample)}</h1><div class='hero-meta'><span>{html.escape({'chromatin':'Chromatin','microc':'Micro-C','rnaseq':'RNA-seq · beta','clip':'CLIP-seq · beta'}.get(metric['assay'],metric['assay']))}</span><span>{html.escape(report_assembly)}</span><span>{metric['raw_reads']:,} raw molecules</span><span>{html.escape(definition_label)}</span></div></header>
-<nav class='report-nav'><a href='#sequencing'>Sequencing</a><a href='#library-shape'>Library quality</a><a href='#profiles'>Size &amp; profiles</a>{"<a href='#rna-qc'>RNA QC · beta</a><a href='#contamination'>Contamination</a>" if rna_html else ""}{"" if rna_html else "<a href='#assay-qc'>Assay metrics</a>"}{"<a href='#custom-regions'>Custom regions</a>" if custom_html else ""}{"<a href='#pairtools'>Pairtools</a><a href='#ligation'>Ligation</a><a href='#mnase'>MNase</a>" if pairtools_html else ""}{"<a href='#spike-screen'>Candidate screen</a>" if metric.get('spike_in_mode')=='auto' or json.loads((out/'qc/spike_in'/f'{sample}.json').read_text()).get('mode')=='auto' else ''}<a href='../summary/index.html'>All samples</a></nav>
+<nav class='report-nav'><a href='#sequencing'>Sequencing</a><a href='#library-shape'>Library quality</a><a href='#profiles'>Size &amp; profiles</a>{"<a href='#rna-qc'>RNA QC · beta</a><a href='#contamination'>Contamination</a>" if rna_html else ""}{"" if rna_html else "<a href='#assay-qc'>Assay metrics</a>"}{"<a href='#custom-regions'>Custom regions</a>" if custom_html else ""}{"<a href='#pairtools'>Pairtools</a><a href='#ligation'>Ligation</a><a href='#mnase'>MNase</a>" if pairtools_html else ""}{"<a href='#spike-screen'>Spike-in screen</a>" if metric.get('spike_in_mode')=='auto' or json.loads((out/'qc/spike_in'/f'{sample}.json').read_text()).get('mode')=='auto' else ''}<a href='../summary/index.html'>All samples</a></nav>
 <div class='traffic-grid'>{top}</div>
 {mixture_html}
 <section class='report-section' id='sequencing'><h2>ONT sequencing</h2>{ont_table}</section>

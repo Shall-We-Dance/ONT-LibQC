@@ -218,3 +218,21 @@ code{border-radius:3px;background:#f0f4f6;overflow-wrap:anywhere}
  .analysis-plots:has(.region-composition){grid-template-columns:minmax(0,1fr)}
  .analysis-plots:has(.region-composition)>.plot-card{margin:0;min-width:0}
 }
+
+/* Consistent report table frames; keep print pagination unchanged. */
+@media screen {
+ table:not(.spike-matrix){border-collapse:separate;border-spacing:0;border:1px solid #dce5ef;border-radius:8px;background:#fff;overflow:hidden}
+ table:not(.spike-matrix) th,table:not(.spike-matrix) td{border:0;border-bottom:1px solid #e8edf3}
+ table:not(.spike-matrix) tr:last-child>td,table:not(.spike-matrix) tbody tr:last-child>th[scope="row"]{border-bottom:0}
+ table:not(.spike-matrix) tr:first-child>th{background:#f5f7fa;border-bottom:1px solid #dce5ef}
+ table:not(.spike-matrix) tr:first-child>th:first-child{border-top-left-radius:7px}
+ table:not(.spike-matrix) tr:first-child>th:last-child{border-top-right-radius:7px}
+ .table-scroll,.pair-table-scroll,.library-sequence-table-scroll,.rna-table{scrollbar-width:thin;scrollbar-color:#bac7d6 #f6f8fb}
+}
+
+/* Tables inside framed cards share the outer card border. */
+@media screen {
+ .identity-card .pair-table,.metric-group>.table-scroll>table{border:0;border-radius:0;margin:0;box-shadow:none}
+ .identity-card .pair-table tr:first-child>th,.metric-group>.table-scroll>table tr:first-child>th{border-radius:0!important}
+ .identity-card .pair-table-scroll{border:0;border-radius:0}
+}
