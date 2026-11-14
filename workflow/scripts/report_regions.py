@@ -1,4 +1,4 @@
-"""Region overlap fractions and exact chromosome/length-matched genomic backgrounds."""
+"""Region overlap fractions and fixed genomic base-pair backgrounds."""
 import bisect
 import collections
 import gzip
@@ -39,36 +39,28 @@ def load_te_bed(path,sizes):
     return {c:merge(rows) for c,rows in intervals.items()}
 
 
-class OverlapBackground:
-    """Exact chance of any overlap for a uniformly placed interval of length L.
+BACKGROUND_DEFINITION = ('Fraction of primary nuclear genome bases in each annotation category; '
+                         'shared across libraries using the same reference, annotation and promoter window.')
 
-    Non-overlapping placements fit wholly inside an annotation-free gap. Sorted
-    gap lengths and prefix sums give O(log number_of_gaps) queries, without
-    random sampling or repeatedly expanding millions of TE intervals.
-    """
-    def __init__(self,intervals,size):
-        self.size=size;end=0;gaps=[]
-        for start,stop in merge((max(0,a),min(size,b)) for a,b in intervals if a<size and b>0):
-            if start>end:gaps.append(start-end)
-            end=stop
-        if end<size:gaps.append(size-end)
-        self.gaps=sorted(gaps);self.sums=[0]
-        for gap in self.gaps:self.sums.append(self.sums[-1]+gap)
 
-    def probability(self,length):
-        if not 1<=length<=self.size:raise ValueError('Alignment span exceeds chromosome bounds')
-        i=bisect.bisect_left(self.gaps,length);n=len(self.gaps)-i
-        empty=self.sums[-1]-self.sums[i]-(length-1)*n
-        return 1-empty/(self.size-length+1)
+def with_fixed_background(metric):
+    result = dict(metric, region_background_definition=BACKGROUND_DEFINITION,
+                  region_background_method='genome-bases-v1')
+    for key in ('promoter_proximal', 'gene_body', 'intergenic', 'te'):
+        bg = result.get(key + '_genome_rate')
+        rate = result.get(key + '_rate')
+        result[key + '_background_rate'] = bg
+        result[key + '_enrichment'] = rate / bg if rate is not None and bg else None
+    return result
 
 
 def region_counts(records,promoters,genes,primary_names,mapq,promoter_window,sizes=None,te=None,te_source=None,background=None):
     primary=set(primary_names)
     eligible=[r for r in records.values() if r['mapq']>=mapq and r['chrom'] in primary]
     keys=('promoter_proximal','gene_body','intergenic','te')
-    count=dict.fromkeys(keys,0);lengths=collections.Counter()
+    count=dict.fromkeys(keys,0)
     for r in eligible:
-        c,s,e=r['chrom'],r['start'],r['end'];lengths[c,e-s]+=1
+        c,s,e=r['chrom'],r['start'],r['end']
         if overlaps(promoters.get(c,[]),s,e):count['promoter_proximal']+=1
         elif overlaps(genes.get(c,[]),s,e):count['gene_body']+=1
         else:count['intergenic']+=1
@@ -76,40 +68,30 @@ def region_counts(records,promoters,genes,primary_names,mapq,promoter_window,siz
     total=len(eligible);annotated=bool(promoters or genes)
     result=dict(annotation_mapped_reads=total,promoter_window_bp=promoter_window,
         annotation_region_definition='mutually exclusive: promoter proximal takes precedence over gene body; TE overlap is independent',
-        region_background_definition='Uniform valid interval starts on the same chromosome, matching each observed alignment span; no mappability correction or IP/input inference.',
+        region_background_definition=BACKGROUND_DEFINITION,
         te_annotation_available=te is not None,te_source=te_source)
     for key in keys:
         available=te is not None if key=='te' else annotated
         result[key+'_reads']=count[key] if available else None
         result[key+'_rate']=count[key]/total if available and total else None
         result[key+'_background_rate']=result[key+'_enrichment']=result[key+'_genome_rate']=None
-    if not sizes:return result
+    if not sizes:return with_fixed_background(result)
     if background is None:background=prepare_background(promoters,genes,primary,sizes,te)
-    expected=dict.fromkeys(keys,0.0)
-    for (chrom,length),n in lengths.items():
-        p=background[chrom]['promoter'].probability(length)
-        union=background[chrom]['union'].probability(length)
-        expected['promoter_proximal']+=n*p;expected['gene_body']+=n*max(0,union-p);expected['intergenic']+=n*(1-union)
-        if te is not None:expected['te']+=n*background[chrom]['te'].probability(length)
     genome_total=sum(sizes[c] for c in primary)
     for key in keys:
         available=te is not None if key=='te' else annotated
         if not available:continue
         result[key+'_genome_rate']=sum(background[c]['bases'][key] for c in primary)/genome_total if genome_total else None
-        bg=expected[key]/total if total else None
-        result[key+'_background_rate']=bg
-        rate=result[key+'_rate'];result[key+'_enrichment']=rate/bg if rate is not None and bg else None
-    return result
+    return with_fixed_background(result)
 
 
 def prepare_background(promoters,genes,primary,sizes,te=None):
     result={}
     for c in primary:
-        p=merge(promoters.get(c,[]));union=merge(p+genes.get(c,[]));repeat=(te or {}).get(c,[])
+        clipped=lambda rows: merge((max(0,a),min(sizes[c],b)) for a,b in rows if a<sizes[c] and b>0)
+        p=clipped(promoters.get(c,[]));union=clipped(p+genes.get(c,[]));repeat=clipped((te or {}).get(c,[]))
         pb=sum(b-a for a,b in p);ub=sum(b-a for a,b in union)
-        result[c]=dict(promoter=OverlapBackground(p,sizes[c]),union=OverlapBackground(union,sizes[c]),
-            te=OverlapBackground(repeat,sizes[c]) if te is not None else None,
-            bases=dict(promoter_proximal=pb,gene_body=ub-pb,intergenic=sizes[c]-ub,te=sum(b-a for a,b in repeat)))
+        result[c]=dict(bases=dict(promoter_proximal=pb,gene_body=ub-pb,intergenic=sizes[c]-ub,te=sum(b-a for a,b in repeat)))
     return result
 
 
@@ -134,6 +116,6 @@ def svg_region_bars(metric,title):
     total=metric.get('annotation_mapped_reads',0);window=metric.get('promoter_window_bp',2000)
     footer=f'n={total:,} MAPQ-pass alignments · Promoter: TSS ±{window/1000:g} kb'
     svg.append(f"<text x='22' y='234' font-size='11' fill='{muted}'>{html.escape(footer)}</text>")
-    note='Background matches chromosome and fragment length.'
+    note='Background: fraction of primary genome bases.'
     svg.append(f"<text x='22' y='255' font-size='11' fill='{muted}'>{note}</text></svg>")
     return ''.join(svg)

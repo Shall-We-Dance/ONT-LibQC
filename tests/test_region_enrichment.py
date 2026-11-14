@@ -1,25 +1,17 @@
-import itertools
 from pathlib import Path
 import sys,tempfile,unittest
 import xml.etree.ElementTree as ET
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'workflow/scripts'))
-from report_regions import OverlapBackground,region_counts,svg_region_bars,load_te_bed
+from report_regions import region_counts,svg_region_bars,load_te_bed
 
 class RegionEnrichmentTests(unittest.TestCase):
-    def test_exact_background_matches_exhaustive_valid_placements(self):
-        for intervals in [[],[(0,2)],[(8,10)],[(2,4),(3,6),(8,9)],[(0,10)]]:
-            bg=OverlapBackground(intervals,10)
-            for length in range(1,11):
-                hits=sum(any(s<b and s+length>a for a,b in intervals) for s in range(11-length))
-                self.assertAlmostEqual(bg.probability(length),hits/(11-length))
-
     def test_exclusive_gene_regions_and_independent_te(self):
         records={str(i):dict(chrom='chr1',start=s,end=e,mapq=q) for i,(s,e,q) in enumerate([(1,4,60),(5,6,60),(8,9,60),(1,4,0)])}
         m=region_counts(records,{'chr1':[(2,4)]},{'chr1':[(3,7)]},['chr1'],20,2000,{'chr1':10},{'chr1':[(3,6)]})
         self.assertEqual([m[k+'_reads'] for k in ['promoter_proximal','gene_body','intergenic','te']],[1,1,1,2])
         self.assertAlmostEqual(sum(m[k+'_background_rate'] for k in ['promoter_proximal','gene_body','intergenic']),1)
-        self.assertAlmostEqual(m['promoter_proximal_background_rate'],(4/8+2/10+2/10)/3)
-        self.assertAlmostEqual(m['te_background_rate'],(5/8+3/10+3/10)/3)
+        self.assertAlmostEqual(m['promoter_proximal_background_rate'],.2)
+        self.assertAlmostEqual(m['te_background_rate'],.3)
         self.assertAlmostEqual(m['te_enrichment'],(2/3)/m['te_background_rate'])
         self.assertEqual(m['gene_body_genome_rate'],.3)
 
@@ -34,11 +26,20 @@ class RegionEnrichmentTests(unittest.TestCase):
         svg=svg_region_bars(missing,'Test <sample>');ET.fromstring(svg)
         self.assertNotIn('TE overlap', [node.text for node in ET.fromstring(svg).iter('{http://www.w3.org/2000/svg}text')]);self.assertNotIn('nan',svg)
 
-    def test_background_matches_chromosome_and_length_distribution(self):
-        r={'r':dict(chrom='a',start=0,end=5,mapq=60)}
-        m=region_counts(r,{'a':[(5,6)]},{},['a','b'],20,2000,{'a':10,'b':1000},{})
-        self.assertAlmostEqual(m['promoter_proximal_background_rate'],5/6)
-        self.assertAlmostEqual(m['promoter_proximal_genome_rate'],1/1010)
+    def test_fixed_background_is_independent_of_library_reads(self):
+        groups=[{}, {'r':dict(chrom='a',start=0,end=5,mapq=60)},
+                {'r':dict(chrom='b',start=0,end=900,mapq=60)},
+                {'r':dict(chrom='a',start=5,end=6,mapq=60)}]
+        for records in groups:
+            m=region_counts(records,{'a':[(5,6)]},{},['a','b'],20,2000,{'a':10,'b':1000},{})
+            self.assertAlmostEqual(m['promoter_proximal_background_rate'],1/1010)
+            self.assertEqual(m['promoter_proximal_background_rate'],m['promoter_proximal_genome_rate'])
+        self.assertAlmostEqual(m['promoter_proximal_enrichment'],1010)
+
+    def test_fixed_background_merges_and_clips_annotations(self):
+        m=region_counts({}, {'c':[(-3,2),(1,4)]},{'c':[(3,8),(7,15)]},['c'],20,2000,{'c':10})
+        self.assertEqual([m[k+'_background_rate'] for k in ['promoter_proximal','gene_body','intergenic']],[.4,.6,0])
+        self.assertIsNone(m['promoter_proximal_enrichment'])
 
     def test_te_bed_merges_overlap_and_validates_bounds(self):
         with tempfile.TemporaryDirectory() as tmp:

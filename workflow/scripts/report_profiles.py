@@ -245,7 +245,7 @@ def region_comparison(series):
             for x, value in [(535,percent(rate)),(658,percent(bg)),(796,'—' if fold is None else f'{fold:,.2f}×')]:
                 svg.append(text(x,y+4,value,'end',14,'#34495e'))
             svg.append('</g>')
-    svg.append(text(24,height-13,'Bar: sample proportion · Tick: matched background','start',12))
+    svg.append(text(24,height-13,'Bar: sample proportion · Tick: genome background','start',12))
     svg.append('</svg>')
     return ''.join(svg)
 
