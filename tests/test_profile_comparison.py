@@ -1,11 +1,12 @@
 import math
+import json
 from pathlib import Path
 import sys
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'workflow/scripts'))
-from report_profiles import read_gene_profile, render_profiles_card, gene_comparison, size_comparison, virtual_lanes
+from report_profiles import read_gene_profile, render_profiles_card, gene_comparison, size_comparison, virtual_lanes, region_comparison, read_region_metrics
 
 
 class ProfileComparisonTests(unittest.TestCase):
@@ -65,5 +66,40 @@ class ProfileComparisonTests(unittest.TestCase):
             self.assertNotIn('<details',single)
             self.assertNotIn('sublibraries.size_profiles.svg',single)
             self.assertIn(sections[0],single)
+
+    def test_region_summary_preserves_saved_values_colors_and_missing_data(self):
+        rows=self.rows()
+        rows[0]['regions']={'promoter_proximal_rate':.25,'promoter_proximal_background_rate':.05,'promoter_proximal_enrichment':5,
+                            'gene_body_rate':0,'gene_body_background_rate':.4,'gene_body_enrichment':0}
+        rows[1]['regions']=None
+        rendered=region_comparison(rows);root=ET.fromstring(rendered)
+        data=json.loads(root.find('{*}metadata').text)
+        self.assertEqual(data[0]['metrics'],rows[0]['regions'])
+        self.assertIsNone(data[1]['metrics'])
+        promoter=root.find("{*}g[@data-scope='lib01'][@data-region='promoter_proximal']")
+        bar=promoter.find("{*}rect[@data-value]")
+        self.assertEqual(bar.get('fill'),rows[0]['color'])
+        self.assertEqual(float(bar.get('width')),322*.25)
+        self.assertIn('5.00×',rendered);self.assertIn('0.00×',rendered);self.assertIn('—',rendered)
+        self.assertNotIn('TE overlap',rendered)
+        self.assertIsNone(region_comparison(self.rows()))
+
+    def test_region_summary_and_metaplot_share_the_unfolded_grid(self):
+        from report_regions import svg_region_bars
+        with tempfile.TemporaryDirectory() as tmp:
+            p=Path(tmp)
+            for sid in ('lib01','lib02'):
+                (p/f's.{sid}.full_library_profiles.tsv').write_text('size_bp\tlength_weighted_relative_signal\n0\t0\n100\t100\n2000\t0\n')
+                (p/f's.{sid}.profile.tsv').write_text('bin labels\t\tTSS\tTES\nbins\t\t1\t2\nlib\tgenes\t1\t2\n')
+                (p/f's.{sid}.regions.svg').write_text(svg_region_bars({'promoter_proximal_rate':.25},sid))
+            scopes=[{'scope_id':sid} for sid in ('total','lib01','lib02')]
+            sections=["<section class='profile-scope'><p>Detail</p></section>"]*3
+            doc=render_profiles_card('s',scopes,sections,p,p)
+            start=doc.index("<div class='profile-genomic-grid'>")
+            end=doc.index("<details class='profile-detail'")
+            self.assertIn('s.sublibraries.regions.svg',doc[start:end])
+            self.assertIn('s.sublibraries.TSS_TES.svg',doc[start:end])
+            self.assertTrue((p/'s.sublibraries.regions.svg').is_file())
+            self.assertEqual(read_region_metrics(p/'s.lib01.regions.svg'),{'promoter_proximal_rate':.25})
 
 if __name__=='__main__':unittest.main()

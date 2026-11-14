@@ -1,5 +1,7 @@
 """Compare recovered sublibraries using the retained numeric plot data."""
 import csv
+import json
+import xml.etree.ElementTree as ET
 import html
 import math
 from pathlib import Path
@@ -18,6 +20,10 @@ CSS = '''
 .profile-comparison-grid .comparison-gel>a{position:relative;flex:1;min-height:0}
 .profile-comparison-grid .comparison-gel img{position:absolute;inset:0;width:100%;height:100%}
 .profile-comparison .comparison-metaplot{max-width:850px;margin:12px auto 0}
+.profile-genomic-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start;margin-top:12px}
+.profile-genomic-grid .comparison-metaplot{max-width:none;margin:0}
+@media(max-width:1000px){.profile-genomic-grid{grid-template-columns:minmax(0,1fr)}}
+@media print{.profile-genomic-grid{display:block}.profile-genomic-grid .plot-card{margin-bottom:4mm}}
 .profile-comparison .figure-link{margin-top:6px;font-size:11px}
 .profile-comparison .comparison-note{font-size:12px;color:var(--muted);margin:8px 0 16px}
 .profile-detail{margin:12px 0 0;border:1px solid var(--line);border-radius:8px;padding:0;background:#fff}
@@ -176,6 +182,50 @@ def gene_comparison(series):
     return ''.join(svg)
 
 
+
+def read_region_metrics(path):
+    """Use the same saved values as each individual genomic-region figure."""
+    path = Path(path)
+    if not path.is_file():
+        return None
+    node = ET.fromstring(path.read_text()).find("{*}metadata[@id='genomic-region-metrics']")
+    return json.loads(node.text) if node is not None else None
+
+
+def region_comparison(series):
+    if not any(row.get('regions') is not None for row in series):
+        return None
+    rows = [('Promoter', 'promoter_proximal'), ('Gene body', 'gene_body'), ('Distal', 'intergenic')]
+    height = 98 + 3 * (32 + 25 * len(series))
+    svg = svg_start(820, height, 'Sublibrary genomic regions')
+    svg.append("<metadata id='sublibrary-region-metrics'>" + html.escape(json.dumps([
+        dict(scope_id=row['id'], color=row['color'], metrics=row.get('regions')) for row in series])) + '</metadata>')
+    for x, label in [(535, 'Sample'), (658, 'Background'), (796, 'Enrichment')]:
+        svg.append(text(x, 60, label, 'end', 13))
+    percent = lambda value: '—' if value is None else f'{value:.1%}' if value == 0 or value >= .001 else f'{100*value:.3g}%'
+    for group_index, (label, key) in enumerate(rows):
+        top = 84 + group_index * (32 + 25 * len(series))
+        svg.append(text(24, top, label, 'start', 16, '#203040'))
+        for i, row in enumerate(series):
+            y = top + 23 + i * 25
+            metric = row.get('regions') or {}
+            rate, bg, fold = (metric.get(key + suffix) for suffix in ('_rate', '_background_rate', '_enrichment'))
+            tip = f"{row['label']} · {label}: {percent(rate)}, background {percent(bg)}"
+            svg.append(f"<g data-scope='{html.escape(row['id'],quote=True)}' data-region='{key}'><title>{html.escape(tip)}</title>")
+            svg.append(text(28, y + 4, row['id'], 'start', 13, row['color']))
+            svg.append(f"<rect x='108' y='{y-7}' width='322' height='11' rx='2' fill='#eef2f6'/>")
+            if rate is not None:
+                svg.append(f"<rect data-value='{rate}' x='108' y='{y-7}' width='{322*rate:.3f}' height='11' rx='2' fill='{row['color']}'/>")
+            if bg is not None:
+                x=108+322*bg
+                svg.append(f"<line x1='{x:.3f}' x2='{x:.3f}' y1='{y-10}' y2='{y+7}' stroke='#536475' stroke-width='1.3'/>")
+            for x, value in [(535,percent(rate)),(658,percent(bg)),(796,'—' if fold is None else f'{fold:,.2f}×')]:
+                svg.append(text(x,y+4,value,'end',14,'#34495e'))
+            svg.append('</g>')
+    svg.append(text(24,height-13,'Bar: sample proportion · Tick: matched background','start',12))
+    svg.append('</svg>')
+    return ''.join(svg)
+
 def render_profiles_card(sample, scopes, scope_html, asset_dir, gene_dir, asset_prefix='assets/'):
     """Works during report creation and on a retained, report-only bundle."""
     asset_dir, gene_dir = Path(asset_dir), Path(gene_dir)
@@ -192,6 +242,7 @@ def render_profiles_card(sample, scopes, scope_html, asset_dir, gene_dir, asset_
         series.append(dict(id=sid,label=label,color=COLORS[i%len(COLORS)],
                            sizes=read_size_profile(asset_dir/f'{sample}.{sid}.full_library_profiles.tsv'),
                            gene=read_gene_profile(gene_dir/f'{sample}.{sid}.profile.tsv')))
+        series[-1]['regions'] = read_region_metrics(asset_dir/f'{sample}.{sid}.regions.svg')
         series[-1]['band'] = read_profile_band(asset_dir/f'{sample}.{sid}.TSS_TES.svg', series[-1]['gene'])
     parts += ["<div class='profile-comparison'><ul class='profile-comparison-legend'>"]
     for row in series:
@@ -203,11 +254,16 @@ def render_profiles_card(sample, scopes, scope_html, asset_dir, gene_dir, asset_
     parts.append("<div class='profile-comparison-grid'>"+figure(size_name,'Sublibrary full-library size traces')+figure(gel_name,'Sublibrary virtual lanes','comparison-gel')+'</div>')
     parts.append("<p class='comparison-note'>ONT-derived full-library sizes, length-weighted; each trace and lane is scaled to its own peak of 100.</p>")
     meta=gene_comparison(series)
+    regions=region_comparison(series)
+    if regions:
+        name=f'{sample}.sublibraries.regions.svg';(asset_dir/name).write_text(regions)
+        parts.append("<div class='profile-genomic-grid'>"+figure(name,'Sublibrary genomic region proportions, backgrounds and enrichment','comparison-regions'))
     if meta:
         name=f'{sample}.sublibraries.TSS_TES.svg';(asset_dir/name).write_text(meta)
         parts.append(figure(name,'Sublibrary TSS–TES profiles on a shared CPM axis','comparison-metaplot'))
         missing=[r['label'] for r in series if not r['gene']]
         if missing:parts.append("<p class='comparison-note'>No mapped profile: "+esc(', '.join(missing))+'.</p>')
+    if regions:parts.append('</div>')
     parts.append('</div>')
     for i, scope in enumerate(sub):
         label=scope.get('scope_name',scope['scope_id']);color=series[i]['color']
