@@ -1,5 +1,6 @@
 rule sample_metrics:
     input:
+        provenance_script="workflow/scripts/report_provenance.py",
         ligation=lambda wc: f"{OUT}/qc/ligation/{wc.sample}.json" if assay(wc.sample) == "microc" else [],
         ligation_script="workflow/scripts/microc_ligation.py",
         spikein_script="workflow/scripts/spikein_auto.py",

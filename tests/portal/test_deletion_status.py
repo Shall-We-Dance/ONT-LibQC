@@ -63,7 +63,7 @@ class DeletionStatusTests(unittest.TestCase):
         self.assertEqual(result['options'], {})
         self.assertIsNone(result['report_url'])
         self.assertIsNone(result['download_url'])
-        self.assertEqual(self.client.get('/api/catalog').json()['retention_days'], 7)
+        self.assertEqual(self.client.get('/api/catalog').json()['retention_days'], 30)
 
     def test_repeated_delete_cannot_relabel_natural_expiry(self):
         expired_at = time.time() - 1

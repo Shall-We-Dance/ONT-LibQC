@@ -13,7 +13,7 @@ import threading
 import time
 
 import uvicorn
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import expect, sync_playwright
 from ont_portal.app import create_app
 from ont_portal.settings import Settings
 
@@ -197,7 +197,8 @@ with tempfile.TemporaryDirectory() as directory:
                             assert selected.count()==int(active is not None)
                             if active:
                                 assert selected.inner_text()==active
-                                assert selected.evaluate('(link) => getComputedStyle(link).color')==accent_rgb
+                                # Active navigation color transitions after the route is initialized.
+                                expect(selected).to_have_css('color', accent_rgb, timeout=3000)
                                 assert selected.evaluate('(link) => getComputedStyle(link).fontWeight')=='600'
                             if route=='/help':
                                 check_citation(page)

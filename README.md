@@ -12,7 +12,7 @@ ONT-LibQC checks completed **Chromatin and Micro-C libraries**, with **RNA-seq a
 
 ## Try it online
 
-Upload FASTQ files at **[ontlibqc.org](https://ontlibqc.org)**, then choose a reference and assay for each library. Email is optional; save the private task link to return to your results. The server accepts up to 16 files per batch, 50 MB each, and keeps reports for 7 days. Do not submit patient data or other sensitive personal data.
+Upload FASTQ files at **[ontlibqc.org](https://ontlibqc.org)**, then choose a reference and assay for each library. Email is optional; save the private task link to return to your results. The server accepts up to 16 files per batch, 50 MB each, and keeps reports for 30 days. Do not submit patient data or other sensitive personal data.
 
 Library structure is detected automatically. Use **Customize** for fixed-length UMIs or custom adapters. [Help](https://ontlibqc.org/help) covers settings, input limits and result interpretation.
 

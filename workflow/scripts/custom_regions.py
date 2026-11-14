@@ -19,7 +19,7 @@ def mode_description(params):
 
 
 def parse_bed(text,sizes,primary):
-    rows=[];seen=set();skipped=duplicates=0;unknown=[]
+    rows=[];seen=set();skipped=duplicates=renamed_rows=0;unknown=[];renamed={}
     for number,line in enumerate(text.splitlines(),1):
         if not line.strip() or line.startswith(('#','track','browser')):continue
         v=line.split()
@@ -27,6 +27,10 @@ def parse_bed(text,sizes,primary):
         try:start,end=int(v[1]),int(v[2])
         except ValueError:raise ValueError(f'BED line {number}: coordinates must be integers')
         if start<0 or end<=start:raise ValueError(f'BED line {number}: invalid interval')
+        if v[0] not in sizes:
+            alternate=v[0][3:] if v[0].startswith('chr') else 'chr'+v[0]
+            if alternate in sizes:
+                renamed[v[0]]=alternate;renamed_rows+=1;v[0]=alternate
         if v[0] not in sizes:
             unknown.append(dict(line=number,chrom=v[0],start=start,end=end,reason='chromosome_absent_from_reference'));continue
         if start<0 or end<=start or end>sizes[v[0]]:raise ValueError(f'BED line {number}: invalid or out-of-reference interval')
@@ -37,7 +41,7 @@ def parse_bed(text,sizes,primary):
         if key in seen:duplicates+=1;continue
         seen.add(key);rows.append(dict(chrom=v[0],start=start,end=end,strand=strand,name=v[3] if len(v)>3 else f'region_{number}'))
     if not rows:raise ValueError('No regions on configured primary chromosomes')
-    return rows,dict(retained_regions=len(rows),skipped_nonprimary=skipped,duplicate_intervals_removed=duplicates,excluded_unknown_contigs=unknown)
+    return rows,dict(retained_regions=len(rows),skipped_nonprimary=skipped,duplicate_intervals_removed=duplicates,excluded_unknown_contigs=unknown,renamed_chromosomes=renamed,renamed_rows=renamed_rows)
 
 def aligned_blocks(record):
     if not record.get('cigar'):return [(record['start'],record['end'])]
@@ -95,25 +99,30 @@ def static_plot(profiles,label,path,params=PARAMS):
     import matplotlib;matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     plt.rcParams.update({'svg.fonttype':'none','pdf.fonttype':42})
-    fig,ax=plt.subplots(figsize=(9,5));colors=['#176e87','#c47a35','#7970a8','#4f9477']
+    fig,ax=plt.subplots(figsize=(8.2,4.4));colors=['#000080','#23877f','#8364b2','#b66b35']
     for i,(scope,p) in enumerate(profiles.items()):
         y=np.array([np.nan if v is None else v for v in p['mean']]);se=np.array([np.nan if v is None else v for v in p['sem']]);x=np.arange(len(y))+.5
-        if np.isfinite(y).any():ax.plot(x,y,label=scope,color=colors[i%len(colors)],lw=2);ax.fill_between(x,y-se,y+se,color=colors[i%len(colors)],alpha=.13)
+        if np.isfinite(y).any():ax.plot(x,y,label=scope,color=colors[i%len(colors)],lw=1.8);ax.fill_between(x,y-se,y+se,color=colors[i%len(colors)],alpha=.20,linewidth=0)
     point=params.get('mode')=='reference_point'
     n=params['reference_bins'] if point else 2*params['flank_bins']+params['body_bins']
     u,d=params['upstream_bp'],params['downstream_bp']
-    ax.set(xlim=(0,n),ylim=(0,None),ylabel='Mean coverage (CPM)',title=label)
+    ax.set(xlim=(0,n),ylim=(0,None),ylabel='Mean coverage (CPM)',title='Custom region metaplot')
     if point:
         center=n*u/(u+d)
-        ax.set_xticks([0,center,n],[f'−{u/1000:g} kb','Reference point (0)',f'+{d/1000:g} kb']);ax.axvline(center,color='#7793a6',ls='--',lw=1)
+        ax.set_xticks([0,center,n],[f'−{u/1000:g} kb','Reference point (0)',f'+{d/1000:g} kb'])
     else:
         a,b=params['flank_bins'],params['body_bins']
-        ax.set_xticks([0,a,a+b,n],[f'−{u/1000:g} kb','Region start','Region end',f'+{d/1000:g} kb']);ax.axvspan(a,a+b,color='#7793a6',alpha=.06)
-    ax.spines[['top','right']].set_visible(False)
-    if any(p['eligible_alignments'] for p in profiles.values()):ax.legend(frameon=False)
+        ax.set_xticks([0,a,a+b,n],[f'−{u/1000:g} kb','Region start','Region end',f'+{d/1000:g} kb'])
+    from matplotlib.ticker import MaxNLocator
+    ax.yaxis.set_major_locator(MaxNLocator(nbins=5,steps=[1,2,2.5,5,10],min_n_ticks=3))
+    ax.tick_params(labelsize=11,direction='out')
+    ax.set_title(next(iter(profiles)) if len(profiles)==1 else 'Custom region metaplot',fontsize=14,fontweight='normal',pad=12)
+    ax.yaxis.label.set_size(12)
+    for spine in ax.spines.values():spine.set_color('#202b36');spine.set_linewidth(1)
+    if any(p['eligible_alignments'] for p in profiles.values()):ax.legend(frameon=False,loc='upper center',bbox_to_anchor=(.5,-.16),ncol=min(len(profiles),6),fontsize=10)
     else:ax.text(.5,.5,'No eligible nuclear alignments',ha='center',transform=ax.transAxes)
-    fig.text(.5,.015,'Equal region weights; '+('distance from interval midpoint' if point else 'scaled region bodies')+'; bands = SEM across regions.',ha='center',fontsize=9);fig.tight_layout(rect=(0,.04,1,1))
-    for ext in ['svg','pdf','png']:fig.savefig(Path(path).with_suffix('.'+ext),dpi=180,bbox_inches='tight')
+    fig.subplots_adjust(left=.11,right=.97,bottom=.22,top=.88)
+    for ext in ['svg','pdf','png']:fig.savefig(Path(path).with_suffix('.'+ext),dpi=180,bbox_inches='tight',metadata={'Title':label})
     plt.close(fig)
 
 def report_html(out,sample,reference,sizes,primary,scope_records,scopes,sample_cfg,config_root,mapq):

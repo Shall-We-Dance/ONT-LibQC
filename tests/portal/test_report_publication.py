@@ -114,8 +114,10 @@ class ReportPublicationTests(unittest.TestCase):
             self.assertEqual(response.headers['x-content-type-options'], 'nosniff')
             grant = report_grant(settings.secret, JOB_ID, int(time.time()) + 300)
             page = client.get(f'/reports/{JOB_ID}/samples/{SAMPLE}.html?view={grant}')
-            fresh=re.search(r'view=(\d+\.[a-f0-9]{64})',page.text)[1]
-            self.assertIn(f'{SAMPLE}.custom_regions.pdf?view={fresh}', page.text)
+            links=re.findall(r'(?:href|src)=[\"\'](/r/[A-Za-z0-9_-]{22})',page.text)
+            self.assertTrue(links)
+            self.assertTrue(any(client.get(link).content==PDF for link in links))
+            self.assertNotIn('?view=',page.text)
             self.assertEqual(client.get(url, params={'view': grant}).content, PDF)
             client.cookies.clear()
             wrong_grant = report_grant(settings.secret, 'b' * 32, int(time.time()) + 300)

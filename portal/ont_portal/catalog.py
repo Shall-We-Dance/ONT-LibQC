@@ -84,7 +84,8 @@ class ReferenceMounts:
 def job_config(options,catalog,jobdir,cores):
     from .schema import PARAMS, RANGES
     data=options.model_dump(); ref=copy.deepcopy(catalog['references'][options.reference]); mounts=ReferenceMounts()
-    reference={k:mounts.path(ref[k],prefix=k.endswith('_index')) for k in ('fasta','chrom_sizes','annotation','bowtie2_index','bwa_mem2_index','bwa_index') if ref.get(k)}
+    reference={k:mounts.path(ref[k],prefix=k.endswith('_index')) for k in ('fasta','chrom_sizes','annotation','te_bed','bowtie2_index','bwa_mem2_index','bwa_index') if ref.get(k)}
+    if ref.get('te_source'):reference['te_source']=ref['te_source']
     mapper=resolve_mapper(options.mapper,options.assay,ref)
     reference['microc_mapper']=microc_bwa_mapper(mapper,ref)
     reference.update(assembly=ref.get('assembly',options.reference),primary_chromosomes=options.primary_chromosomes or ref['primary_chromosomes'])

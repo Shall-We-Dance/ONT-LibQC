@@ -69,3 +69,13 @@ Use the generated `catalog.admin.json` when initializing or updating the portal.
 ## Optional screening panels
 
 Host-competitive Mycoplasma and spike-in panels remain operator-configured in the custom source template. A newly prepared genome has these options disabled until a matching panel is provided; the script does not substitute another species' screen.
+
+## TE annotation and genomic-region enrichment
+
+Set the optional operator field `te_bed` to an assembly-matched, TE-only BED (plain or gzip), and `te_source` to its public annotation URL. It is mounted read-only into analysis jobs. Missing TE annotation is reported as unavailable, not zero.
+
+`portal/scripts/prepare_te_annotation.py` converts downloaded UCSC `rmsk` tables or RepeatMasker `.out` files. Supply `--source`, `--format rmsk` or `--format out`, `--sizes`, `--source-sizes`, `--output`, `--assembly` and `--source-url`; GenArk chromosome names may also need `--aliases`. `--primary` supplies the required chromosome list. Chromosome lengths must match the reference. The converter merges TE intervals and includes DNA, LINE, SINE, LTR, RC, Retroposon, PLE and Helitron classes; it excludes simple repeats, satellites, low complexity, RNA and unclassified repeats. A sidecar records source and BED checksums, assembly, included classes and coverage. Sources include [UCSC RepeatMasker tables](https://genome.ucsc.edu/cgi-bin/hgTrackUi?db=hg38&g=rmsk) and the matching accession's [GenArk assembly files](https://hgdownload.soe.ucsc.edu/hubs/).
+
+The three genomic regions retain their existing overlap rule: promoter first, then gene body, then distal. TE overlap is independent, so those reads can also belong to any of the three regions. Each eligible alignment is counted once per category, even when it intersects multiple TE copies.
+
+The displayed background is the exact expected overlap fraction for uniformly placed intervals with the observed chromosome and alignment-span distribution. All valid starts on each chromosome are considered analytically, including chromosome boundaries; no random simulation is used. Enrichment is sample fraction divided by that background. The SVG metadata also retains unweighted genome base coverage fractions. A zero or unavailable denominator yields an unavailable enrichment value. These ratios describe the MAPQ-filtered alignments; they are not IP/input enrichment or significance estimates and do not correct for repeat mappability.

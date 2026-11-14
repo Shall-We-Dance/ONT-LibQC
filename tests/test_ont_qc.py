@@ -135,6 +135,35 @@ class KaryotypeTests(unittest.TestCase):
         self.assertEqual(captured["genes"], "chr1\t0\t100\tgene1\n")
         self.assertEqual(captured["command"][7], "100")
 
+    def test_mitochondrial_chromosome_uses_independent_scale_without_changing_nuclear_bins(self):
+        import xml.etree.ElementTree as ET
+        sizes = {"chr1":1000, "MT":100}
+        records = {"n":dict(chrom="chr1",start=0,end=10,mapq=20),
+                   "m":dict(chrom="MT",start=20,end=30,mapq=60),
+                   "unknown":dict(chrom="MT",start=0,end=10,mapq=255)}
+        captured = {}
+        def fake_run(command, **kwargs):
+            captured["chromosomes"] = Path(command[3]).read_text()
+            Path(command[5]).write_text('<svg xmlns="http://www.w3.org/2000/svg" width="1008" height="720" viewBox="0 0 1008 720"></svg>')
+            return ont_qc.subprocess.CompletedProcess(command,0,"","")
+        with tempfile.TemporaryDirectory() as directory:
+            output=Path(directory)/'plot.svg'
+            with mock.patch.object(ont_qc.subprocess,"run",side_effect=fake_run):
+                ont_qc.write_karyoploter(records,sizes,["chr1"],20,10,"Rscript","plot.R","genes.bed",output,"Library","test",mitochondrial={"MT"})
+            root=ET.fromstring(output.read_text())
+            data=ont_qc.json.loads(root.find('{*}metadata').text)
+        self.assertEqual(captured["chromosomes"].splitlines(),["chromosome\tsize","chr1\t1000"])
+        self.assertEqual(data['coordinate_scale'],'shared')
+        self.assertEqual(data['density_scale'],'shared')
+        self.assertEqual(data['window_size_bp'],100)
+        self.assertNotIn('MT',data['midpoint_counts'])
+        self.assertEqual(root.get('data-chromosome-scales'),'nuclear-shared-mitochondrial-independent')
+        mt=ont_qc.json.loads(root.find("{*}g[@id='mitochondrial-tracks']/{*}metadata").text)
+        self.assertEqual(mt['bin_size_bp'],2)
+        self.assertEqual(sum(mt['midpoint_counts']),1)
+        self.assertEqual(mt['denominator'],2)
+        self.assertEqual(sum(data['midpoint_counts']['chr1']),1)
+
 
 class ReportLayoutTests(unittest.TestCase):
     def test_traffic_overview_is_technical_only(self):

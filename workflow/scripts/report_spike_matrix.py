@@ -1,0 +1,43 @@
+"""Candidate fractions within each resolved sublibrary."""
+import html
+
+SHORT_NAMES = {
+    'Escherichia coli': 'E. coli',
+    'Saccharomyces cerevisiae': 'S. cerevisiae',
+    'Schizosaccharomyces pombe': 'S. pombe',
+    'Drosophila melanogaster': 'D. melanogaster',
+}
+
+
+
+MATRIX_CSS = '\n#spike-screen .spike-matrix-frame{border:1px solid #dce5ef;border-radius:8px;overflow:auto;background:#fff;scrollbar-width:thin;scrollbar-color:#bac7d6 #f6f8fb}\n#spike-screen .spike-matrix{margin:0;border:0;border-collapse:separate;border-spacing:0;border-radius:0;box-shadow:none}\n#spike-screen .spike-matrix th,#spike-screen .spike-matrix td{border:0;border-bottom:1px solid #e8edf3;padding:12px 14px}\n#spike-screen .spike-matrix thead th{background:#f5f7fa;border-bottom:1px solid #dce5ef}\n#spike-screen .spike-matrix tbody th{background:transparent}\n#spike-screen .spike-matrix tr:last-child>*{border-bottom:0}\n#spike-screen .spike-matrix th:first-child{border-right:1px solid #e8edf3}\n#spike-screen .spike-matrix tbody tr:hover>*{background:#f8fafc}\n#spike-screen .spike-matrix-frame:focus-visible{outline:2px solid #5176a5;outline-offset:3px}\n'
+
+
+def spike_matrix_html(screen, sublibraries, sample, note=''):
+    candidates = screen.get('candidates', {})
+    headers = ''.join('<th scope="col" title="'+html.escape(c.get('label', key), quote=True)+'">'+html.escape(SHORT_NAMES.get(c.get('label', key), c.get('label', key)))+'</th>' for key,c in candidates.items())
+    rows = []
+    for lib in sublibraries:
+        n = lib.get('spike_in_screened_reads')
+        counts = lib.get('spike_in_species_counts')
+        cells = []
+        for key,candidate in candidates.items():
+            count = (counts or {}).get(key, 0)
+            if candidate.get('status') == 'HOST_NOT_DISTINGUISHABLE':
+                value, color, tip = 'N/A', 'gray', 'Same species as the host; spike-in cannot be distinguished.'
+            elif not n or counts is None:
+                value, color, tip = 'N/A', 'gray', 'No screened inserts or per-candidate evidence available.'
+            else:
+                percent = count / n * 100
+                value = ('<0.01%' if percent < .01 else f'{percent:.2f}%') if count else '0%'
+                color = 'amber' if count else 'gray'
+                tip = f'{count:,} / {n:,} screened inserts in this sublibrary.'
+            cells.append('<td style="white-space:nowrap;font-variant-numeric:tabular-nums" title="'+html.escape(tip,quote=True)+'"><span class="light '+color+'" aria-hidden="true" style="display:inline-block;margin-right:7px"></span>'+html.escape(value)+'</td>')
+        label = html.escape(str(lib.get('scope_name',lib.get('scope_id',''))))
+        rows.append('<tr><th scope="row" style="width:1%;min-width:76px;max-width:120px;white-space:nowrap">'+label+'</th><td>'+ (f'{n:,}' if n is not None else 'N/A')+'</td>'+''.join(cells)+'</tr>')
+    sample = html.escape(sample,quote=True)
+    return ("<section class='report-section' id='spike-screen'><style>"+MATRIX_CSS+"</style><h2>Spike-in candidate screen</h2>"
+            "<p class='muted'>Percentages are within each sublibrary’s screened inserts. Yellow: signal detected; gray: no signal. N/A: not assessable.</p>"
+            '<div class="table-scroll spike-matrix-frame" tabindex="0" aria-label="Spike-in candidates by sublibrary"><table class="spike-matrix"><thead><tr><th scope="col" style="width:1%;min-width:76px;max-width:120px">Sublibrary</th><th scope="col">Screened inserts</th>'+headers+'</tr></thead><tbody>'+''.join(rows)+'</tbody></table></div>'
+            +note+"<p class='muted'>Candidate signals do not establish intentional spike-in. Zero hits do not establish absence.</p>"
+            +f"<p><a href='../qc/spike_in/{sample}.assignments.tsv.gz'>Per-unit assignments</a> · <a href='../qc/spike_in/{sample}.json'>Screen details</a></p></section>")

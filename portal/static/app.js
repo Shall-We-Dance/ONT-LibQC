@@ -347,9 +347,11 @@ function optionsFor(e) {
     params: Object.fromEntries(Object.entries(e.params).filter(([, i]) => !i.disabled && i.value !== '').map(([k, i]) => [k, Number(i.value)])), qc_reference_ranges,
     ...Object.fromEntries(Object.entries(e.screen).map(([k, i]) => [k, Number(i.value)])) };
 }
-function privateLink(task) { return location.origin + '/jobs/' + task.id + '#' + task.token; }
+let savedBatchLink = null;
+function privateLink(task) { return location.origin + (task.private_link || task.job?.private_link || '/jobs/' + task.id + '#' + task.token); }
 function saveLocation() {
-  if (tasks.length === 1) history.replaceState(null, '', '/jobs/' + tasks[0].id + '#' + tasks[0].token);
+  if (tasks.length === 1) history.replaceState(null, '', privateLink(tasks[0]));
+  else if (savedBatchLink) history.replaceState(null, '', savedBatchLink);
   else history.replaceState(null, '', '/#jobs=' + tasks.map(t => t.id + ':' + t.token).join(','));
 }
 function binaryUploadOnce(task, file, endpoint, onprogress) {
@@ -411,7 +413,7 @@ function taskProgress(task) {
   const percent = Math.round(Math.min(100, Math.max(0, (task.uploading ? task.uploadProgress * 100 : job.progress) || 0)));
   const message = state === 'deleting' ? 'Deletion requested. Report access has been removed.'
     : state === 'queued' ? (job.queue_ahead ? job.queue_ahead + (job.queue_ahead === 1 ? ' analysis ahead' : ' analyses ahead') : 'Waiting to start')
-    : state === 'running' ? 'Processing reads and preparing the report'
+    : state === 'running' ? (job.stage || 'Starting analysis')
     : labels[state] || state;
   return { percent, message, state };
 }
@@ -448,7 +450,7 @@ function taskView(task) {
     card.append(node('p', { class: 'field-note task-expiry' }, 'Available until ', node('time', { datetime: expires.toISOString() }, expires.toLocaleString())));
   }
   actions.append(node('button', { type: 'button', class: 'secondary task-utility copy-private-link', onclick: async event => { try { await navigator.clipboard.writeText(privateLink(task)); event.target.textContent = 'Link copied'; } catch { saveText('ont-libqc-private-link.txt', privateLink(task)); } } }, 'Copy private link'));
-  if (['created', 'uploaded', 'queued', 'running'].includes(job.status) && !task.uploading) actions.append(node('button', { type: 'button', class: 'secondary task-utility', onclick: async () => { try { await api('/api/jobs/' + task.id + '/cancel', 'POST', {}, task.token); await refreshTask(task); } catch (e) { task.failure = e.message; renderTasks(); } } }, 'Cancel analysis'));
+  if (['created', 'uploaded', 'queued', 'running'].includes(job.status) && !task.uploading) actions.append(node('button', { type: 'button', class: 'secondary task-utility cancel-analysis', onclick: async () => { try { await api('/api/jobs/' + task.id + '/cancel', 'POST', {}, task.token); await refreshTask(task); } catch (e) { task.failure = e.message; renderTasks(); } } }, 'Cancel analysis'));
   if (['succeeded', 'failed', 'cancelled'].includes(job.status)) {
     const warning = node('p', { class: 'deletion-warning', id: 'delete-warning-' + task.id, role: 'status', hidden: true }, 'Permanently deletes this report and its files. This cannot be undone.');
     const deleteButton = node('button', { type: 'button', class: 'secondary task-utility delete-report', onclick: async () => {
@@ -487,7 +489,7 @@ function syncChildren(parent, children) {
 }
 function updateTaskView(task) {
   // Progress and timestamps change often; update the bar without rebuilding controls.
-  const { progress, updated, ...job } = task.job || {};
+  const { progress, updated, stage, ...job } = task.job || {};
   const key = JSON.stringify([job, task.name, task.uploading, task.waitingForUpload, task.failure, task.fetchError, task.confirmDelete, task.deleting, task.deletionRequested, catalog?.retention_days]);
   let view = taskViews.get(task);
   if (!view || view.key !== key) {
@@ -532,9 +534,9 @@ function renderTasks() {
   $('tasks-description').textContent = unavailable
     ? 'Reports cannot be restored after deletion. The removal reason is shown below.'
     : (tasks.length && tasks.every(t => t.job?.mail_status === 'disabled') ? 'No email will be sent. ' : '')
-      + (single ? 'Save your private link to return to this analysis.' : 'Save your private links to return to these analyses.');
-  $('save-links').textContent = single ? 'Save private link' : 'Save private links';
-  $('submission-view').hidden = true; $('tasks-view').hidden = false;
+      + (single ? 'Copy your private link to return to this analysis.' : 'Copy one private link to return to these analyses.');
+  $('save-links').textContent = Date.now() < privateLinkCopiedUntil ? 'Link copied' : 'Copy private link';
+  $('page-loading').hidden = true; $('submission-view').hidden = true; $('tasks-view').hidden = false;
   syncChildren($('task-list'), tasks.map(updateTaskView));
 }
 async function refreshTask(task) {
@@ -548,14 +550,37 @@ async function refreshTasks() {
   if (refreshing) return;
   refreshing = true;
   try {
-    for (const task of tasks) {
-      if (Date.now() < retryRequestsAt) break;
-      if (!task.job || !['succeeded', 'expired', 'cancelled', 'failed'].includes(task.job.status) || task.fetchError || (task.job?.status !== 'expired' && (task.deletionRequested || task.job?.deletion_requested || task.job?.expires <= Date.now() / 1000)) || (task.job.status === 'succeeded' && (!task.lastChecked || Date.now() - task.lastChecked > 1200000))) await refreshTask(task);
-    }
+    const pending = tasks.filter(task => !task.job || !['succeeded', 'expired', 'cancelled', 'failed'].includes(task.job.status) || task.fetchError || (task.job?.status !== 'expired' && (task.deletionRequested || task.job?.deletion_requested || task.job?.expires <= Date.now() / 1000)) || (task.job.status === 'succeeded' && (!task.lastChecked || Date.now() - task.lastChecked > 1200000)));
+    // Load a few cards together without overwhelming the API for large batches.
+    await Promise.all(Array.from({length: Math.min(4, pending.length)}, async () => {
+      while (pending.length && Date.now() >= retryRequestsAt) {
+        await refreshTask(pending.shift());
+        renderTasks();
+      }
+    }));
   } finally { refreshing = false; renderTasks(); }
 }
 function saveText(name, text) { const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' })); const a = node('a', { href: url, download: name }); document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
-$('save-links').addEventListener('click', () => saveText(tasks.length === 1 ? 'ont-libqc-private-link.txt' : 'ont-libqc-private-links.txt', tasks.map(t => (t.job?.sample || t.name || t.id) + '\n' + privateLink(t)).join('\n\n')));
+let privateLinkCopiedUntil = 0;
+$('save-links').addEventListener('click', async () => {
+  if (!tasks.length) return;
+  const button = $('save-links');
+  button.disabled = true;
+  try {
+    if (tasks.length > 1 && !savedBatchLink) await compactPrivateLink();
+    const link = savedBatchLink && (tasks.length > 1 || location.pathname === '/b/') ? location.origin + savedBatchLink : tasks.length === 1 ? privateLink(tasks[0]) : location.href;
+    const field = $('private-link-copy');
+    field.value = link;
+    try { await navigator.clipboard.writeText(link); }
+    catch {
+      field.hidden = false; field.focus(); field.select();
+      if (!document.execCommand('copy')) { button.textContent = 'Select and copy link'; return; }
+    }
+    field.hidden = true;
+    privateLinkCopiedUntil = Date.now() + 3000;
+    button.textContent = 'Link copied';
+  } finally { button.disabled = false; }
+});
 $('data-policy').checked = false;
 $('data-policy').addEventListener('change', updateCount);
 window.addEventListener('pageshow', event => {
@@ -582,7 +607,8 @@ $('submission-form').addEventListener('submit', async event => {
       email: $('email').value.trim(), filename: entry.file.name, size: entry.file.size, options,
       consent: $('consent').checked, data_policy_acknowledged: $('data-policy').checked, submission_key: $('submission-code').value, website: $('website').value
     })) });
-    tasks = batch.jobs.map((job, i) => ({ id: job.id, token: job.token, name: entries[i].options.sample,
+    savedBatchLink = batch.jobs[0]?.batch_link || null;
+    tasks = batch.jobs.map((job, i) => ({ id: job.id, token: job.token, private_link: job.private_link, name: entries[i].options.sample,
       uploadProgress: 0, job: { ...job, ...entries[i].options, filename: entries[i].entry.file.name } }));
     saveLocation(); renderTasks();
     for (let i = 0; i < entries.length; i++) {
@@ -635,7 +661,44 @@ async function loadExample(id) {
     status.textContent = error.name === 'AbortError' ? 'The example download timed out. Please try again.' : error.message;
   } finally { clearTimeout(timer); loadingExample = false; updateCount(); }
 }
+async function compactPrivateLink() {
+  try {
+    const result = await api('/api/links/compact', 'POST', {jobs: tasks.map(({id, token}) => ({id, token}))});
+    for (const task of tasks) task.private_link = result.jobs.find(job => job.id === task.id)?.private_link;
+    savedBatchLink = tasks.length > 1 ? result.private_link : null;
+    saveLocation();
+  } catch { /* An unavailable converter must not prevent access via a legacy link. */ }
+}
 async function init() {
+  const single = location.pathname.match(/^\/jobs\/([0-9a-f]{32})$/);
+  const compact = ['/j/', '/b/'].includes(location.pathname);
+  const legacyBatch = location.hash.startsWith('#jobs=');
+  if (single || compact || legacyBatch) {
+    $('new-nav').removeAttribute('aria-current');
+    $('page-loading').querySelector('h1').textContent = 'Loading analyses…';
+    $('page-loading').querySelector('p').textContent = 'Opening your private results.';
+    try {
+      if (compact) {
+        const result = await api('/api/links/resolve', 'POST', {key: location.hash.slice(1)});
+        tasks = result.jobs;
+        if (location.pathname === '/b/') savedBatchLink = location.pathname + location.hash;
+      } else if (single && /^[0-9a-f]{64}$/.test(location.hash.slice(1))) {
+        tasks = [{id: single[1], token: location.hash.slice(1)}];
+      } else if (legacyBatch) {
+        tasks = location.hash.slice(6).split(',').slice(0, 64).map(t => t.split(':')).filter(([id, token]) => /^[0-9a-f]{32}$/.test(id) && /^[0-9a-f]{64}$/.test(token)).map(([id, token]) => ({id, token}));
+      }
+      if (!tasks.length) throw Error('This task needs its complete private link, including the part after #.');
+      renderTasks();
+      await Promise.all([refreshTasks(), compact ? Promise.resolve() : compactPrivateLink()]);
+    } catch (e) {
+      $('page-loading').hidden = true;
+      showError('Cannot open these analyses. ' + e.message, 'global-error');
+    }
+    return;
+  }
+  $('page-loading').hidden = true;
+  $('submission-view').hidden = false;
+  $('new-nav').setAttribute('aria-current', 'page');
   try {
     catalog = await api('/api/catalog');
     $('upload-limit').textContent = 'FASTQ / FASTQ.gz · ' + bytes(catalog.max_upload_bytes) + ' per file · up to ' + catalog.max_files + ' files';
@@ -645,15 +708,9 @@ async function init() {
     $('email-note').textContent = catalog.mail_enabled ? 'Receive one summary when all files finish, or leave blank and use your private task links.' : 'Email delivery is not enabled on this server. Leave this blank and save your private task links to collect the reports here.';
     $('privacy-delivery-note').textContent = catalog.mail_enabled ? 'Save your private task links before leaving. If you provide an email, we’ll also send them when all files finish.' : 'Save your task links before leaving. Without email delivery, lost links cannot be recovered here.';
     $('code-field').hidden = !catalog.submission_key_required; $('submission-code').required = catalog.submission_key_required;
-    const single = location.pathname.match(/^\/jobs\/([0-9a-f]{32})$/);
-    if (single) $('new-nav').removeAttribute('aria-current');
-    if (single && /^[0-9a-f]{64}$/.test(location.hash.slice(1))) tasks = [{ id: single[1], token: location.hash.slice(1) }];
-    else if (location.hash.startsWith('#jobs=')) tasks = location.hash.slice(6).split(',').slice(0, 64).map(t => t.split(':')).filter(([id, token]) => /^[0-9a-f]{32}$/.test(id) && /^[0-9a-f]{64}$/.test(token)).map(([id, token]) => ({ id, token }));
-    if (single && !tasks.length) { $('submission-view').hidden = true; showError(new URLSearchParams(location.search).has('report') ? 'This report link has expired or is incomplete. Reopen the complete private task link from your email or saved links to view or download your report.' : 'This task needs its complete private link, including the part after #.', 'global-error'); }
-    if (tasks.length) { renderTasks(); await refreshTasks(); }
     updateCount();
     const example = new URLSearchParams(location.search).get('example');
-    if (example && location.pathname === '/' && !tasks.length) {
+    if (example && location.pathname === '/') {
       const clean = new URL(location.href); clean.searchParams.delete('example');
       history.replaceState(null, '', clean.pathname + clean.search + clean.hash);
       await loadExample(example);
@@ -671,3 +728,71 @@ async function pollTasks() {
 }
 setTimeout(pollTasks, 10000);
 init();
+
+function drawJobHistory(history, total) {
+  const container = $('jobs-history-chart');
+  if (!history.length) { container.replaceChildren(node('p', {}, 'No jobs yet.')); return; }
+  const day = 86400000;
+  const values = history.map(point => ({time: Date.parse(point.date + 'T00:00:00Z'), total: point.total}));
+  const start = values[0].time - day;
+  const end = Math.max(values.at(-1).time, Math.floor(Date.now() / day) * day);
+  const left = 34, right = 306, top = 12, bottom = 136;
+  const max = Math.max(1, total);
+  const x = time => left + (time - start) / (end - start) * (right - left);
+  const y = count => bottom - count / max * (bottom - top);
+  const svgNode = (tag, attrs, text) => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, value);
+    if (text !== undefined) el.textContent = text;
+    return el;
+  };
+  const svg = svgNode('svg', {viewBox: '0 0 324 166', role: 'img', 'aria-label': 'Cumulative jobs by date (UTC), ' + total.toLocaleString() + ' total jobs'});
+  const dateLabel = time => new Date(time).toLocaleDateString(undefined, {month: 'short', day: 'numeric', year: '2-digit', timeZone: 'UTC'});
+  svg.append(svgNode('title', {}, 'Cumulative jobs · ' + dateLabel(start) + ' – ' + dateLabel(end)));
+  for (const count of [...new Set([0, Math.round(max / 2), max])]) {
+    svg.append(svgNode('line', {x1: left, y1: y(count), x2: right, y2: y(count), class: 'history-grid'}));
+    svg.append(svgNode('text', {x: left - 6, y: y(count) + 4, 'text-anchor': 'end'}, count.toLocaleString()));
+  }
+  // Steps preserve zero-growth intervals instead of inventing intermediate jobs.
+  let path = `M ${left} ${bottom}`;
+  for (const point of values) path += ` H ${x(point.time)} V ${y(point.total)}`;
+  path += ` H ${right}`;
+  svg.append(svgNode('path', {d: path + ` V ${bottom} H ${left} Z`, class: 'history-area'}));
+  svg.append(svgNode('path', {d: path, class: 'history-line'}));
+  svg.append(svgNode('text', {x: left, y: 158}, dateLabel(start)));
+  svg.append(svgNode('text', {x: right, y: 158, 'text-anchor': 'end'}, dateLabel(end)));
+  container.replaceChildren(svg);
+}
+const serverStatus = $('server-status');
+// Keep the native summary keyboard behavior while making the popover easy to dismiss.
+document.addEventListener('click', event => {
+  if (serverStatus.open && !serverStatus.contains(event.target)) serverStatus.open = false;
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && serverStatus.open) {
+    serverStatus.open = false;
+    serverStatus.querySelector('summary').focus();
+  }
+});
+async function refreshServerStatus() {
+  const keys = ['running', 'queued', 'total'];
+  try {
+    const response = await fetch('/api/statistics', {credentials: 'omit', cache: 'no-store'});
+    if (!response.ok) throw new Error('Status unavailable');
+    const data = await response.json();
+    if (keys.some(key => !Number.isSafeInteger(data[key]) || data[key] < 0)) throw new Error('Invalid counts');
+    if (!Array.isArray(data.history) || data.history.some((point, i) =>
+      !/^\d{4}-\d{2}-\d{2}$/.test(point.date) || !Number.isFinite(Date.parse(point.date)) ||
+      !Number.isSafeInteger(point.total) || point.total <= 0 ||
+      (i && (point.date <= data.history[i - 1].date || point.total <= data.history[i - 1].total))) ||
+      (data.history.at(-1)?.total || 0) !== data.total) throw new Error('Invalid history');
+    for (const key of keys) $('jobs-' + key).textContent = data[key].toLocaleString();
+    drawJobHistory(data.history, data.total);
+  } catch {
+    for (const key of keys) $('jobs-' + key).textContent = '—';
+    $('jobs-history-chart').replaceChildren(node('p', {}, 'History is temporarily unavailable.'));
+  }
+  $('jobs-queued-mobile').textContent = $('jobs-queued').textContent;
+  setTimeout(refreshServerStatus, document.hidden ? 60000 : 15000);
+}
+refreshServerStatus();

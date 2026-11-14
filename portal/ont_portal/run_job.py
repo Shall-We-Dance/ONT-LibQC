@@ -40,7 +40,11 @@ def normalize_bed(source,dest,sizes):
         for n,line in enumerate(Path(source).read_text(encoding='ascii').splitlines(),1):
             if not line.strip() or line.startswith(('#','track','browser')):continue
             f=line.split()
-            if len(f)<3 or f[0] not in chromosomes: raise InputError(f'BED line {n} has an unknown chromosome or missing columns.')
+            if len(f)<3: raise InputError(f'BED line {n} has an unknown chromosome or missing columns.')
+            if f[0] not in chromosomes:
+                alternate=f[0][3:] if f[0].startswith('chr') else 'chr'+f[0]
+                if alternate not in chromosomes: raise InputError(f'BED line {n} has an unknown chromosome or missing columns.')
+                f[0]=alternate
             start,end=int(f[1]),int(f[2])
             if not 0<=start<end<=chromosomes[f[0]]: raise InputError(f'BED line {n} is outside the selected reference coordinates.')
             strand=f[5] if len(f)>5 and f[5] in {'+','-'} else '+'

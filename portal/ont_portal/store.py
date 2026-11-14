@@ -53,6 +53,26 @@ class Store:
             if 'batch_id' not in {r['name'] for r in c.execute('PRAGMA table_info(jobs)')}:
                 c.execute('ALTER TABLE jobs ADD COLUMN batch_id TEXT')
             c.execute('CREATE INDEX IF NOT EXISTS jobs_batch ON jobs(batch_id)')
+            columns = {r['name'] for r in c.execute('PRAGMA table_info(jobs)')}
+            for name in ('short_link_hash', 'outcome', 'stage'):
+                if name not in columns: c.execute('ALTER TABLE jobs ADD COLUMN ' + name + ' TEXT')
+            c.execute('CREATE UNIQUE INDEX IF NOT EXISTS jobs_short_link ON jobs(short_link_hash)')
+            c.execute('CREATE TABLE IF NOT EXISTS batch_links (batch_id TEXT PRIMARY KEY, key_hash TEXT UNIQUE NOT NULL)')
+            c.execute('CREATE TABLE IF NOT EXISTS saved_links (key_hash TEXT PRIMARY KEY, job_ids TEXT NOT NULL)')
+            c.execute('CREATE TABLE IF NOT EXISTS report_links (key_hash TEXT PRIMARY KEY, job_id TEXT NOT NULL, file TEXT NOT NULL, expires INTEGER NOT NULL)')
+            c.execute('CREATE INDEX IF NOT EXISTS report_links_job ON report_links(job_id)')
+            c.execute('CREATE INDEX IF NOT EXISTS report_links_expires ON report_links(expires)')
+            c.execute("""CREATE TRIGGER IF NOT EXISTS report_links_cleanup AFTER UPDATE OF status,expires ON jobs
+                WHEN NEW.status='expired' OR NEW.expires<=strftime('%s','now')
+                BEGIN DELETE FROM report_links WHERE job_id=NEW.id; END""")
+            c.execute("UPDATE jobs SET outcome=status WHERE outcome IS NULL AND status IN ('succeeded','failed','cancelled')")
+            # Preserve anonymous outcome counts when retention erases task metadata.
+            c.execute("""CREATE TRIGGER IF NOT EXISTS jobs_outcome_update AFTER UPDATE OF status ON jobs
+                WHEN NEW.status IN ('succeeded','failed','cancelled')
+                BEGIN UPDATE jobs SET outcome=NEW.status WHERE id=NEW.id; END""")
+            c.execute("""CREATE TRIGGER IF NOT EXISTS jobs_outcome_insert AFTER INSERT ON jobs
+                WHEN NEW.status IN ('succeeded','failed','cancelled')
+                BEGIN UPDATE jobs SET outcome=NEW.status WHERE id=NEW.id; END""")
         self.db.chmod(0o600)
 
     @contextmanager
@@ -72,7 +92,7 @@ class Store:
             return dict(row) if row else None
 
     def update(self,job_id,**fields):
-        allowed={'status','updated','error','progress','received_bytes','mail_status','mail_attempts','mail_updated','bed_ready','expires','email','options','client','filename','expected_bytes'}
+        allowed={'status','updated','error','progress','stage','received_bytes','mail_status','mail_attempts','mail_updated','bed_ready','expires','email','options','client','filename','expected_bytes'}
         if not fields.keys() <= allowed: raise ValueError('Invalid database column')
         fields['updated']=time.time()
         with self.connect() as c:
@@ -82,6 +102,22 @@ class Store:
         with self.connect(immediate=True) as c:
             result=c.execute('UPDATE jobs SET status=?,updated=? WHERE id=? AND status=?',(new,time.time(),job_id,old))
             return result.rowcount==1
+
+    def statistics(self):
+        # Daily UTC aggregates only; retain no per-job timestamps in this response.
+        with self.connect() as c:
+            c.execute('BEGIN')  # Totals and history must describe the same snapshot.
+            row = c.execute("""SELECT COUNT(*) AS total,
+                COALESCE(SUM(status IN ('running','cancelling')),0) AS running,
+                COALESCE(SUM(status='queued'),0) AS queued
+                FROM jobs""").fetchone()
+            days = c.execute("SELECT date(created,'unixepoch') AS day, COUNT(*) AS count FROM jobs GROUP BY day ORDER BY day").fetchall()
+        cumulative = 0
+        history = []
+        for day in days:
+            cumulative += day['count']
+            history.append({'date': day['day'], 'total': cumulative})
+        return {key: int(row[key]) for key in row.keys()} | {'history': history}
 
     def heartbeat(self):
         with self.connect() as c:

@@ -112,6 +112,17 @@ class ReportExportTests(unittest.TestCase):
             self.assertEqual(after.identified(identifier)[0]['text'],
                              before.identified(identifier)[0]['text'])
 
+    def test_refresh_replaces_export_assets_without_losing_report_data(self):
+        original = add_pdf_export(self.document())
+        stale = original.replace('Overview</option>', 'Old overview</option>')
+        refreshed = add_pdf_export(stale, refresh=True)
+        self.assertEqual(refreshed, original)
+        self.assertEqual(add_pdf_export(refreshed, refresh=True), refreshed)
+        parsed = ReportMarkup(refreshed)
+        self.assertEqual(len(parsed.identified('report-export-content')), 1)
+        for fragment in (self.SAMPLE, self.METRICS, self.METRIC_SCRIPTS):
+            self.assertIn(fragment, refreshed)
+
     def test_hero_class_accepts_both_quote_styles_and_multiple_classes(self):
         for quote in ('"', "'"):
             hero = f'<header data-sample="example" class={quote}wide report-hero compact{quote}>'

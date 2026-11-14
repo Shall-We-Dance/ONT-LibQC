@@ -22,11 +22,20 @@
 <meta name="twitter:description" content="Chromatin, Micro-C and RNA/CLIP beta QC from ONT library reads.">
 <meta name="twitter:image" content="https://ontlibqc.org/static/social-card.png">
 <meta name="twitter:image:alt" content="ONT-LibQC logo">
-<meta name="theme-color" content="#2b5689"><link rel="icon" href="/favicon.ico?v=5" sizes="any"><link rel="icon" href="/static/favicon-32.png?v=5" type="image/png" sizes="32x32"><link rel="icon" href="/static/mark.svg?v=5" type="image/svg+xml" sizes="any"><link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v=5" sizes="180x180"><link rel="stylesheet" href="/static/style.css?v=45"><script src="/static/library-structure.js?v=7" defer></script><script src="/static/app.js?v=41" defer></script></head>
+<meta name="theme-color" content="#2b5689"><link rel="icon" href="/favicon.ico?v=5" sizes="any"><link rel="icon" href="/static/favicon-32.png?v=5" type="image/png" sizes="32x32"><link rel="icon" href="/static/mark.svg?v=5" type="image/svg+xml" sizes="any"><link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v=5" sizes="180x180"><link rel="stylesheet" href="/static/style.css?v=55"><script src="/static/library-structure.js?v=7" defer></script><script src="/static/app.js?v=45" defer></script></head>
 <body>
-<header class="topbar"><a class="brand" href="/"><img src="/static/mark.svg" width="34" height="34" alt=""><span>ONT<span class="brand-light">-LibQC</span></span></a><nav aria-label="Main navigation"><a href="/" id="new-nav" aria-current="page">New analysis</a><a href="/example/index.html">Example reports</a><a href="/help">Help</a><a href="https://github.com/Shall-We-Dance/ONT-LibQC" target="_blank" rel="noopener noreferrer" aria-label="GitHub repository (opens in a new tab)">GitHub <span aria-hidden="true">↗</span></a></nav><a class="lab-button" href="https://jongminkimlab.org/" target="_blank" rel="noopener noreferrer" aria-label="Jongmin Kim Lab (opens in a new tab)"><span class="lab-name-long">Jongmin Kim Lab</span><span class="lab-name-short" aria-hidden="true">Kim Lab</span><span aria-hidden="true">↗</span></a></header>
+<header class="topbar portal-topbar">
+<a class="brand" href="/"><img src="/static/mark.svg" width="34" height="34" alt=""><span>ONT<span class="brand-light">-LibQC</span></span></a>
+<nav aria-label="Main navigation"><a href="/" id="new-nav">New analysis</a><a href="/example/index.html">Example reports</a><a href="/help">Help</a><a href="https://github.com/Shall-We-Dance/ONT-LibQC" target="_blank" rel="noopener noreferrer" aria-label="GitHub repository (opens in a new tab)">GitHub <span aria-hidden="true">↗</span></a></nav>
+<div class="topbar-actions">
+<details id="server-status" class="server-status"><summary aria-label="Server status and job history"><span class="server-counts"><span>Jobs running: <strong id="jobs-running">—</strong></span><span>Jobs queued: <strong id="jobs-queued">—</strong></span></span><svg class="status-chevron" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></summary><div class="job-history"><div class="job-history-queued"><span>Jobs queued</span><strong id="jobs-queued-mobile">—</strong></div><div class="job-history-total"><span>Total jobs</span><strong id="jobs-total">—</strong></div><div id="jobs-history-chart" class="jobs-history-chart" aria-live="polite"><p>Loading history…</p></div></div></details>
+<a class="lab-button" href="https://jongminkimlab.org/" target="_blank" rel="noopener noreferrer" aria-label="Jongmin Kim Lab (opens in a new tab)"><span class="lab-name-long">Jongmin Kim Lab</span><span class="lab-name-short" aria-hidden="true">Kim Lab</span><span aria-hidden="true">↗</span></a>
+</div>
+</header>
 <main>
-<section id="submission-view">
+<section id="page-loading" class="page-loading" role="status"><h1>Loading…</h1><p>Please wait while this page opens.</p></section>
+<noscript><p>Enable JavaScript to open your analysis or submit a file.</p></noscript>
+<section id="submission-view" hidden>
 <div class="page-heading"><h1>Library QC from ONT reads</h1><p>Upload FASTQ files and set up each library.</p></div>
 <div class="workspace"><form id="submission-form" class="main-column">
 <section class="panel upload-panel"><div class="section-heading"><span class="step">01</span><h2>Your ONT files</h2><span id="file-count" class="muted">0 files</span></div>
@@ -54,13 +63,14 @@
 <p class="preprint-authors">Hongjiang Liu &amp; Jongmin J. Kim</p>
 <div class="preprint-links"><a class="preprint-read" href="https://doi.org/10.64898/2026.10.19.760194" target="_blank" rel="noopener noreferrer" aria-label="Read the preprint on bioRxiv (opens in a new tab)">Read on bioRxiv <span aria-hidden="true">↗</span></a><a class="preprint-cite" href="/help#cite">Citation</a></div>
 </section>
-<section class="privacy-panel"><h3>Access & retention</h3><p>Reports require your private task link. Uploaded reads and calculation files are removed after processing. Reports are kept for <strong id="retention">7 days</strong>, then deleted automatically.</p><p id="privacy-delivery-note" class="field-note">Save your private task links before leaving.</p></section></aside></div>
+<section class="privacy-panel"><h3>Access & retention</h3><p>Reports require your private task link. Uploaded reads and calculation files are removed after processing. Reports are kept for <strong id="retention">30 days</strong>, then deleted automatically.</p><p id="privacy-delivery-note" class="field-note">Save your private task links before leaving.</p></section></aside></div>
 </section>
 <section id="tasks-view" hidden>
 <div class="tasks-heading">
-<h1 id="tasks-title">Analysis</h1><button type="button" class="secondary" id="save-links">Save private links</button>
+<h1 id="tasks-title">Analysis</h1><button type="button" class="secondary" id="save-links">Copy private link</button>
 <p id="tasks-summary" class="tasks-summary" role="status" hidden></p>
-<p id="tasks-description">Save your private link to return to this analysis.</p>
+<p id="tasks-description">Copy your private link to return to this analysis.</p>
+<input id="private-link-copy" type="text" readonly hidden aria-label="Private link; select and copy" autocomplete="off">
 </div>
 <div id="task-list" class="task-list" aria-live="polite"></div>
 <p class="field-note tasks-privacy">Anyone with a private link can access that task. Share it only with people you trust.</p>
