@@ -24,7 +24,6 @@ from qc_reference_guide import context as reference_context, reference_notes_htm
 from library_structure import normalize_structure, umi_lengths, handles, extract_umis, adapter_families, POSITIONS as UMI_POSITIONS
 from report_library_structure import family_label
 from report_brand import brand_bar, copy_mark, favicon
-from report_mitochondrial import coverage_html as mitochondrial_coverage_html, integrate_karyotype
 from report_export import add_pdf_export
 from report_provenance import capture_analysis, analysis_record, analysis_label
 from report_regions import region_counts as annotation_region_counts, svg_region_bars, load_te_bed, prepare_background
@@ -807,9 +806,9 @@ def interval_overlaps(intervals, start, end):
 
 
 def write_karyoploter(records, chrom_sizes, chromosome_names, mapq, bins_per_longest,
-                      rscript, script, genes_bed, output, title, assembly, gene_window_bp=250000):
-    """Render MAPQ-pass primary alignments with Bioconductor karyoploteR."""
-    names = [name for name in chromosome_names if name in chrom_sizes]
+                      rscript, script, genes_bed, output, title, assembly, gene_window_bp=250000, mitochondrial=()):
+    """Render nuclear and mitochondrial chromosomes on the same karyoploteR scales."""
+    names = list(dict.fromkeys(name for name in [*chromosome_names, *sorted(mitochondrial)] if name in chrom_sizes))
     if not names:
         raise ValueError("Karyotype plotting requires at least one configured chromosome")
     longest = max(chrom_sizes[name] for name in names)
@@ -817,7 +816,7 @@ def write_karyoploter(records, chrom_sizes, chromosome_names, mapq, bins_per_lon
     eligible = []
     name_set = set(names)
     for record in records.values():
-        if record["chrom"] not in name_set or record["mapq"] < mapq:
+        if record["chrom"] not in name_set or not mapq <= record["mapq"] < 255:
             continue
         midpoint = min(chrom_sizes[record["chrom"]],
                        max(1, (record["start"] + record["end"]) // 2 + 1))
@@ -840,6 +839,16 @@ def write_karyoploter(records, chrom_sizes, chromosome_names, mapq, bins_per_lon
             raise RuntimeError(f"karyoploteR failed for {title}: {detail}")
     if not Path(output).exists():
         raise RuntimeError(f"karyoploteR did not create {output}")
+    counts = {name: [0] * math.ceil(chrom_sizes[name] / window_size) for name in names}
+    for chromosome, position in eligible:
+        counts[chromosome][(position - 1) // window_size] += 1
+    metadata = {"coordinate_scale": "shared", "density_scale": "shared", "window_size_bp": window_size,
+                "chromosome_lengths": {name: chrom_sizes[name] for name in names},
+                "midpoint_counts": counts, "mapq": mapq}
+    svg = Path(output).read_text()
+    svg = svg.replace('<svg', '<svg data-chromosome-scales="shared"', 1)
+    svg = svg.replace('</svg>', '<metadata id="chromosome-coverage">' + html.escape(json.dumps(metadata)) + '</metadata></svg>')
+    Path(output).write_text(svg)
     return {"mapped_reads": len(eligible), "window_size_bp": window_size}
 
 def bin_stats(records, sizes, bin_size):
@@ -2407,9 +2416,8 @@ def cmd_report(args):
                     karyotype_bins, report_rscript, karyotype_script, report_gene_bed,
                     karyotype_asset, f"{label}: gene and mapped-read density",
                     metric.get("reference_assembly", "custom genome"),
-                    gene_window_bp=int(report_params.get("karyotype_gene_window_bp", 250000)))
-            mitochondrial_panel = mitochondrial_coverage_html(scope_records.get(scope_id, {}), report_chrom_sizes, report_mito, report_mapq, scope, report_primary)
-            karyotype_asset.write_text(integrate_karyotype(karyotype_asset.read_text(), mitochondrial_panel))
+                    gene_window_bp=int(report_params.get("karyotype_gene_window_bp", 250000)),
+                    mitochondrial=report_mito)
             profile_sections.append(profile_scope_html(label, raw_asset.name, insert_asset.name,
                                                        region_asset.name if metric["assay"] == "chromatin" else None, karyotype_asset.name,
                                                        gene_profile_assets[scope_id].name if scope_id in gene_profile_assets else None,
