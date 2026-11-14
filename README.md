@@ -14,7 +14,7 @@ ONT-LibQC checks completed **Chromatin and Micro-C libraries**, with **RNA-seq a
 
 Upload FASTQ files at **[ontlibqc.org](https://ontlibqc.org)**, then choose a reference and assay for each library. Email is optional; save the private task link to return to your results. The server accepts up to 16 files per batch, 50 MB each, and keeps reports for 30 days. Do not submit patient data or other sensitive personal data.
 
-Library structure is detected automatically. Use **Customize** for fixed-length UMIs or custom adapters. [Help](https://ontlibqc.org/help) covers settings, input limits and result interpretation.
+Library structure is detected automatically for single- and dual-index libraries, including the overlapping P5/Read-1 junction in TruSeq single-index adapters. An undetected index end remains unknown rather than being treated as absent. Use **Customize** for fixed-length UMIs or custom adapters. [Help](https://ontlibqc.org/help) covers settings, input limits and result interpretation.
 
 | Example | Reference | Report contents |
 | --- | --- | --- |

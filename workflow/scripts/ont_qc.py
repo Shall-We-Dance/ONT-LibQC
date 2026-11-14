@@ -218,6 +218,38 @@ def nearest_after(hits, coordinate, max_gap=18):
     return min(valid, key=lambda h: h["start"]) if valid else None
 
 
+def single_index_p5_hit(seq, unit, structure):
+    """Recognize the overlapping P5/Read-1 junction of TruSeq LT libraries.
+
+    Illumina's single-index universal adapter shares ACAC between P5 and
+    Read-1; dual-index adapters instead contain P5 + i5 + Read-1. Missing P5
+    alone is never evidence for an absent i5.
+    https://support-docs.illumina.com/SHARE/AdapterSequences/Content/SingleIndexes.htm
+    """
+    if (unit['family'] != 'truseq' or structure['p5_sequence']
+            or structure['adapter_i5_sequence'] or structure['i5_length'] not in (None, 0)
+            or any(u['position'] in ('before_i5', 'after_i5') for u in structure['umis'])):
+        return None
+    reverse = unit['orientation'] == 'p7_to_p5'
+    oriented = rc(seq) if reverse else seq
+    anchor = len(seq) - unit['right']['end'] if reverse else unit['left']['start']
+    prefix = P5[:-4]
+    lo, hi = max(0, anchor - len(prefix) - 3), anchor + len(TRU_R1) + 3
+    matches = approximate_matches(oriented[lo:hi], prefix + TRU_R1, .12)
+    for hit in sorted(matches, key=lambda h: h['edits']):
+        start, end = lo + hit['start'], lo + hit['end']
+        if (abs(anchor - start - len(prefix)) > 2
+                or abs(end - anchor - len(TRU_R1)) > 3
+                or edit_distance(prefix, oriented[start:anchor], 3) > 3):
+            continue
+        # Save the physical overlap explicitly for the library-length model.
+        a, b = start, anchor + 4
+        return dict(start=len(seq)-b if reverse else a,
+                    end=len(seq)-a if reverse else b,
+                    edits=hit['edits'], identity=hit['identity'])
+    return None
+
+
 def add_indexes(seq, units, structure=None):
     structure = structure or normalize_structure()
     p5, p7_forward = handles(structure)
@@ -250,7 +282,15 @@ def add_indexes(seq, units, structure=None):
                 i5_obs = seq[right["end"]:p5_hit["start"]]
             i5 = rc(i5_obs) if i5_obs is not None else None
             i7 = rc(i7_obs) if i7_obs is not None else None
-        unit.update({"p5_hit": p5_hit, "p7_hit": p7_hit,
+        overlap = 0 if p5_hit is not None else None
+        if p5_hit is None:
+            single_hit = single_index_p5_hit(seq, unit, structure)
+            if single_hit is not None:
+                p5_hit = single_hit
+                i5 = i5_obs = ""
+                overlap = 4
+        unit.update({"p5_adapter_overlap": overlap,
+                     "p5_hit": p5_hit, "p7_hit": p7_hit,
                      "i5_observed": i5_obs, "i7_observed": i7_obs,
                      "i5": i5, "i7": i7})
 
@@ -320,6 +360,8 @@ def parse_expected_index_pairs(text):
 def index_close(observed, expected, maximum_edit=1):
     if observed is None:
         return True
+    if (observed == "") != (expected == ""):
+        return False
     if abs(len(observed) - len(expected)) > maximum_edit:
         return False
     return edit_distance(observed, expected, maximum_edit) <= maximum_edit
@@ -334,6 +376,8 @@ def index_pair_distance(left, right, maximum_edit=1):
     """
     total = 0
     for key in ("i5", "i7"):
+        if (left[key] == "") != (right[key] == ""):
+            return maximum_edit + 1
         remaining = maximum_edit - total
         total += edit_distance(left[key], right[key], remaining)
         if total > maximum_edit:
@@ -401,11 +445,16 @@ def cluster_index_pairs(units, single_fraction=.90, minimum_informative=20,
     for unit in units:
         candidates = []
         for seed in seeds:
-            if (not unit["p5_detected"] or index_close(unit["i5"], seed["i5"], variant_max_edit)) and \
-               (not unit["p7_detected"] or index_close(unit["i7"], seed["i7"], variant_max_edit)):
-                d5 = 0 if not unit["p5_detected"] else edit_distance(unit["i5"], seed["i5"], variant_max_edit)
-                d7 = 0 if not unit["p7_detected"] else edit_distance(unit["i7"], seed["i7"], variant_max_edit)
-                candidates.append((d5 + d7, seed))
+            observed = {key: unit[key] for key, handle in (("i5", "p5_detected"), ("i7", "p7_detected"))
+                        if unit[handle] and unit[key] is not None}
+            # Neither unknown ends nor an unindexed end identify a sublibrary.
+            if not any(value and seed[key] for key, value in observed.items()):
+                if not (seed['i5'] == seed['i7'] == '' and len(observed) == 2):
+                    continue
+            if all(index_close(value, seed[key], variant_max_edit) for key, value in observed.items()):
+                distance = sum(edit_distance(value, seed[key], variant_max_edit)
+                               for key, value in observed.items())
+                candidates.append((distance, seed))
         status, assigned = "unassigned", None
         if candidates:
             best_distance = min(x[0] for x in candidates)
@@ -419,7 +468,8 @@ def cluster_index_pairs(units, single_fraction=.90, minimum_informative=20,
             unassigned += status == "unassigned"
         else:
             assigned["unit_ids"].append(unit["unit_id"])
-            assigned["informative_support"] += int(unit["p5_detected"] and unit["p7_detected"])
+            assigned["informative_support"] += int(unit["p5_detected"] and unit["p7_detected"]
+                                                   and unit["i5"] is not None and unit["i7"] is not None)
             assigned["mappable_units"] += int(not unit["is_adapter_dimer"])
             assigned["adapter_dimer_units"] += int(unit["is_adapter_dimer"])
             assigned["raw_read_ids"].add(unit["read_id"])
@@ -444,8 +494,13 @@ def cluster_index_pairs(units, single_fraction=.90, minimum_informative=20,
     else:
         mode = "mixed_or_unresolved"
     public_pairs = []
+    by_id = {u['unit_id']: u for u in units}
     for seed in seeds:
+        overlaps = collections.Counter(by_id[uid].get('p5_adapter_overlap') for uid in seed['unit_ids']
+                                       if by_id[uid].get('p5_adapter_overlap') is not None)
         public_pairs.append({
+            "index_architecture": index_architecture(seed['i5'], seed['i7']),
+            "p5_adapter_overlap": overlaps.most_common(1)[0][0] if overlaps else 0,
             "scope_id": seed["scope_id"], "name": seed["name"], "i5": seed["i5"], "i7": seed["i7"],
             "support_units": len(seed["unit_ids"]), "informative_support": seed["informative_support"],
             "support_fraction": seed["informative_support"] / informative_n if informative_n else None,
@@ -467,9 +522,21 @@ def cluster_index_pairs(units, single_fraction=.90, minimum_informative=20,
               "sequence_orientation": "physical P5-side i5 / P7-side i7, normalized P5-to-P7"}
     return result, assignments
 
-def zero_insert_template(family, i5, i7, structure=None):
+def index_architecture(i5, i7):
+    if i5 is None or i7 is None:
+        return 'partial_or_custom'
+    if i5 == '' and i7:
+        return 'classic_single_index'
+    if i7 == '' and i5:
+        return 'i5_single_index'
+    return 'physical_dual_index' if i5 and i7 else 'unindexed'
+
+
+def zero_insert_template(family, i5, i7, structure=None, p5_adapter_overlap=0):
     r1, r2 = adapter_families(structure, FAMILIES)[family]
     p5, p7 = handles(structure or normalize_structure())
+    if p5_adapter_overlap == 4 and family == 'truseq' and i5 == '' and p5 == P5:
+        p5 = p5[:-4]
     return p5 + (i5 or "") + r1 + rc(r2) + (i7 or "") + p7
 
 
@@ -542,6 +609,7 @@ def cmd_prepare(args):
                 "insert_seq": ins_seq, "insert_qual": ins_qual, "adapter_edits": unit["adapter_edits"],
                 "i5_observed": unit["i5_observed"], "i5": unit["i5"],
                 "i7_observed": unit["i7_observed"], "i7": unit["i7"],
+                "p5_adapter_overlap": unit["p5_adapter_overlap"],
                 "p5_detected": unit["p5_hit"] is not None, "p7_detected": unit["p7_hit"] is not None,
                 "is_adapter_dimer": canonical_dimer, "dimer_class": "canonical_adapter_dimer" if canonical_dimer else "not_dimer",
                 "template_identity": None, "umis": unit["umis"],
@@ -559,7 +627,7 @@ def cmd_prepare(args):
         scope_id = unit_scope.get(unit["unit_id"])
         pair = pair_by_scope.get(scope_id)
         if pair and not umi_sizes and args.adapter_dimer_raw_min_bp <= unit["raw_length"] <= args.adapter_dimer_raw_max_bp:
-            template = zero_insert_template(unit["family"], pair["i5"], pair["i7"], structure)
+            template = zero_insert_template(unit["family"], pair["i5"], pair["i7"], structure, pair.get("p5_adapter_overlap", 0))
             unit["template_identity"] = full_length_template_identity(unit["raw_seq"], template)
             # A template can match a true 11-50 bp insert at >=80% identity.
             # Once both inner anchors resolve a nonzero insert, retain that evidence.
@@ -578,7 +646,7 @@ def cmd_prepare(args):
     templates = []
     family = max(families, key=families.get) if families else next(iter(adapter_families(structure, FAMILIES)))
     for pair in pairing["pairs"] if not umi_sizes else []:
-        templates.append((pair["scope_id"], zero_insert_template(family, pair["i5"], pair["i7"], structure)))
+        templates.append((pair["scope_id"], zero_insert_template(family, pair["i5"], pair["i7"], structure, pair.get("p5_adapter_overlap", 0))))
     unreconstructed_probable = None if umi_sizes else 0
     reconstructed_reads = {u["read_id"] for u in units_all}
     for raw in raw_all:
@@ -594,7 +662,7 @@ def cmd_prepare(args):
     table_header = ["read_id", "raw_length", "mean_q", "unit_id", "scope_id", "assignment_status",
                     "family", "orientation",
                     "insert_start", "insert_end", "insert_length", "adapter_edits", "is_adapter_dimer",
-                    "dimer_class", "dimer_template_identity", "p5_detected", "p7_detected",
+                    "dimer_class", "dimer_template_identity", "p5_detected", "p7_detected", "p5_adapter_overlap",
                     "i5_observed", "i5_normalized", "i7_observed", "i7_normalized",
                     "umi_status", "umi_sequence"] + ["umi_" + position for position in UMI_POSITIONS]
     with gzip.open(args.inserts, "wt") as insert_out, gzip.open(args.legs, "wt") as leg_out, \
@@ -616,7 +684,7 @@ def cmd_prepare(args):
                    assignment["scope_id"], assignment["assignment_status"],
                    unit["family"], unit["orientation"], unit["insert_start"], unit["insert_end"],
                    unit["insert_length"], unit["adapter_edits"], int(unit["is_adapter_dimer"]),
-                   unit["dimer_class"], unit["template_identity"], int(unit["p5_detected"]), int(unit["p7_detected"]),
+                   unit["dimer_class"], unit["template_identity"], int(unit["p5_detected"]), int(unit["p7_detected"]), unit["p5_adapter_overlap"],
                    unit["i5_observed"], unit["i5"], unit["i7_observed"], unit["i7"],
                    unit["umi_status"], unit["umi_sequence"]] + [unit["umis"].get(position) for position in UMI_POSITIONS]
             table.write("\t".join("" if x is None else str(x) for x in row) + "\n")
@@ -635,12 +703,9 @@ def cmd_prepare(args):
         out.writelines(f"{x}\n" for x in insert_lengths)
     consensus_limit = 24 if structure["mode"] == "custom" else 14
     i5, i7 = index_consensus(i5_values, consensus_limit), index_consensus(i7_values, consensus_limit)
-    if i5["length"] == 0 and i7["length"] in {6, 8, 10}:
-        architecture = "classic_single_index"
-    elif i5["length"] in {6, 8, 10} and i7["length"] in {6, 8, 10}:
-        architecture = "physical_dual_index"
-    else:
-        architecture = "partial_or_custom"
+    architectures = {pair['index_architecture'] for pair in pairing['pairs']}
+    architecture = (next(iter(architectures)) if len(architectures) == 1 else
+                    'mixed_index_architecture' if architectures else 'partial_or_custom')
     raw_window_count = sum(args.adapter_dimer_raw_min_bp <= x <= args.adapter_dimer_raw_max_bp for x in raw_lengths)
     summary = {
         "sample": args.sample, "assay": args.assay, "raw": length_summary(raw_lengths),
@@ -937,7 +1002,11 @@ def full_library_profile(unit_rows, adapter_summary):
         insert = int(row['insert_length'])
         if insert < 0:
             raise ValueError('Full-library model requires non-negative insert lengths')
-        added = len(p5) + len(p7) + sum(map(len, templates[family])) + sum(index_lengths) + umi_bases
+        overlap = row.get('p5_adapter_overlap')
+        if overlap in (None, ''):
+            overlap = (pair or {}).get('p5_adapter_overlap', 0)
+        overlap = int(overlap or 0)
+        added = len(p5) + len(p7) + sum(map(len, templates[family])) + sum(index_lengths) + umi_bases - overlap
         modeled.append(dict(unit_id=row['unit_id'], read_id=row['read_id'],
             insert_length_bp=insert, model_adapter_bases=added, model_umi_bases=umi_bases,
             model_library_length_bp=insert + added, model_basis=basis,
@@ -2152,11 +2221,11 @@ def identity_panel_html(metric, pairing, pairs, unit_rows=None):
         pair_rows.append("<tr>" + "".join([
             f"<td><strong>{html.escape(str(pair.get('name',pair.get('scope_id','library'))))}</strong></td>",
             f"<td>{html.escape(adapter)}</td>",
-            f"<td><code>{html.escape(str(pair.get('i5') or '∅'))}</code></td>",
-            f"<td><code>{html.escape(str(pair.get('i7') or '∅'))}</code></td>",
+            f"<td><code>{html.escape('Not detected' if pair.get('i5') is None else pair['i5'] or 'No index')}</code></td>",
+            f"<td><code>{html.escape('Not detected' if pair.get('i7') is None else pair['i7'] or 'No index')}</code></td>",
             f"<td>{(pair.get('support_fraction') or 0):.1%}</td>"]) + "</tr>")
     if not pair_rows:
-        pair_rows=["<tr><td colspan='5'>No confident i5–i7 pair resolved</td></tr>"]
+        pair_rows=["<tr><td colspan='5'>No confident index combination resolved</td></tr>"]
     return ("<div class='identity-panel'><section class='identity-card'><h3>Library identity</h3><div class='identity-grid'>"
             f"<div class='identity-item'><small>Reference assembly</small><strong>{html.escape(str(metric.get('reference_assembly','unspecified')))}</strong></div>"
             f"<div class='identity-item'><small>Assay</small><strong>{html.escape({'chromatin':'Chromatin','microc':'Micro-C'}.get(metric.get('assay'),str(metric.get('assay','unknown'))))}</strong></div>"
@@ -2164,7 +2233,7 @@ def identity_panel_html(metric, pairing, pairs, unit_rows=None):
             f"<div class='identity-item'><small>Top-pair percentage</small><strong>{html.escape(top_text)}</strong></div></div>"
             "<div class='cutoff-note'>Percentages are among index-informative units."
             f"<details><summary>Library classification</summary><p>A dominant i5–i7 pair is single_library at ≥{pairing.get('single_library_fraction', .9):.0%}, or when it is the only resolved pair. See overall assignment and ambiguous/unassigned fractions below.</p></details></div></section>"
-            "<section class='identity-card'><h3>Physical index pairs</h3><div class='pair-table-scroll' tabindex='0' aria-label='Physical index pairs'><table class='pair-table'><tr><th>Library</th><th>Adapter</th><th>i5</th><th>i7</th><th title='Among index-informative units'>Percentage</th></tr>"
+            "<section class='identity-card'><h3>Physical indexes</h3><div class='pair-table-scroll' tabindex='0' aria-label='Physical indexes'><table class='pair-table'><tr><th>Library</th><th>Adapter</th><th>i5</th><th>i7</th><th title='Among index-informative units'>Percentage</th></tr>"
             + "".join(pair_rows) + "</table></div></section></div>")
 
 
