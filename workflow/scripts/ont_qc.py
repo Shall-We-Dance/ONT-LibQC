@@ -24,6 +24,7 @@ from qc_reference_guide import context as reference_context, reference_notes_htm
 from library_structure import normalize_structure, umi_lengths, handles, extract_umis, adapter_families, POSITIONS as UMI_POSITIONS
 from report_library_structure import family_label
 from report_brand import brand_bar, copy_mark, favicon
+from report_mitochondrial import coverage_html as mitochondrial_coverage_html, integrate_karyotype
 from report_export import add_pdf_export
 from report_provenance import capture_analysis, analysis_record, analysis_label
 from report_regions import region_counts as annotation_region_counts, svg_region_bars, load_te_bed, prepare_background
@@ -807,8 +808,8 @@ def interval_overlaps(intervals, start, end):
 
 def write_karyoploter(records, chrom_sizes, chromosome_names, mapq, bins_per_longest,
                       rscript, script, genes_bed, output, title, assembly, gene_window_bp=250000, mitochondrial=()):
-    """Render nuclear and mitochondrial chromosomes on the same karyoploteR scales."""
-    names = list(dict.fromkeys(name for name in [*chromosome_names, *sorted(mitochondrial)] if name in chrom_sizes))
+    """Render nuclear chromosomes and append a matching, independently scaled chrM row."""
+    names = list(dict.fromkeys(name for name in chromosome_names if name in chrom_sizes and name not in mitochondrial))
     if not names:
         raise ValueError("Karyotype plotting requires at least one configured chromosome")
     longest = max(chrom_sizes[name] for name in names)
@@ -848,6 +849,9 @@ def write_karyoploter(records, chrom_sizes, chromosome_names, mapq, bins_per_lon
     svg = Path(output).read_text()
     svg = svg.replace('<svg', '<svg data-chromosome-scales="shared"', 1)
     svg = svg.replace('</svg>', '<metadata id="chromosome-coverage">' + html.escape(json.dumps(metadata)) + '</metadata></svg>')
+    if mitochondrial:
+        panel = mitochondrial_coverage_html(records, chrom_sizes, mitochondrial, mapq, primary=names)
+        svg = integrate_karyotype(svg, panel)
     Path(output).write_text(svg)
     return {"mapped_reads": len(eligible), "window_size_bp": window_size}
 
