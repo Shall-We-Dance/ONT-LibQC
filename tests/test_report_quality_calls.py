@@ -57,11 +57,14 @@ class LibraryQualityTests(unittest.TestCase):
 
 
 class EcoliNoteTests(unittest.TestCase):
-    def test_note_depends_on_screened_candidate_not_detection(self):
+    def test_note_requires_detected_ecoli_reads(self):
         self.assertEqual(report.ecoli_calibration_note_html({}), '')
         self.assertEqual(report.ecoli_calibration_note_html({'candidates': {'yeast': {'label': 'Yeast'}}}), '')
-        for status in ('CANDIDATE_SIGNAL', 'TRACE', 'NOT_DETECTED'):
-            note = report.ecoli_calibration_note_html({'candidates': {'e_coli': {'label': 'Escherichia coli', 'status': status}}})
+        for status in ('NOT_DETECTED', 'HOST_NOT_DISTINGUISHABLE', 'INCONCLUSIVE_LOW_SCREEN_DEPTH'):
+            self.assertEqual(report.ecoli_calibration_note_html({'candidates': {'e_coli': {'label': 'Escherichia coli', 'status': status, 'reads': 0}}}), '')
+        self.assertEqual(report.ecoli_calibration_note_html({'candidates': {'e_coli': {'status': 'TRACE', 'reads': 0}}}), '')
+        for status in ('CANDIDATE_SIGNAL', 'TRACE'):
+            note = report.ecoli_calibration_note_html({'candidates': {'e_coli': {'label': 'Escherichia coli', 'status': status, 'reads': 3}}})
             self.assertIn('pA/G-MNase', note)
             self.assertIn('pA/G-Tn5', note)
             self.assertIn('same enzyme batch and amount', note)
@@ -76,7 +79,7 @@ class EcoliNoteTests(unittest.TestCase):
                 candidates={'e_coli': dict(label='Escherichia coli', role='spikein_candidate', reads=0,
                     fraction=0, loci=0, status='NOT_DETECTED')})))
             text = report.extension_report_html(out, 'sample', [], {'assay': 'chromatin'})
-            self.assertEqual(text.count("class='note ecoli-calibration-note'"), 1)
+            self.assertEqual(text.count("class='note ecoli-calibration-note'"), 0)
             self.assertNotIn('No spike-in was added', text)
 
 

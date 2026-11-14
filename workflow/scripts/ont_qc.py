@@ -2287,10 +2287,12 @@ def rna_screening_html(scopes):
 
 
 def ecoli_calibration_note_html(screen):
-    """Explain reagent carry-over only when E. coli is part of the screen."""
+    """Explain reagent carry-over only for a detected E. coli candidate signal."""
     candidates=screen.get("candidates") or {}
-    if not any(key in {"e_coli", "ecoli", "escherichia_coli"}
-               or str(candidate.get("label", "")).lower().startswith(("escherichia coli", "e. coli"))
+    if not any((key in {"e_coli", "ecoli", "escherichia_coli"}
+                or str(candidate.get("label", "")).lower().startswith(("escherichia coli", "e. coli")))
+               and candidate.get("status") in {"CANDIDATE_SIGNAL", "TRACE"}
+               and (candidate.get("reads") or 0) > 0
                for key,candidate in candidates.items()):
         return ""
     return ("<aside class='note ecoli-calibration-note'><p><strong>E. coli and enzyme carry-over.</strong> "
