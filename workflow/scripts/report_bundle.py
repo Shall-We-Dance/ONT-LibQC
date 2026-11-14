@@ -176,6 +176,7 @@ def build(work, report, config_path):
                       work / 'qc/spike_in' / f'{sample}.json']
             for category, pattern in [('gene_profile', f'{sample}*.profile.tsv'),
                                       ('rna_alignment', f'{sample}.json'),
+                                      ('chromatin_alignment', f'{sample}.json'),
                                       ('rna_preparation', f'{sample}.json'),
                                       ('rna_preparation', f'{sample}.units.tsv.gz'),
                                       ('rna_sources', f'{sample}.json'),

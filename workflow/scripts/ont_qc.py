@@ -760,13 +760,15 @@ def cigar_ref_span(cigar):
     return span
 
 
-def sam_primary_records(bam, samtools):
+def sam_primary_records(bam, samtools, include_ineligible=False):
     process = subprocess.Popen([samtools, "view", bam], text=True, stdout=subprocess.PIPE)
     best = {}
     for line in process.stdout:
         f = line.rstrip().split("\t")
         flag = int(f[1])
         if flag & (4 | 256 | 512 | 1024 | 2048):
+            continue
+        if not include_ineligible and "ZQ:i:0" in f[11:]:
             continue
         mate_suffix = "/1" if flag & 64 else ("/2" if flag & 128 else "")
         key = f[0] + mate_suffix
@@ -1294,6 +1296,7 @@ def cmd_metrics(args):
     with open(args.spike_in) as handle:
         spike_in = json.load(handle)
     records = sam_primary_records(args.bam, args.samtools)
+    all_mapped = sam_primary_records(args.bam, args.samtools, include_ineligible=True) if args.assay == "chromatin" else records
     chrom_sizes = read_chrom_sizes(args.chrom_sizes)
     primary_names, mito = resolve_chromosome_sets(chrom_sizes, args.primary, args.mito)
     primary_sizes = {name: chrom_sizes[name] for name in primary_names}
@@ -1361,8 +1364,8 @@ def cmd_metrics(args):
         "spike_in_fraction": spike_in.get("qualifying_fraction"),
         "primary_chromosomes_used": primary_names,
         "mitochondrial_chromosomes_used": sorted(mito),
-        "mapped_primary": len(records),
-        "primary_mapping_rate": len(records) / (mappable_units * (2 if args.assay == "microc" else 1)) if mappable_units else None,
+        "mapped_primary": len(all_mapped),
+        "primary_mapping_rate": len(all_mapped) / (mappable_units * (2 if args.assay == "microc" else 1)) if mappable_units else None,
     }
     Path(args.fragments).parent.mkdir(parents=True, exist_ok=True)
     Path(args.pairs).parent.mkdir(parents=True, exist_ok=True)
@@ -1421,6 +1424,13 @@ def cmd_metrics(args):
         metrics["ligation_evidence_status"]=ligation["status"]
     metrics["metric_schema_version"] = 3
     metrics["analysis_provenance"] = capture_analysis()
+    alignment_summary = Path(args.metrics).parent.parent / "chromatin_alignment" / f"{args.sample}.json"
+    if args.assay == "chromatin" and alignment_summary.is_file():
+        alignment_method = json.loads(alignment_summary.read_text())
+        metrics["alignment_method"] = alignment_method
+        metrics["analysis_provenance"]["analysis_revision"] = alignment_method["analysis_revision"]
+        metrics["metric_settings"].update(chromatin_alignment=alignment_method["method"],
+                                          minimum_aligned_bp=30, minimum_query_coverage=.8)
     pairing = adapter.get("index_pairing", {})
     metrics["sub_libraries"] = []
     if pairing.get("mode") == "multiplexed_library":
@@ -1431,6 +1441,14 @@ def cmd_metrics(args):
             scoped_records = {qname: rec for qname, rec in records.items() if base_unit_id(qname) in allowed}
             scoped = scope_qc(args, pair, profiles.get(pair["scope_id"], {"mean_read_q": None, "raw": length_summary([]), "inserts": length_summary([])}), scoped_records, chrom_sizes,
                               primary_names, mito, primary_sizes, raw_count)
+            if args.assay == "chromatin":
+                mapped_count = sum(base_unit_id(qname) in allowed for qname in all_mapped)
+                scoped["mapped_primary"] = mapped_count
+                denominator = scoped["mappable_library_units"]
+                scoped["primary_mapping_rate"] = mapped_count / denominator if denominator else None
+                if "alignment_method" in metrics:
+                    scoped["metric_settings"].update(chromatin_alignment=metrics["alignment_method"]["method"],
+                                                      minimum_aligned_bp=30, minimum_query_coverage=.8)
             scoped.update(scope_structure_metrics(profiles.get(pair["scope_id"], {}), args.assay, units))
             scoped.update(scoped_mycoplasma(mycoplasma, allowed))
             spike_hits = set(spike_in.get("qualifying_read_ids", []))
@@ -1479,7 +1497,7 @@ def write_sparse_cpm_bedgraph(samtools, bam, mapq, chrom_sizes, primary_names, p
                              text=True, stdout=subprocess.PIPE)
     for line in process.stdout:
         fields=line.rstrip().split("\t")
-        if len(fields) < 6:
+        if len(fields) < 6 or "ZQ:i:0" in fields[11:]:
             continue
         chrom=fields[2]
         if chrom not in primary_names or chrom not in chrom_sizes:
@@ -2588,7 +2606,7 @@ def cmd_report(args):
 {assay_html}
 {pairtools_html}
 {custom_html}{extension_report_html(out, sample, scopes, metric)}
-<footer class='report-footer'><details><summary>Methods &amp; interpretation</summary><div class='report-explanation'><ul><li><strong>Reference values</strong> distinguish local screening settings, biological context and statistical expectations.</li><li><strong>Gene profiles:</strong> chromatin TSS–TES profiles use CPM; RNA profiles use per-gene exonic coverage normalization, detailed in the RNA section. SEM is across contributing genes, not biological replicates.</li><li><strong>Genomic distribution:</strong> chromatin uses mapped alignments, Micro-C uses endpoint legs, and RNA region fractions use aligned reference bases excluding skipped introns and deletions.</li><li><strong>Duplicates:</strong> Pairtools marks sample-level coordinate duplicates as DD. Shallow sequencing does not estimate PCR duplication or library complexity. Native Micro-C contact deduplication is an internal validity filter.</li></ul></div></details><p><a href='../summary/index.html'>All samples</a> · <a href='../qc/adapters/{sample}.reads.tsv.gz'>Adapter table</a> · <a href='../qc/adapters/{sample}.index_assignments.tsv.gz'>Index assignments</a></p></footer>{REPORT_TOOLTIP_SCRIPT}</body></html>"""
+<footer class='report-footer'><details><summary>Methods &amp; interpretation</summary><div class='report-explanation'><ul>{"<li><strong>Chromatin alignment:</strong> Local alignment; ≥30 aligned bp and ≥80% insert coverage. Sequence-supported terminal foldbacks are trimmed only after end-to-end remapping confirms the same locus. MAPQ threshold: ≥"+str(report_mapq)+".</li>" if metric.get('alignment_method') else ''}<li><strong>Reference values</strong> distinguish local screening settings, biological context and statistical expectations.</li><li><strong>Gene profiles:</strong> chromatin TSS–TES profiles use CPM; RNA profiles use per-gene exonic coverage normalization, detailed in the RNA section. SEM is across contributing genes, not biological replicates.</li><li><strong>Genomic distribution:</strong> chromatin uses mapped alignments, Micro-C uses endpoint legs, and RNA region fractions use aligned reference bases excluding skipped introns and deletions.</li><li><strong>Duplicates:</strong> Pairtools marks sample-level coordinate duplicates as DD. Shallow sequencing does not estimate PCR duplication or library complexity. Native Micro-C contact deduplication is an internal validity filter.</li></ul></div></details><p><a href='../summary/index.html'>All samples</a> · <a href='../qc/adapters/{sample}.reads.tsv.gz'>Adapter table</a> · <a href='../qc/adapters/{sample}.index_assignments.tsv.gz'>Index assignments</a></p></footer>{REPORT_TOOLTIP_SCRIPT}</body></html>"""
         (out/"reports"/f"{sample}.html").write_text(add_pdf_export(report))
     columns=["sample","assay","reference_assembly","mean_read_q","outer_complete_unit_rate","index_assignment_rate","index_ambiguous_fraction","index_unassigned_fraction","cis_ratio_ci95_low","cis_ratio_ci95_high","raw_reads","sequencing_yield_call","complete_read_rate","adapter_dimer_rate","adapter_dimer_call","index_architecture","primary_mapping_rate","spike_in_reads","spike_in_fraction","collision_bin_size","collision_oe","collision_fragments","collision_observed_pairs","collision_null_expected_pairs","usable_fragment_rate","both_legs_mapping_rate","mapq_pass_pairs","same_fragment_filter_pass_pairs","unique_valid_contacts","valid_contact_rate","cis_ratio","long_range_cis_min_bp","long_range_cis_contacts","long_range_cis_fraction","contact_evidence_status","metric_profile","metric_definition_version"]
     for m in metrics:

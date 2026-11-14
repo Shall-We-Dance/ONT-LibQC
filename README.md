@@ -10,6 +10,8 @@ ONT-LibQC checks completed **Chromatin and Micro-C libraries**, with **RNA-seq a
 
 [RNA/CLIP beta](docs/RNA_BETA.md) adds splice-aware STARlong alignment, RNA-family and transcript-region composition, physical strandedness, splice evidence, transcript coverage and observed-gene detection curves. CLIP reports include HOMER motif discovery. Library characteristics are inferred from observed evidence with explicit depth and annotation limits; no additional protocol questionnaire is required. Local RNA runs require STARlong and a prepared sparse index, as described in the guide.
 
+Chromatin Bowtie2 alignment allows terminal soft-clipping. Usable fragments require MAPQ ≥20 by default, at least 30 aligned bases and 80% query coverage. A terminal reverse-complement match to the opposite insert end can be trimmed only when end-to-end remapping confirms the same locus. The original recovered-unit denominator is retained. Reanalysed reports record the `r2` analysis revision alongside the release version and date; RNA/CLIP and Micro-C alignment methods are unchanged.
+
 ## Try it online
 
 Upload FASTQ files at **[ontlibqc.org](https://ontlibqc.org)**, then choose a reference and assay for each library. Email is optional; save the private task link to return to your results. The server accepts up to 16 files per batch, 50 MB each, and keeps reports for 30 days. Do not submit patient data or other sensitive personal data.
