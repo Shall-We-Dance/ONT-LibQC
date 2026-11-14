@@ -24,7 +24,7 @@ from qc_reference_guide import context as reference_context, reference_notes_htm
 from library_structure import normalize_structure, umi_lengths, handles, extract_umis, adapter_families, POSITIONS as UMI_POSITIONS
 from report_library_structure import family_label
 from report_brand import brand_bar, copy_mark, favicon
-from report_mitochondrial import coverage_html as mitochondrial_coverage_html
+from report_mitochondrial import coverage_html as mitochondrial_coverage_html, integrate_karyotype
 from report_export import add_pdf_export
 from report_provenance import capture_analysis, analysis_record, analysis_label
 from report_regions import region_counts as annotation_region_counts, svg_region_bars, load_te_bed, prepare_background
@@ -2408,11 +2408,13 @@ def cmd_report(args):
                     karyotype_asset, f"{label}: gene and mapped-read density",
                     metric.get("reference_assembly", "custom genome"),
                     gene_window_bp=int(report_params.get("karyotype_gene_window_bp", 250000)))
+            mitochondrial_panel = mitochondrial_coverage_html(scope_records.get(scope_id, {}), report_chrom_sizes, report_mito, report_mapq, scope, report_primary)
+            karyotype_asset.write_text(integrate_karyotype(karyotype_asset.read_text(), mitochondrial_panel))
             profile_sections.append(profile_scope_html(label, raw_asset.name, insert_asset.name,
                                                        region_asset.name if metric["assay"] == "chromatin" else None, karyotype_asset.name,
                                                        gene_profile_assets[scope_id].name if scope_id in gene_profile_assets else None,
                                                        full_library_assets=full_library_assets,
-                                                       mitochondrial_html=mitochondrial_coverage_html(scope_records.get(scope_id, {}), report_chrom_sizes, report_mito, report_mapq, scope, report_primary)))
+                                                       mitochondrial_html=""))
         from report_profiles import render_profiles_card
         profiles_html=render_profiles_card(sample, scopes, profile_sections, out/'reports/assets', out/'qc/gene_profile')
         pairtools_html = ""

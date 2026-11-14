@@ -22,3 +22,29 @@ class MitochondrialCoverageTests(unittest.TestCase):
         zero=coverage_html({}, {'MT':100},{'MT'},20)
         self.assertIn('0 alignments',zero);self.assertIn('<svg',zero)
         self.assertEqual(coverage_html({}, {'chr1':100},{'chrM'},20),'')
+
+class IntegratedCoverageTests(unittest.TestCase):
+    def test_integrated_row_preserves_counts_nuclear_geometry_and_footer(self):
+        from report_mitochondrial import integrate_karyotype
+        svg = '<svg xmlns="http://www.w3.org/2000/svg" width="1008" height="720" viewBox="0 0 1008 720"><path id="nuclear" d="M10 10L20 30"/><g id="caption"><use y="711"/></g></svg>'
+        coverage = coverage_html({'a':dict(chrom='chrM',start=2,end=8,mapq=60)}, {'chrM':100}, {'chrM'},20)
+        rendered = integrate_karyotype(svg, coverage)
+        root = ET.fromstring(rendered)
+        self.assertEqual(root.get('viewBox'), '0 0 1008 774')
+        self.assertEqual(root.find('.//{*}path[@id="nuclear"]').get('d'), 'M10 10L20 30')
+        self.assertEqual(root.find('.//{*}g[@id="caption"]').get('transform'), 'translate(0 54)')
+        self.assertEqual(json.loads(root.find('.//{*}metadata').text)['mapped_alignments'],1)
+        self.assertEqual(integrate_karyotype(rendered, coverage), rendered)
+        zero = coverage_html({}, {'chrM':100}, {'chrM'},20)
+        updated = integrate_karyotype(rendered, zero)
+        self.assertEqual(updated.count('id="mitochondrial-tracks"'),1)
+        self.assertEqual(json.loads(ET.fromstring(updated).find('.//{*}metadata').text)['mapped_alignments'],0)
+
+    def test_missing_positions_remain_unavailable_inside_figure(self):
+        from report_mitochondrial import integrate_karyotype
+        svg = '<svg xmlns="http://www.w3.org/2000/svg" width="1008" height="720" viewBox="0 0 1008 720"/>'
+        rendered = integrate_karyotype(svg,coverage_html(None,{'MT':100},{'MT'},20,{'mitochondrial_fraction':.1}))
+        self.assertIn('10.0%', rendered)
+        self.assertIn('Position data unavailable',rendered)
+        self.assertIsNone(ET.fromstring(rendered).find('.//{*}metadata'))
+        self.assertEqual(integrate_karyotype(svg,''),svg)
