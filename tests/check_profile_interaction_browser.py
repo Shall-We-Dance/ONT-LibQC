@@ -33,8 +33,21 @@ with tempfile.TemporaryDirectory() as tmp:
      assert opacities()==[1,.12]
      page.keyboard.press('Tab');assert opacities()==[.12,1]
      page.keyboard.press('Escape');assert opacities()==[1,1]
-    buttons.first.click();assert opacities()==[1,.12]
-    assert buttons.first.get_attribute('aria-pressed')=='true'
+    if mobile:
+     buttons.first.tap();assert opacities()==[1,.12]
+     assert buttons.first.get_attribute('aria-pressed')=='true'
+     page.touchscreen.tap(0,0);assert opacities()==[1,1]
+     buttons.first.tap()
+    else:
+     # A mouse click must never pin a series after the pointer leaves.
+     buttons.first.click();assert opacities()==[1,.12]
+     assert buttons.first.get_attribute('aria-pressed')=='false'
+     page.mouse.move(0,0);assert opacities()==[1,1]
+     buttons.nth(1).click();page.mouse.move(0,0);assert opacities()==[1,1]
+     buttons.first.hover()
+    backgrounds=buttons.evaluate_all('(es)=>es.map(e=>getComputedStyle(e).backgroundColor)')
+    assert backgrounds[0]!=backgrounds[1]
+    assert buttons.first.evaluate('(e)=>e.style.getPropertyValue("--legend-tint")')=='#2a6cbd0f'
     page.emulate_media(media='print');assert opacities()==[1,1]
     page.emulate_media(media='screen');assert opacities()==[1,.12]
     assert lines.evaluate_all('(es)=>es.map(e=>e.getAttribute("points"))')==original

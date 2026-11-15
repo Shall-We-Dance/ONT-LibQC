@@ -11,8 +11,8 @@ from report_sublibrary import COLORS
 from report_profile_band import read_profile_band
 
 CSS = '''
-.profile-comparison-legend button{font:inherit;color:inherit;line-height:inherit;background:transparent;border:1px solid transparent;border-radius:4px;padding:3px 6px;margin:-3px -6px;cursor:pointer;transition:opacity .15s ease,background .15s ease}
-.profile-comparison-legend button:hover,.profile-comparison-legend button[aria-pressed="true"]{background:#edf3fa}
+.profile-comparison-legend button{font:inherit;color:inherit;line-height:inherit;background:var(--legend-tint);border:1px solid var(--legend-border);border-radius:4px;padding:3px 6px;margin:-3px -6px;cursor:pointer;transition:opacity .15s ease,background .15s ease}
+.profile-comparison-legend button.is-highlighted{background:var(--legend-active)}
 .profile-comparison-legend button:focus-visible{outline:2px solid #2a6cbd;outline-offset:3px}
 .profile-size-chart svg{display:block;width:100%;height:auto}
 .profile-size-chart [data-scope]{transition:opacity .15s ease}
@@ -53,23 +53,39 @@ INTERACTION_SCRIPT = """<script>
  if(!root)return;
  const buttons=[...root.querySelectorAll('.profile-comparison-legend button[data-scope]')];
  const traces=[...root.querySelectorAll('.profile-size-chart [data-scope]')];
- let pinned=null;
+ let pinned=null, pointerType=null;
  function show(scope){
   for(const node of [...buttons,...traces])node.classList.toggle('is-dimmed',!!scope&&node.dataset.scope!==scope);
-  for(const b of buttons)b.setAttribute('aria-pressed',String(b.dataset.scope===pinned));
+  for(const b of buttons){
+   b.setAttribute('aria-pressed',String(b.dataset.scope===pinned));
+   b.classList.toggle('is-highlighted',b.dataset.scope===scope);
+  }
  }
  for(const b of buttons){
-  b.addEventListener('pointerenter',e=>{if(e.pointerType!=='touch')show(b.dataset.scope)});
-  b.addEventListener('pointerleave',e=>{if(e.pointerType!=='touch')show(pinned)});
+  b.addEventListener('pointerenter',e=>{if(e.pointerType!=='touch'){pinned=null;show(b.dataset.scope)}});
+  b.addEventListener('pointerleave',e=>{if(e.pointerType!=='touch'){pinned=null;show(null)}});
   b.addEventListener('focus',()=>{if(b.matches(':focus-visible'))show(b.dataset.scope)});
   b.addEventListener('blur',()=>show(pinned));
-  b.addEventListener('click',()=>{pinned=pinned===b.dataset.scope?null:b.dataset.scope;show(pinned)});
+  b.addEventListener('pointerdown',e=>{pointerType=e.pointerType});
+  b.addEventListener('keydown',()=>{pointerType=null});
+  b.addEventListener('click',e=>{
+   const touch=e.pointerType==='touch'||(!e.pointerType&&pointerType==='touch');
+   pointerType=null;
+   if(touch){pinned=pinned===b.dataset.scope?null:b.dataset.scope;show(pinned)}
+   else{pinned=null;show(b.dataset.scope)}
+  });
  }
  for(const line of root.querySelectorAll('.profile-size-chart polyline[data-scope]')){
-  line.addEventListener('pointerenter',e=>{if(e.pointerType!=='touch')show(line.dataset.scope)});
-  line.addEventListener('pointerleave',()=>show(pinned));
+  line.addEventListener('pointerenter',e=>{if(e.pointerType!=='touch'){pinned=null;show(line.dataset.scope)}});
+  line.addEventListener('pointerleave',e=>{if(e.pointerType!=='touch'){pinned=null;show(null)}});
  }
- root.addEventListener('keydown',e=>{if(e.key==='Escape'){pinned=null;show(null)}});
+ function reset(){pinned=null;pointerType=null;show(null)}
+ root.addEventListener('pointerleave',e=>{if(e.pointerType!=='touch')reset()});
+ root.addEventListener('pointercancel',reset);
+ root.addEventListener('keydown',e=>{if(e.key==='Escape')reset()});
+ document.addEventListener('pointerdown',e=>{if(!root.contains(e.target))reset()});
+ window.addEventListener('blur',reset);
+ document.addEventListener('visibilitychange',()=>{if(document.hidden)reset()});
 })();
 </script>"""
 
@@ -84,7 +100,7 @@ def size_figure(svg, url):
 
 def legend_item(scope, label, color):
     esc = html.escape
-    return (f"<li><button type='button' data-scope='{esc(scope,quote=True)}' aria-label='Highlight {esc(label,quote=True)}' aria-pressed='false'>"
+    return (f"<li><button type='button' data-scope='{esc(scope,quote=True)}' aria-label='Highlight {esc(label,quote=True)}' aria-pressed='false' style='--legend-tint:{color}0f;--legend-active:{color}24;--legend-border:{color}30'>"
             f"<i style='background:{color}' aria-hidden='true'></i>{esc(label)}</button></li>")
 
 
