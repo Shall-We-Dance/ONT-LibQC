@@ -62,25 +62,25 @@ INTERACTION_SCRIPT = """<script>
   }
  }
  for(const b of buttons){
-  b.addEventListener('pointerenter',e=>{if(e.pointerType!=='touch'){pinned=null;show(b.dataset.scope)}});
-  b.addEventListener('pointerleave',e=>{if(e.pointerType!=='touch'){pinned=null;show(null)}});
+  b.addEventListener('pointerenter',e=>{if(e.pointerType!=='touch'&&matchMedia('(hover:hover)').matches){pinned=null;show(b.dataset.scope)}});
+  b.addEventListener('pointerleave',e=>{if(e.pointerType!=='touch'&&matchMedia('(hover:hover)').matches){pinned=null;show(null)}});
   b.addEventListener('focus',()=>{if(b.matches(':focus-visible'))show(b.dataset.scope)});
   b.addEventListener('blur',()=>show(pinned));
   b.addEventListener('pointerdown',e=>{pointerType=e.pointerType});
   b.addEventListener('keydown',()=>{pointerType=null});
   b.addEventListener('click',e=>{
-   const touch=e.pointerType==='touch'||(!e.pointerType&&pointerType==='touch');
+   const touch=pointerType==='touch'||e.pointerType==='touch'||(e.detail>0&&matchMedia('(hover:none)').matches);
    pointerType=null;
    if(touch){pinned=pinned===b.dataset.scope?null:b.dataset.scope;show(pinned)}
    else{pinned=null;show(b.dataset.scope)}
   });
  }
  for(const line of root.querySelectorAll('.profile-size-chart polyline[data-scope]')){
-  line.addEventListener('pointerenter',e=>{if(e.pointerType!=='touch'){pinned=null;show(line.dataset.scope)}});
-  line.addEventListener('pointerleave',e=>{if(e.pointerType!=='touch'){pinned=null;show(null)}});
+  line.addEventListener('pointerenter',e=>{if(e.pointerType!=='touch'&&matchMedia('(hover:hover)').matches){pinned=null;show(line.dataset.scope)}});
+  line.addEventListener('pointerleave',e=>{if(e.pointerType!=='touch'&&matchMedia('(hover:hover)').matches){pinned=null;show(null)}});
  }
  function reset(){pinned=null;pointerType=null;show(null)}
- root.addEventListener('pointerleave',e=>{if(e.pointerType!=='touch')reset()});
+ root.addEventListener('pointerleave',e=>{if(e.pointerType!=='touch'&&matchMedia('(hover:hover)').matches)reset()});
  root.addEventListener('pointercancel',reset);
  root.addEventListener('keydown',e=>{if(e.key==='Escape')reset()});
  document.addEventListener('pointerdown',e=>{if(!root.contains(e.target))reset()});
