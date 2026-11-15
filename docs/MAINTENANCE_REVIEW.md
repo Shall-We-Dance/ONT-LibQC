@@ -20,7 +20,7 @@ not claim a new release or alter historical analysis timestamps.
 
 ## Validation
 
-Local checks passed: 204 pipeline/report tests (9 optional-tool skips) and 154
+Local checks passed: 205 pipeline/report tests (9 optional-tool skips) and 154
 portal tests, plus
 numeric SEM agreement with deepTools' masked-array formula, sidecar retention
 through bundle cleanup, transactional refresh/rollback, browser uploads, public

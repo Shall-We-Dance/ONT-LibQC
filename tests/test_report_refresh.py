@@ -58,6 +58,17 @@ class RefreshTests(unittest.TestCase):
                 with self.assertRaisesRegex(OSError,'publish failure'):refresh(root,True)
             self.assertEqual(hashes(root),before)
 
+    def test_numeric_assets_are_immutable_during_refresh(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)/'report';self.fixture(root);before=hashes(root)
+            from report_refresh import refresh_page
+            def accidental_write(stage,sample):
+                refresh_page(stage,sample)
+                (stage/'assets/demo.lib01.full_library_profiles.tsv').write_text('changed')
+            with patch('report_refresh.refresh_page',accidental_write):
+                with self.assertRaisesRegex(ValueError,'Scientific record changed'):refresh(root,True)
+            self.assertEqual(hashes(root),before)
+
     def test_symlink_and_wrong_backup_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp)/'report';self.fixture(root)

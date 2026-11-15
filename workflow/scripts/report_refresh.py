@@ -86,6 +86,9 @@ def refresh_page(root, sample):
     section = sections[0]
     metric = json.loads((root/'data/metrics'/f'{sample}.json').read_text())
     scopes = [dict(metric, scope_id='total', scope_name='Total library')]+metric.get('sub_libraries', [])
+    ids = [scope.get('scope_id') for scope in scopes]
+    if any(not isinstance(sid, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', sid) for sid in ids) or len(set(ids)) != len(ids):
+        raise ValueError('Invalid retained scope identifiers')
     scope_html = {}
     for node in parsed.elements:
         if 'profile-scope' not in node['attrs'].get('class', '').split() or not parsed.within(node, section): continue
@@ -159,7 +162,8 @@ def refresh(root, apply=False, expected_manifest_sha256=None):
             if audit['sample_reports'] != len(samples): raise ValueError('Sample count changed')
             # Updating presentation cannot modify scientific inputs or provenance.
             for name, digest in before.items():
-                if name.startswith('data/') and hashlib.sha256((stage/name).read_bytes()).hexdigest() != digest:
+                protected = name.startswith('data/') or (name != 'manifest.json' and Path(name).suffix in {'.tsv', '.csv', '.json', '.gz'})
+                if protected and hashlib.sha256((stage/name).read_bytes()).hexdigest() != digest:
                     raise ValueError('Scientific record changed: '+name)
             data['validation'] = audit
             data['presentation_refresh'] = {'schema_version': 1, 'created_utc': datetime.datetime.now(datetime.timezone.utc).isoformat()}
