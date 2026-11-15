@@ -49,7 +49,10 @@ with tempfile.TemporaryDirectory() as tmp:
     assert backgrounds[0]!=backgrounds[1]
     assert buttons.first.evaluate('(e)=>e.style.getPropertyValue("--legend-tint")')=='#2a6cbd0f'
     page.emulate_media(media='print');assert opacities()==[1,1]
-    page.emulate_media(media='screen');assert opacities()==[1,.12]
+    page.emulate_media(media='screen')
+    # Print layout can move the legend away from a stationary mouse pointer.
+    if not mobile: buttons.first.hover()
+    assert opacities()==[1,.12]
     assert lines.evaluate_all('(es)=>es.map(e=>e.getAttribute("points"))')==original
     assert page.locator('.comparison-size a').get_attribute('href')=='s.sublibraries.size_profiles.svg'
     assert not errors,errors
