@@ -1,6 +1,12 @@
-# Sublibrary similarity
+# Sublibrary similarity prototype (inactive)
 
-Multiplexed chromatin reports with at least two resolved sublibraries include a
+This prototype is temporarily withdrawn pending method review. The pipeline does
+not generate similarity assets or include a similarity panel in reports. The
+standalone implementation and tests are retained for future development.
+
+## Prototype design
+
+The prototype targets multiplexed chromatin reports with at least two resolved sublibraries, with a
 **Sublibrary similarity** panel in Size and genomic profiles, before the collapsed
 individual profiles. It compares genomic alignment distributions within the same
 sample and reference. The pooled total is excluded.

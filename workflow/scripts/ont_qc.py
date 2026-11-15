@@ -2521,10 +2521,6 @@ def cmd_report(args):
                                                        gene_profile_assets[scope_id].name if scope_id in gene_profile_assets else None,
                                                        full_library_assets=full_library_assets,
                                                        mitochondrial_html=""))
-        if metric['assay'] == 'chromatin' and len(scopes) > 2:
-            from report_similarity import write_assets as write_similarity_assets
-            write_similarity_assets(sample, scopes[1:], scope_records, report_chrom_sizes, report_primary,
-                                    report_mapq, out/'reports/assets')
         from report_profiles import render_profiles_card
         profiles_html=render_profiles_card(sample, scopes, profile_sections, out/'reports/assets', out/'qc/gene_profile')
         pairtools_html = ""

@@ -63,7 +63,11 @@ class ProfileComparisonTests(unittest.TestCase):
                 (p/f's.{sid}.full_library_profiles.tsv').write_text('size_bp\tlength_weighted_relative_signal\n0\t0\n100\t100\n2000\t0\n')
             scopes=[{'scope_id':'total'},{'scope_id':'lib01','scope_name':'A & B','library_units':12},{'scope_id':'lib02','library_units':2}]
             sections=["<section class='profile-scope'><h3>"+s['scope_id']+'</h3><p>Detail</p></section>' for s in scopes]
+            # Retained prototype assets must not reactivate a withdrawn panel.
+            (p/'s.sublibraries.similarity.json').write_text('{}')
             doc=render_profiles_card('s',scopes,sections,p,p)
+            self.assertNotIn('sublibrary-similarity',doc)
+            self.assertNotIn('similarity.json',doc)
             self.assertEqual(doc.count("class='profile-detail'"),2)
             self.assertIn('A &amp; B',doc)
             self.assertNotIn(' open',doc)
