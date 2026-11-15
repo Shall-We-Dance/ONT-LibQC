@@ -2210,7 +2210,7 @@ def scoped_table_html(scopes, keys, ranges):
         interval=f"<span class='metric-tip reference-context' tabindex='0' data-tip='{html.escape(basis+': '+detail,quote=True)}'>{interval}</span>"
         cells=''.join(scope_metric_cell(x, key, ranges) for x in scopes)
         rows.append(f"<tr><td><span class='metric-tip' tabindex='0' data-tip='{html.escape(desc,quote=True)}'>{html.escape(label)} <b>ⓘ</b></span></td>{cells}<td class='reference-interval'>{interval}</td></tr>")
-    return f"<div class='table-scroll' tabindex='0' aria-label='QC metrics; scroll horizontally for additional columns'><table class='qc-metrics'><tr><th>Metric</th>{heads}<th>Reference interval</th></tr>{''.join(rows)}</table></div>"
+    return f"<div class='table-scroll' tabindex='0' aria-label='QC metrics; scroll horizontally for additional columns'><table class='qc-metrics'><tr><th>Metric</th>{heads}<th>Reference</th></tr>{''.join(rows)}</table></div>"
 
 
 def library_structure_html(metric, adapter_summary=None, unit_rows=None, rna_summary=None):

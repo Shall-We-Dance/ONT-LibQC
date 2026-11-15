@@ -28,6 +28,7 @@ CSS = '''
 .profile-comparison .figure-link{margin-top:6px;font-size:11px}
 .profile-comparison .comparison-note{font-size:12px;color:var(--muted);margin:8px 0 16px}
 .profile-detail{margin:12px 0 0;border:1px solid var(--line);border-radius:8px;padding:0;background:#fff}
+.profile-detail[data-scope]{background:var(--scope-tint);border-color:var(--scope-border);print-color-adjust:exact;-webkit-print-color-adjust:exact}.profile-detail[data-scope]>summary{border-radius:7px}.profile-detail[data-scope]>.profile-scope{background:#fff;border-radius:0 0 7px 7px}
 .profile-detail>summary{padding:13px 16px;color:var(--deep);font-weight:550}.profile-detail>summary small{font-weight:400;color:var(--muted);margin-left:12px}
 .profile-detail>.profile-scope{margin:0;padding:0 16px 16px;border:0}.profile-detail .primary-size-plots{margin-top:8px}
 #profiles{scroll-margin-top:80px}#profiles>.profile-scope{border:0;margin-top:0;padding-top:0}
@@ -293,6 +294,6 @@ def render_profiles_card(sample, scopes, scope_html, asset_dir, gene_dir, asset_
         label=scope.get('scope_name',scope['scope_id']);color=series[i]['color']
         content=re.sub(r'<h3>.*?</h3>','',scope_html[i+1],count=1,flags=re.S)
         count=int(scope.get('library_units',0))
-        parts.append(f"<details class='profile-detail' data-scope='{esc(scope['scope_id'],quote=True)}'><summary><i style='background:{color}'></i>{esc(label)}<small>{count:,} units · individual profiles</small></summary>{content}</details>")
+        parts.append(f"<details class='profile-detail' data-scope='{esc(scope['scope_id'],quote=True)}' style='--scope-tint:{color}0f;--scope-border:{color}38'><summary><i style='background:{color}'></i>{esc(label)}<small>{count:,} units</small></summary>{content}</details>")
     parts.append("<details class='profile-detail pooled-profile'><summary>Total library · pooled profiles</summary>"+scope_html[0]+'</details>')
     return ''.join(parts)+'</section>'
