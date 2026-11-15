@@ -11,6 +11,16 @@ from report_sublibrary import COLORS
 from report_profile_band import read_profile_band
 
 CSS = '''
+.profile-comparison-legend button{font:inherit;color:inherit;line-height:inherit;background:transparent;border:1px solid transparent;border-radius:4px;padding:3px 6px;margin:-3px -6px;cursor:pointer;transition:opacity .15s ease,background .15s ease}
+.profile-comparison-legend button:hover,.profile-comparison-legend button[aria-pressed="true"]{background:#edf3fa}
+.profile-comparison-legend button:focus-visible{outline:2px solid #2a6cbd;outline-offset:3px}
+.profile-size-chart svg{display:block;width:100%;height:auto}
+.profile-size-chart [data-scope]{transition:opacity .15s ease}
+.profile-size-chart polygon{pointer-events:none}
+.profile-size-chart polyline{pointer-events:stroke}
+.profile-size-chart .is-dimmed,.profile-comparison-legend .is-dimmed{opacity:.12}
+@media(prefers-reduced-motion:reduce){.profile-size-chart [data-scope],.profile-comparison-legend button{transition:none}}
+@media print{.profile-size-chart [data-scope],.profile-comparison-legend button{opacity:1!important}.profile-comparison-legend button{background:transparent!important;border:0;outline:0}}
 .profile-comparison-legend{display:flex;flex-wrap:wrap;gap:8px 22px;list-style:none;margin:8px 0 14px;padding:0;font-size:13px}
 .profile-comparison-legend i,.profile-detail summary i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:7px;print-color-adjust:exact;-webkit-print-color-adjust:exact}
 .profile-comparison-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,.43fr);gap:12px;align-items:stretch}
@@ -35,6 +45,47 @@ CSS = '''
 @media(max-width:700px){.profile-comparison-grid{grid-template-columns:minmax(0,1fr)}.profile-comparison-grid .plot-card>a{height:auto}.profile-comparison-grid .comparison-gel>a{flex:none;height:320px}.profile-detail>summary small{display:block;margin:5px 0 0 20px}}
 @media print{.profile-comparison-grid{display:block}.profile-comparison .plot-card{max-width:100%;break-inside:avoid}.profile-detail{border:0}.profile-detail>summary{padding:2mm 0}.profile-detail>.profile-scope{padding:0}}
 '''
+
+
+INTERACTION_SCRIPT = """<script>
+(()=>{
+ const root=document.currentScript.closest('.profile-comparison');
+ if(!root)return;
+ const buttons=[...root.querySelectorAll('.profile-comparison-legend button[data-scope]')];
+ const traces=[...root.querySelectorAll('.profile-size-chart [data-scope]')];
+ let pinned=null;
+ function show(scope){
+  for(const node of [...buttons,...traces])node.classList.toggle('is-dimmed',!!scope&&node.dataset.scope!==scope);
+  for(const b of buttons)b.setAttribute('aria-pressed',String(b.dataset.scope===pinned));
+ }
+ for(const b of buttons){
+  b.addEventListener('pointerenter',e=>{if(e.pointerType!=='touch')show(b.dataset.scope)});
+  b.addEventListener('pointerleave',e=>{if(e.pointerType!=='touch')show(pinned)});
+  b.addEventListener('focus',()=>{if(b.matches(':focus-visible'))show(b.dataset.scope)});
+  b.addEventListener('blur',()=>show(pinned));
+  b.addEventListener('click',()=>{pinned=pinned===b.dataset.scope?null:b.dataset.scope;show(pinned)});
+ }
+ for(const line of root.querySelectorAll('.profile-size-chart polyline[data-scope]')){
+  line.addEventListener('pointerenter',e=>{if(e.pointerType!=='touch')show(line.dataset.scope)});
+  line.addEventListener('pointerleave',()=>show(pinned));
+ }
+ root.addEventListener('keydown',e=>{if(e.key==='Escape'){pinned=null;show(null)}});
+})();
+</script>"""
+
+
+def size_figure(svg, url):
+    """Inline the generated vector plot so highlighting also works in offline ZIPs."""
+    escaped = html.escape(url, quote=True)
+    return ("<figure class='plot-card comparison-size'><div class='profile-size-chart'>"+svg+
+            "</div><figcaption class='figure-link'><a href='"+escaped+
+            "' target='_blank' rel='noopener'>Open figure ↗</a></figcaption></figure>")
+
+
+def legend_item(scope, label, color):
+    esc = html.escape
+    return (f"<li><button type='button' data-scope='{esc(scope,quote=True)}' aria-label='Highlight {esc(label,quote=True)}' aria-pressed='false'>"
+            f"<i style='background:{color}' aria-hidden='true'></i>{esc(label)}</button></li>")
 
 
 def svg_start(width, height, title):
@@ -100,7 +151,7 @@ def size_comparison(series):
     for row in series:
         xs, ys = row['sizes']
         points = ' '.join(f'{x(bp):.3f},{bottom-v/100*(bottom-top):.3f}' for bp,v in zip(xs,ys))
-        svg.append(f"<polygon points='{x(xs[0]):.3f},{bottom} {points} {x(xs[-1]):.3f},{bottom}' fill='{row['color']}' opacity='.06'/>")
+        svg.append(f"<polygon data-scope='{html.escape(row['id'],quote=True)}' points='{x(xs[0]):.3f},{bottom} {points} {x(xs[-1]):.3f},{bottom}' fill='{row['color']}' fill-opacity='.06'/>")
     for row in series:
         xs, ys = row['sizes']
         svg.append(polyline([x(v) for v in xs], [bottom-v/100*(bottom-top) for v in ys], row['color'], row['id']))
@@ -271,12 +322,13 @@ def render_profiles_card(sample, scopes, scope_html, asset_dir, gene_dir, asset_
     parts += ["<div class='profile-comparison'><ul class='profile-comparison-legend'>"]
     for row in series:
         label=row['label'] if row['label']==row['id'] else row['id']+' · '+row['label']
-        parts.append(f"<li><i style='background:{row['color']}'></i>{esc(label)}</li>")
+        parts.append(legend_item(row['id'],label,row['color']))
     parts.append('</ul>')
     size_name=f'{sample}.sublibraries.size_profiles.svg';gel_name=f'{sample}.sublibraries.virtual_gel.svg'
     (asset_dir/size_name).write_text(size_comparison(series));(asset_dir/gel_name).write_text(virtual_lanes(series))
-    parts.append("<div class='profile-comparison-grid'>"+figure(size_name,'Sublibrary full-library size traces')+figure(gel_name,'Sublibrary virtual lanes','comparison-gel')+'</div>')
+    parts.append("<div class='profile-comparison-grid'>"+size_figure((asset_dir/size_name).read_text(),asset_prefix+size_name)+figure(gel_name,'Sublibrary virtual lanes','comparison-gel')+'</div>')
     parts.append("<p class='comparison-note'>ONT-derived full-library sizes, length-weighted; each trace and lane is scaled to its own peak of 100.</p>")
+    parts.append(INTERACTION_SCRIPT)
     meta=gene_comparison(series)
     regions=region_comparison(series)
     if regions:
