@@ -289,6 +289,8 @@ def render_profiles_card(sample, scopes, scope_html, asset_dir, gene_dir, asset_
         if missing:parts.append("<p class='comparison-note'>No mapped profile: "+esc(', '.join(missing))+'.</p>')
     if regions:parts.append('</div>')
     parts.append('</div>')
+    from report_similarity import report_html as similarity_report_html
+    parts.append(similarity_report_html(sample, asset_dir, asset_prefix))
     for i, scope in enumerate(sub):
         label=scope.get('scope_name',scope['scope_id']);color=series[i]['color']
         content=re.sub(r'<h3>.*?</h3>','',scope_html[i+1],count=1,flags=re.S)

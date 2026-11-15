@@ -77,6 +77,8 @@ jobs:
         run: python tests/portal/check_optional_email_browser.py test-results/optional-email ${{ matrix.browser }}
         env:
           PYTHONPATH: portal
+      - name: Sublibrary similarity report controls
+        run: python tests/check_similarity_browser.py ${{ matrix.browser }}
       - name: Public report PDF export
         run: python tests/portal/check_report_export_browser.py test-results/report-export ${{ matrix.browser }}
         env:
