@@ -21,7 +21,10 @@ CSS = '''
 .profile-size-chart .is-dimmed,.profile-comparison-legend .is-dimmed{opacity:.12}
 @media(prefers-reduced-motion:reduce){.profile-size-chart [data-scope],.profile-comparison-legend button{transition:none}}
 @media print{.profile-size-chart [data-scope],.profile-comparison-legend button{opacity:1!important}.profile-comparison-legend button{background:transparent!important;border:0;outline:0}}
-.comparison-size>.profile-comparison-legend{justify-content:flex-end;margin:8px 12px 4px}
+.profile-size-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 20px;margin:12px 4.615% 8px 8.205%}
+.profile-size-heading h3{font:600 19px/1.25 Arial,Helvetica,sans-serif;color:#111;margin:0}
+.profile-size-heading p{font:13px/1.4 Arial,Helvetica,sans-serif;color:#576574;margin:3px 0 0}
+.profile-size-heading>.profile-comparison-legend{justify-content:flex-end;margin:0;gap:8px 18px}
 .profile-comparison-legend{display:flex;flex-wrap:wrap;gap:8px 22px;list-style:none;margin:8px 0 14px;padding:0;font-size:13px}
 .profile-comparison-legend i,.profile-detail summary i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:7px;print-color-adjust:exact;-webkit-print-color-adjust:exact}
 .profile-comparison-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,.43fr);gap:12px;align-items:stretch}
@@ -94,7 +97,13 @@ INTERACTION_SCRIPT = """<script>
 def size_figure(svg, url, legend=""):
     """Inline the generated vector plot so highlighting also works in offline ZIPs."""
     escaped = html.escape(url, quote=True)
-    return ("<figure class='plot-card comparison-size'>"+legend+"<div class='profile-size-chart'>"+svg+
+    # Keep the standalone SVG intact; use a responsive HTML heading in the report.
+    svg = re.sub(r"<text\b[^>]*>Full-library size profiles</text>", '', svg)
+    svg = re.sub(r"<text\b[^>]*>ONT-derived · length-weighted</text>", '', svg)
+    svg = svg.replace("viewBox='0 0 780 390'", "viewBox='0 54 780 336'")
+    heading = ("<div class='profile-size-heading'><div><h3>Full-library size profiles</h3>"
+               "<p>ONT-derived · length-weighted</p></div>"+legend+"</div>")
+    return ("<figure class='plot-card comparison-size'>"+heading+"<div class='profile-size-chart'>"+svg+
             "</div><figcaption class='figure-link'><a href='"+escaped+
             "' target='_blank' rel='noopener'>Open figure ↗</a></figcaption></figure>")
 
