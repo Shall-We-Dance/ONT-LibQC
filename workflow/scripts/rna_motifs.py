@@ -44,7 +44,7 @@ def parse_motifs(text, target_count, background_count):
 
 def adapter_match(consensus):
     """Flag exact adapter-sequence matches without labelling them biological motifs."""
-    from ont_qc import FAMILIES, P5, P7
+    from library_sequences import FAMILIES, P5, P7
     word = consensus.replace('U', 'T')
     if len(word) < 6 or set(word) - set('ACGT'):
         return False

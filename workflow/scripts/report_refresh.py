@@ -1,0 +1,226 @@
+#!/usr/bin/env python3
+"""Validate, preview and transactionally refresh retained report presentation.
+
+Deployment inventory lives in an external manifest, never in the repository.
+This command neither maps reads nor changes retained metric/analysis records.
+"""
+import argparse
+import datetime
+import fcntl
+import hashlib
+from html.parser import HTMLParser
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import tempfile
+import uuid
+import zipfile
+
+from report_bundle import validate
+from report_metrics import REPORT_CSS, REPORT_TOOLTIP_SCRIPT
+from report_profiles import render_profiles_card
+
+VOID = {'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'}
+
+
+class Elements(HTMLParser):
+    """Locate balanced source ranges without rewriting unrelated HTML or scripts."""
+    def __init__(self, text):
+        super().__init__(convert_charrefs=False)
+        self.text, self.stack, self.elements = text, [], []
+        self.lines = [0]
+        for line in text.splitlines(True): self.lines.append(self.lines[-1]+len(line))
+        self.feed(text)
+        self.close()
+
+    def position(self):
+        line, col = self.getpos()
+        return self.lines[line-1]+col
+
+    def handle_starttag(self, tag, attrs):
+        start = self.position()
+        node = dict(tag=tag, attrs=dict(attrs), start=start, end=start+len(self.get_starttag_text()),
+                    parent=self.stack[-1] if self.stack else None)
+        self.elements.append(node)
+        if tag not in VOID: self.stack.append(node)
+
+    def handle_startendtag(self, tag, attrs):
+        self.handle_starttag(tag, attrs)
+        if tag not in VOID: self.stack.pop()
+
+    def handle_endtag(self, tag):
+        # Only matched, explicit closing tags are eligible replacement boundaries.
+        for i in range(len(self.stack)-1, -1, -1):
+            if self.stack[i]['tag'] == tag:
+                node = self.stack[i]
+                node['end'] = self.text.index('>', self.position())+1
+                node['closed'] = True
+                del self.stack[i:]
+                return
+
+    def within(self, node, parent):
+        return parent['start'] < node['start'] and node['end'] < parent['end']
+
+    def fragment(self, node):
+        if not node.get('closed'): raise ValueError('Unclosed presentation element')
+        return self.text[node['start']:node['end']]
+
+
+def replace_ranges(text, replacements):
+    end = len(text)
+    for node, replacement in sorted(replacements, key=lambda pair: pair[0]['start'], reverse=True):
+        if not node.get('closed') or node['end'] > end: raise ValueError('Overlapping presentation replacements')
+        text = text[:node['start']]+replacement+text[node['end']:]
+        end = node['start']
+    return text
+
+
+def refresh_page(root, sample):
+    page = root/'samples'/f'{sample}.html'
+    text = page.read_text()
+    parsed = Elements(text)
+    sections = [n for n in parsed.elements if n['attrs'].get('id') == 'profiles']
+    if len(sections) != 1: raise ValueError('Expected one profiles section: '+sample)
+    section = sections[0]
+    metric = json.loads((root/'data/metrics'/f'{sample}.json').read_text())
+    scopes = [dict(metric, scope_id='total', scope_name='Total library')]+metric.get('sub_libraries', [])
+    scope_html = {}
+    for node in parsed.elements:
+        if 'profile-scope' not in node['attrs'].get('class', '').split() or not parsed.within(node, section): continue
+        ancestor = node['parent']
+        sid = 'total' if len(scopes) == 1 else None
+        while ancestor and ancestor is not section:
+            if ancestor['attrs'].get('data-scope'): sid = ancestor['attrs']['data-scope']; break
+            if 'pooled-profile' in ancestor['attrs'].get('class', '').split(): sid = 'total'; break
+            ancestor = ancestor['parent']
+        if sid is None or sid in scope_html: raise ValueError('Cannot identify historical profile scope: '+sample)
+        scope_html[sid] = parsed.fragment(node)
+    if set(scope_html) != {s['scope_id'] for s in scopes}: raise ValueError('Retained profile scopes do not match metrics: '+sample)
+    new = render_profiles_card(sample, scopes, [scope_html[s['scope_id']] for s in scopes],
+                               root/'assets', root/'data/gene_profile', '../assets/')
+    replacements = [(section, new)]
+    for node in parsed.elements:
+        fragment = text[node['start']:node['end']]
+        if node['tag'] == 'style' and '.report-hero' in fragment and '.metric-tip' in fragment:
+            replacements.append((node, '<style>'+REPORT_CSS+'</style>'))
+        if node['tag'] == 'script' and "tip.id = 'metric-tooltip'" in fragment:
+            replacements.append((node, REPORT_TOOLTIP_SCRIPT))
+    page.write_text(replace_ranges(text, replacements))
+
+
+def remove_retired_cohort(root):
+    page = root/'index.html'
+    text = page.read_text(); parsed = Elements(text)
+    nodes = [n for n in parsed.elements if n['attrs'].get('id') == 'rna-cohort']
+    if nodes: page.write_text(replace_ranges(text, [(n, '') for n in nodes]))
+
+
+def hashes(root):
+    return {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in sorted(root.rglob('*')) if p.is_file()}
+
+
+def build_archive(root):
+    target = root/'report.zip'
+    if target.exists():
+        with zipfile.ZipFile(target) as old:
+            if any(not name.startswith('report/') for name in old.namelist()):
+                raise ValueError('Unrecognized report ZIP layout')
+    with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED, compresslevel=3) as archive:
+        for path in sorted(root.rglob('*')):
+            if path.is_file() and path != target: archive.write(path, 'report/'+str(path.relative_to(root)))
+    with zipfile.ZipFile(target) as archive:
+        if archive.testzip(): raise ValueError('Report ZIP validation failed')
+
+
+def refresh(root, apply=False, expected_manifest_sha256=None):
+    original = Path(root)
+    if original.is_symlink(): raise ValueError('Report root must not be a symlink')
+    root = original.resolve()
+    manifest = root/'manifest.json'
+    if expected_manifest_sha256 and hashlib.sha256(manifest.read_bytes()).hexdigest() != expected_manifest_sha256:
+        raise ValueError('Report manifest has changed')
+    data = json.loads(manifest.read_text())
+    samples = data.get('samples')
+    if data.get('schema_version') != 1 or not isinstance(samples, list) or not samples or any(not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', s) for s in samples):
+        raise ValueError('Unrecognized report manifest')
+    validate(root)
+    with (root.parent/('.'+root.name+'.refresh.lock')).open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        before = hashes(root)
+        with tempfile.TemporaryDirectory(prefix='.'+root.name+'.refresh-', dir=root.parent) as tmp:
+            stage = Path(tmp)/'report'
+            shutil.copytree(root, stage)
+            for sample in samples: refresh_page(stage, sample)
+            remove_retired_cohort(stage)
+            audit = validate(stage)
+            if audit['sample_reports'] != len(samples): raise ValueError('Sample count changed')
+            # Updating presentation cannot modify scientific inputs or provenance.
+            for name, digest in before.items():
+                if name.startswith('data/') and hashlib.sha256((stage/name).read_bytes()).hexdigest() != digest:
+                    raise ValueError('Scientific record changed: '+name)
+            data['validation'] = audit
+            data['presentation_refresh'] = {'schema_version': 1, 'created_utc': datetime.datetime.now(datetime.timezone.utc).isoformat()}
+            (stage/'manifest.json').write_text(json.dumps(data, indent=2)+'\n')
+            if (root/'report.zip').is_file(): build_archive(stage)
+            after = hashes(stage)
+            changed = sorted(name for name in set(before)|set(after) if before.get(name) != after.get(name))
+            # Preserve service-account ownership, including newly generated files.
+            root_stat = root.stat()
+            for target in [stage, *stage.rglob('*')]:
+                source = root/target.relative_to(stage)
+                stat = source.stat() if source.exists() else root_stat
+                current = target.stat()
+                if (current.st_uid, current.st_gid) != (stat.st_uid, stat.st_gid):
+                    os.chown(target, stat.st_uid, stat.st_gid)
+            if hashes(root) != before: raise ValueError('Report changed during refresh; retry when idle')
+            result = dict(report=str(root), applied=apply, changed_files=changed, validation=audit)
+            if apply:
+                backup = root.parent/('.'+root.name+'.backup-'+uuid.uuid4().hex)
+                root.rename(backup)
+                try: stage.rename(root)
+                except BaseException:
+                    backup.rename(root)
+                    raise
+                result['backup'] = str(backup)
+            return result
+
+
+def rollback(root, backup):
+    original, saved = Path(root), Path(backup)
+    if original.is_symlink() or saved.is_symlink(): raise ValueError('Symlink report roots are not supported')
+    root, backup = original.resolve(), saved.resolve()
+    if backup.parent != root.parent or not re.fullmatch(re.escape('.'+root.name+'.backup-')+r'[0-9a-f]{32}', backup.name):
+        raise ValueError('Backup does not belong to this report')
+    validate(backup)
+    with (root.parent/('.'+root.name+'.refresh.lock')).open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        displaced = root.parent/('.'+root.name+'.backup-'+uuid.uuid4().hex)
+        root.rename(displaced)
+        try: backup.rename(root)
+        except BaseException:
+            displaced.rename(root)
+            raise
+    return dict(report=str(root), restored=True, backup=str(displaced))
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--manifest', type=Path, help='External JSON inventory: schema_version=1, reports=[{root: ...}]')
+    parser.add_argument('--apply', action='store_true', help='Publish after validation; default is dry run')
+    parser.add_argument('--rollback', nargs=2, metavar=('REPORT', 'BACKUP'))
+    args = parser.parse_args()
+    if args.rollback:
+        if args.manifest or args.apply: parser.error('--rollback is a separate operation')
+        print(json.dumps(rollback(*args.rollback), indent=2)); return
+    if not args.manifest: parser.error('--manifest is required')
+    config = json.loads(args.manifest.read_text())
+    if config.get('schema_version') != 1 or not isinstance(config.get('reports'), list) or not config['reports']:
+        raise ValueError('Invalid refresh inventory')
+    for entry in config['reports']:
+        print(json.dumps(refresh(entry['root'], args.apply, entry.get('manifest_sha256')), indent=2))
+
+
+if __name__ == '__main__': main()

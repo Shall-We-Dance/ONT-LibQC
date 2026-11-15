@@ -3,6 +3,7 @@ rule spikein_screen:
     input:
         fastq=f"{OUT}/prepared/{{sample}}.inserts.fastq.gz",
         script="workflow/scripts/ont_qc.py",
+        analysis_modules=["workflow/scripts/qc_analysis.py", "workflow/scripts/library_sequences.py", "workflow/scripts/profile_data.py"],
         auto_script="workflow/scripts/spikein_auto.py",
         database=lambda wc: [spikein_config(wc.sample).get("database_manifest", "resources/spikein_v1/manifest.json")] if spikein_config(wc.sample).get("enabled",False) and spikein_config(wc.sample).get("mode")=="auto" else [],
     output:

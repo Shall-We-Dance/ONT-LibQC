@@ -1,0 +1,315 @@
+.extension-figure {
+  margin: 22px 0;
+  max-width: 1150px;
+}
+
+.extension-figure img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.extension-figure figcaption {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.profile-scope {
+  margin: 24px 0 38px;
+}
+
+.plot-card {
+  margin: 0;
+  min-width: 0;
+  background: #fff;
+}
+
+.analysis-plots .plot-card img {
+  object-fit: contain;
+}
+
+.chromosome-detail {
+  border: 1px solid #e3e9ee;
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin: 0 0 24px;
+  background: #fafcfd;
+}
+
+.chromosome-detail summary {
+  cursor: pointer;
+  color: #405e73;
+  font-weight: 600;
+}
+
+.chromosome-detail p {
+  font-size: 13px;
+  color: #667783;
+  line-height: 1.5;
+}
+
+.chromosome-detail img {
+  width: 100%;
+  display: block;
+  background: white;
+  margin-top: 12px;
+}
+
+.metric-status {
+  border-bottom: 0 !important;
+}
+
+.metric-status:focus-visible {
+  outline: 2px solid #527a91;
+  outline-offset: 4px;
+  border-radius: 3px;
+}
+
+@media (max-width:760px) {
+  .profile-scope .plots,.plots {
+    grid-template-columns: minmax(0,1fr);
+    gap: 14px;
+  }
+
+  .plot-card {
+    padding: 8px;
+  }
+
+  .profile-scope .analysis-plots .plot-card img {
+    height: auto;
+  }
+
+}
+
+h1,h2,h3,table,button,input {
+  font-family: Arial,Helvetica,sans-serif;
+}
+
+.plots {
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  margin-bottom: 22px;
+}
+
+.plots img,.summary-plot {
+  width: 100%;
+  display: block;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+
+th,td {
+  border-bottom: 1px solid #dce2e7;
+  padding: 9px 10px;
+  text-align: right;
+  vertical-align: middle;
+}
+
+th:first-child,td:first-child {
+  text-align: left;
+}
+
+th {
+  color: #405464;
+}
+
+tr:hover {
+  background: #f8fafb;
+}
+
+.traffic-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit,minmax(280px,1fr));
+}
+
+.scope-card h3 {
+  margin: 3px 0 9px;
+}
+
+.traffic {
+  display: grid;
+  gap: 8px;
+  align-items: center;
+  border-top: 1px solid #edf1f3;
+}
+
+.traffic em {
+  font-style: normal;
+  color: #536475;
+}
+
+.light {
+  display: inline-block;
+  border-radius: 50%;
+}
+
+.light.green {
+  background: #16835D;
+}
+
+.light.amber {
+  background: #E2A12A;
+}
+
+.light.red {
+  background: #C23B3B;
+}
+
+.light.gray {
+  background: #9BA8B2;
+}
+
+.note {
+  padding: 12px 14px;
+  line-height: 1.55;
+}
+
+.pass {
+  color: #177245;
+  font-weight: 700;
+}
+
+.fail {
+  color: #b22222;
+  font-weight: 700;
+}
+
+.warn {
+  color: #b06b00;
+  font-weight: 700;
+}
+
+code {
+  padding: 2px 4px;
+}
+
+.identity-panel {
+  display: grid;
+  grid-template-columns: minmax(260px,.8fr) minmax(420px,1.4fr);
+  gap: 14px;
+  margin: 16px 0 18px;
+}
+
+.identity-card {
+  border: 1px solid #dce3e8;
+  overflow: hidden;
+  background: white;
+}
+
+.identity-card h3 {
+  margin: 0;
+  padding: 11px 14px;
+}
+
+.identity-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.identity-item {
+  padding: 11px 14px;
+  border-bottom: 1px solid #edf1f3;
+}
+
+.identity-item:nth-child(odd) {
+  border-right: 1px solid #edf1f3;
+}
+
+.identity-item small {
+  display: block;
+  color: #6a7a86;
+  margin-bottom: 4px;
+}
+
+.identity-item strong {
+  color: #173042;
+}
+
+.mode-badge {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #e3f1ec;
+  color: #116145;
+  font-size: 12px;
+}
+
+.pair-table th,.pair-table td {
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.pair-table th:last-child,.pair-table td:last-child {
+  text-align: right;
+}
+
+.cutoff-note {
+  padding: 8px 12px;
+  color: #667783;
+}
+
+.metric-tip {
+  cursor: help;
+}
+
+#metric-tooltip {
+  position: fixed;
+  z-index: 10000;
+  box-sizing: border-box;
+  width: 310px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #173042;
+  color: white;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+  box-shadow: 0 4px 15px #0003;
+  text-align: left;
+  pointer-events: none;
+}
+
+.unavailable-reason {
+  display: block;
+  font-size: 11px;
+  font-weight: 400;
+  color: #667783;
+  max-width: 245px;
+  line-height: 1.4;
+}
+
+.reference-interval {
+  white-space: nowrap;
+  color: #586A77;
+  font-size: 13px;
+}
+
+@media (max-width:850px) {
+  body {
+    margin: 12px auto;
+  }
+
+  .metric-cell {
+    min-width: 110px;
+  }
+
+  th,td {
+    padding: 7px 5px;
+    font-size: 12px;
+  }
+
+}
+

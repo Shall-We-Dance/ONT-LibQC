@@ -1,8 +1,7 @@
 """Fixed-length UMI layouts in the physical P5-to-P7 strand orientation."""
 import re
 
-P5 = 'AATGATACGGCGACCACCGAGATCTACAC'
-P7_FORWARD = 'ATCTCGTATGCCGTCTTCTGCTTG'
+from library_sequences import P5, P7_FORWARD
 POSITIONS = ('before_i5', 'after_i5', 'before_insert', 'after_insert', 'before_i7', 'after_i7')
 DEFAULT = dict(mode='auto', adapter_family='auto', p5_sequence=None, p7_sequence=None,
                i5_length=None, i7_length=None, adapter_i5_sequence=None, adapter_i7_sequence=None, umis=[])

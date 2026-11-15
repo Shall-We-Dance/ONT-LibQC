@@ -7,7 +7,7 @@ ZF:i:1 marks sequence-supported terminal correction verified by end-to-end remap
 """
 from pathlib import Path
 import argparse, collections, gzip, json, math, re, subprocess, tempfile
-from ont_qc import edit_distance, rc, fastq_records
+from library_sequences import edit_distance, rc, fastq_records
 
 METHOD = "local-foldback-v1"
 REVISION = "r2"

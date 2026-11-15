@@ -4,6 +4,7 @@ rule chromatin_bigwig:
         bai=f"{OUT}/bam/{{sample}}.bam.bai",
         chrom_sizes=reference_input("chrom_sizes"),
         script="workflow/scripts/ont_qc.py",
+        analysis_modules=["workflow/scripts/qc_analysis.py", "workflow/scripts/library_sequences.py", "workflow/scripts/profile_data.py"],
     output:
         temp(f"{OUT}/tracks/{{sample}}.CPM.bw")
     log:

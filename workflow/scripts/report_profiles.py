@@ -9,6 +9,7 @@ import re
 
 from report_sublibrary import COLORS
 from report_profile_band import read_profile_band
+from profile_data import read_gene_profile, read_numeric_profile, read_data
 
 CSS = Path(__file__).with_name("report_profiles.css").read_text()
 
@@ -66,19 +67,6 @@ def read_size_profile(path):
     if any(not math.isfinite(y) or not 0 <= y <= 100.000001 for y in ys):
         raise ValueError('Invalid size profile signal')
     return xs, ys
-
-
-def read_gene_profile(path):
-    if not Path(path).is_file(): return None
-    with Path(path).open() as handle: rows = list(csv.reader(handle, delimiter='\t'))
-    if len(rows) == 1 and rows[0][0].startswith('No '): return None
-    if len(rows) != 3 or rows[0][:1] != ['bin labels'] or rows[1][:1] != ['bins']:
-        raise ValueError('Unsupported gene profile table')
-    labels, xs, ys = rows[0][2:], [float(v) for v in rows[1][2:]], [float(v) for v in rows[2][2:]]
-    if len(xs) < 2 or len(xs) != len(ys) or len(xs) != len(labels) or any(not math.isfinite(x) for x in xs) or any(b <= a for a, b in zip(xs, xs[1:])):
-        raise ValueError('Invalid gene profile axis')
-    if any(math.isinf(y) or y < 0 for y in ys): raise ValueError('Invalid gene coverage')
-    return labels, xs, ys
 
 
 def size_comparison(series):
@@ -209,6 +197,8 @@ def gene_comparison(series):
 def read_region_metrics(path):
     """Use the same saved values as each individual genomic-region figure."""
     path = Path(path)
+    numeric = path.with_suffix('.json')
+    if numeric.is_file(): return read_data(numeric, 'genomic_regions')
     if not path.is_file():
         return None
     node = ET.fromstring(path.read_text()).find("{*}metadata[@id='genomic-region-metrics']")
@@ -266,7 +256,11 @@ def render_profiles_card(sample, scopes, scope_html, asset_dir, gene_dir, asset_
                            sizes=read_size_profile(asset_dir/f'{sample}.{sid}.full_library_profiles.tsv'),
                            gene=read_gene_profile(gene_dir/f'{sample}.{sid}.profile.tsv')))
         series[-1]['regions'] = read_region_metrics(asset_dir/f'{sample}.{sid}.regions.svg')
-        series[-1]['band'] = read_profile_band(asset_dir/f'{sample}.{sid}.TSS_TES.svg', series[-1]['gene'])
+        numeric = gene_dir/f'{sample}.{sid}.profile.json'
+        if numeric.is_file():
+            series[-1]['gene'], series[-1]['band'] = read_numeric_profile(numeric, series[-1]['gene'])
+        else:
+            series[-1]['band'] = read_profile_band(asset_dir/f'{sample}.{sid}.TSS_TES.svg', series[-1]['gene'])
     parts.append("<div class='profile-comparison'>")
     legend = ["<ul class='profile-comparison-legend' aria-label='Size profile sublibraries'>"]
     for row in series:

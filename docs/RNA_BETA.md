@@ -90,4 +90,6 @@ tools:
 
 When technical bases inside the extracted insert are known, optional per-sample `rna_trim_p5_bp` and `rna_trim_p7_bp` values remove fixed lengths at the **physical** P5/P7 ends before RNA alignment. Defaults are zero; the trim sides are exchanged for reverse-oriented units and the report records the operation. Nonzero manual trimming or custom `library_structure.umis` extraction disables automatic internal-tag trimming to prevent removing the same bases twice. Do not infer arbitrary linker or UMI lengths from a biological end bias. Custom UMI definitions remain optional.
 
-Detailed evidence is supplied as JSON and downloadable tables for units, gene counts, junctions, profiles, rarefaction, motifs and cohort similarity. Use these denominators and evidence-status fields when comparing shallow libraries.
+Detailed evidence is supplied as JSON and downloadable tables for units, gene counts, junctions, profiles, rarefaction, and motifs. Use these denominators and evidence-status fields when comparing shallow libraries.
+
+Cohort similarity is an inactive research prototype. Report generation does not run or display it.

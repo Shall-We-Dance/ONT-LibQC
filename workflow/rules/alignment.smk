@@ -7,6 +7,7 @@ rule align:
         index=index_dependency,
         rna_script="workflow/scripts/run_star_rna.py",
         chromatin_script="workflow/scripts/chromatin_alignment.py",
+        sequences="workflow/scripts/library_sequences.py",
     output:
         bam=temp(f"{OUT}/bam/{{sample}}.bam"),
         bai=temp(f"{OUT}/bam/{{sample}}.bam.bai"),

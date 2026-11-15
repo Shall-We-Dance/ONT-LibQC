@@ -2,6 +2,7 @@ rule mycoplasma_screen:
     input:
         fastq=f"{OUT}/prepared/{{sample}}.inserts.fastq.gz",
         script="workflow/scripts/ont_qc.py",
+        analysis_modules=["workflow/scripts/qc_analysis.py", "workflow/scripts/library_sequences.py", "workflow/scripts/profile_data.py"],
     output:
         json=temp(f"{OUT}/qc/mycoplasma/{{sample}}.json"),
     log:
