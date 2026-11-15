@@ -21,6 +21,7 @@ CSS = '''
 .profile-size-chart .is-dimmed,.profile-comparison-legend .is-dimmed{opacity:.12}
 @media(prefers-reduced-motion:reduce){.profile-size-chart [data-scope],.profile-comparison-legend button{transition:none}}
 @media print{.profile-size-chart [data-scope],.profile-comparison-legend button{opacity:1!important}.profile-comparison-legend button{background:transparent!important;border:0;outline:0}}
+.comparison-size>.profile-comparison-legend{justify-content:flex-end;margin:8px 12px 4px}
 .profile-comparison-legend{display:flex;flex-wrap:wrap;gap:8px 22px;list-style:none;margin:8px 0 14px;padding:0;font-size:13px}
 .profile-comparison-legend i,.profile-detail summary i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:7px;print-color-adjust:exact;-webkit-print-color-adjust:exact}
 .profile-comparison-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,.43fr);gap:12px;align-items:stretch}
@@ -90,10 +91,10 @@ INTERACTION_SCRIPT = """<script>
 </script>"""
 
 
-def size_figure(svg, url):
+def size_figure(svg, url, legend=""):
     """Inline the generated vector plot so highlighting also works in offline ZIPs."""
     escaped = html.escape(url, quote=True)
-    return ("<figure class='plot-card comparison-size'><div class='profile-size-chart'>"+svg+
+    return ("<figure class='plot-card comparison-size'>"+legend+"<div class='profile-size-chart'>"+svg+
             "</div><figcaption class='figure-link'><a href='"+escaped+
             "' target='_blank' rel='noopener'>Open figure ↗</a></figcaption></figure>")
 
@@ -335,14 +336,15 @@ def render_profiles_card(sample, scopes, scope_html, asset_dir, gene_dir, asset_
                            gene=read_gene_profile(gene_dir/f'{sample}.{sid}.profile.tsv')))
         series[-1]['regions'] = read_region_metrics(asset_dir/f'{sample}.{sid}.regions.svg')
         series[-1]['band'] = read_profile_band(asset_dir/f'{sample}.{sid}.TSS_TES.svg', series[-1]['gene'])
-    parts += ["<div class='profile-comparison'><ul class='profile-comparison-legend'>"]
+    parts.append("<div class='profile-comparison'>")
+    legend = ["<ul class='profile-comparison-legend' aria-label='Size profile sublibraries'>"]
     for row in series:
         label=row['label'] if row['label']==row['id'] else row['id']+' · '+row['label']
-        parts.append(legend_item(row['id'],label,row['color']))
-    parts.append('</ul>')
+        legend.append(legend_item(row['id'],label,row['color']))
+    legend.append('</ul>')
     size_name=f'{sample}.sublibraries.size_profiles.svg';gel_name=f'{sample}.sublibraries.virtual_gel.svg'
     (asset_dir/size_name).write_text(size_comparison(series));(asset_dir/gel_name).write_text(virtual_lanes(series))
-    parts.append("<div class='profile-comparison-grid'>"+size_figure((asset_dir/size_name).read_text(),asset_prefix+size_name)+figure(gel_name,'Sublibrary virtual lanes','comparison-gel')+'</div>')
+    parts.append("<div class='profile-comparison-grid'>"+size_figure((asset_dir/size_name).read_text(),asset_prefix+size_name,''.join(legend))+figure(gel_name,'Sublibrary virtual lanes','comparison-gel')+'</div>')
     parts.append("<p class='comparison-note'>ONT-derived full-library sizes, length-weighted; each trace and lane is scaled to its own peak of 100.</p>")
     parts.append(INTERACTION_SCRIPT)
     meta=gene_comparison(series)
