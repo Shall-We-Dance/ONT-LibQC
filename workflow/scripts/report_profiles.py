@@ -10,88 +10,10 @@ import re
 from report_sublibrary import COLORS
 from report_profile_band import read_profile_band
 
-CSS = '''
-.profile-comparison-legend button{font:inherit;color:inherit;line-height:inherit;background:var(--legend-tint);border:1px solid var(--legend-border);border-radius:4px;padding:3px 6px;margin:-3px -6px;cursor:pointer;transition:opacity .15s ease,background .15s ease}
-.profile-comparison-legend button.is-highlighted{background:var(--legend-active)}
-.profile-comparison-legend button:focus-visible{outline:2px solid #2a6cbd;outline-offset:3px}
-.profile-size-chart svg{display:block;width:100%;height:auto}
-.profile-size-chart [data-scope]{transition:opacity .15s ease}
-.profile-size-chart polygon{pointer-events:none}
-.profile-size-chart polyline{pointer-events:stroke}
-.profile-size-chart .is-dimmed,.profile-comparison-legend .is-dimmed{opacity:.12}
-@media(prefers-reduced-motion:reduce){.profile-size-chart [data-scope],.profile-comparison-legend button{transition:none}}
-@media print{.profile-size-chart [data-scope],.profile-comparison-legend button{opacity:1!important}.profile-comparison-legend button{background:transparent!important;border:0;outline:0}}
-.profile-size-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 20px;margin:12px 4.615% 8px 8.205%}
-.profile-size-heading h3{font:600 19px/1.25 Arial,Helvetica,sans-serif;color:#111;margin:0}
-.profile-size-heading p{font:13px/1.4 Arial,Helvetica,sans-serif;color:#576574;margin:3px 0 0}
-.profile-size-heading>.profile-comparison-legend{justify-content:flex-end;margin:0;gap:8px 18px}
-.profile-comparison-legend{display:flex;flex-wrap:wrap;gap:8px 22px;list-style:none;margin:8px 0 14px;padding:0;font-size:13px}
-.profile-comparison-legend i,.profile-detail summary i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:7px;print-color-adjust:exact;-webkit-print-color-adjust:exact}
-.profile-comparison-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,.43fr);gap:12px;align-items:stretch}
-.profile-comparison .plot-card{margin:0;min-width:0;padding:8px;border-radius:9px;display:flex;flex-direction:column}.profile-comparison img{display:block;width:100%;height:auto;min-height:0}
-.profile-comparison-grid .plot-card>a{display:block}
-.profile-comparison-grid img{width:100%;height:auto;object-fit:contain}
-.profile-comparison-grid .comparison-gel>a{position:relative;flex:1;min-height:0}
-.profile-comparison-grid .comparison-gel img{position:absolute;inset:0;width:100%;height:100%}
-.profile-comparison .comparison-metaplot{max-width:850px;margin:12px auto 0}
-.profile-genomic-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start;margin-top:12px}
-.profile-genomic-grid .comparison-metaplot{max-width:none;margin:0}
-.profile-genomic-grid>.comparison-note{grid-column:1/-1}
-@media(max-width:1000px){.profile-genomic-grid{grid-template-columns:minmax(0,1fr)}}
-@media print{.profile-genomic-grid{display:block}.profile-genomic-grid .plot-card{margin-bottom:4mm}}
-.profile-comparison .figure-link{margin-top:6px;font-size:11px}
-.profile-comparison .comparison-note{font-size:12px;color:var(--muted);margin:8px 0 16px}
-.profile-detail{margin:12px 0 0;border:1px solid var(--line);border-radius:8px;padding:0;background:#fff}
-.profile-detail[data-scope]{background:var(--scope-tint);border-color:var(--scope-border);print-color-adjust:exact;-webkit-print-color-adjust:exact}.profile-detail[data-scope]>summary{border-radius:7px}.profile-detail[data-scope]>.profile-scope{background:#fff;border-radius:0 0 7px 7px}
-.profile-detail>summary{padding:13px 16px;color:var(--deep);font-weight:550}.profile-detail>summary small{font-weight:400;color:var(--muted);margin-left:12px}
-.profile-detail>.profile-scope{margin:0;padding:0 16px 16px;border:0}.profile-detail .primary-size-plots{margin-top:8px}
-#profiles{scroll-margin-top:80px}#profiles>.profile-scope{border:0;margin-top:0;padding-top:0}
-@media(max-width:700px){.profile-comparison-grid{grid-template-columns:minmax(0,1fr)}.profile-comparison-grid .plot-card>a{height:auto}.profile-comparison-grid .comparison-gel>a{flex:none;height:320px}.profile-detail>summary small{display:block;margin:5px 0 0 20px}}
-@media print{.profile-comparison-grid{display:block}.profile-comparison .plot-card{max-width:100%;break-inside:avoid}.profile-detail{border:0}.profile-detail>summary{padding:2mm 0}.profile-detail>.profile-scope{padding:0}}
-'''
+CSS = Path(__file__).with_name("report_profiles.css").read_text()
 
 
-INTERACTION_SCRIPT = """<script>
-(()=>{
- const root=document.currentScript.closest('.profile-comparison');
- if(!root)return;
- const buttons=[...root.querySelectorAll('.profile-comparison-legend button[data-scope]')];
- const traces=[...root.querySelectorAll('.profile-size-chart [data-scope]')];
- let pinned=null, pointerType=null;
- function show(scope){
-  for(const node of [...buttons,...traces])node.classList.toggle('is-dimmed',!!scope&&node.dataset.scope!==scope);
-  for(const b of buttons){
-   b.setAttribute('aria-pressed',String(b.dataset.scope===pinned));
-   b.classList.toggle('is-highlighted',b.dataset.scope===scope);
-  }
- }
- for(const b of buttons){
-  b.addEventListener('pointerenter',e=>{if(e.pointerType!=='touch'&&matchMedia('(hover:hover)').matches){pinned=null;show(b.dataset.scope)}});
-  b.addEventListener('pointerleave',e=>{if(e.pointerType!=='touch'&&matchMedia('(hover:hover)').matches){pinned=null;show(null)}});
-  b.addEventListener('focus',()=>{if(b.matches(':focus-visible'))show(b.dataset.scope)});
-  b.addEventListener('blur',()=>show(pinned));
-  b.addEventListener('pointerdown',e=>{pointerType=e.pointerType});
-  b.addEventListener('keydown',()=>{pointerType=null});
-  b.addEventListener('click',e=>{
-   const touch=pointerType==='touch'||e.pointerType==='touch'||(e.detail>0&&matchMedia('(hover:none)').matches);
-   pointerType=null;
-   if(touch){pinned=pinned===b.dataset.scope?null:b.dataset.scope;show(pinned)}
-   else{pinned=null;show(b.dataset.scope)}
-  });
- }
- for(const line of root.querySelectorAll('.profile-size-chart polyline[data-scope]')){
-  line.addEventListener('pointerenter',e=>{if(e.pointerType!=='touch'&&matchMedia('(hover:hover)').matches){pinned=null;show(line.dataset.scope)}});
-  line.addEventListener('pointerleave',e=>{if(e.pointerType!=='touch'&&matchMedia('(hover:hover)').matches){pinned=null;show(null)}});
- }
- function reset(){pinned=null;pointerType=null;show(null)}
- root.addEventListener('pointerleave',e=>{if(e.pointerType!=='touch'&&matchMedia('(hover:hover)').matches)reset()});
- root.addEventListener('pointercancel',reset);
- root.addEventListener('keydown',e=>{if(e.key==='Escape')reset()});
- document.addEventListener('pointerdown',e=>{if(!root.contains(e.target))reset()});
- window.addEventListener('blur',reset);
- document.addEventListener('visibilitychange',()=>{if(document.hidden)reset()});
-})();
-</script>"""
+INTERACTION_SCRIPT = "<script>" + Path(__file__).with_name("report_profiles.js").read_text() + "</script>"
 
 
 def size_figure(svg, url, legend=""):

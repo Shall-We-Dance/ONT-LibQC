@@ -35,10 +35,9 @@ jobs:
           PYTHONPATH: portal
       - name: JavaScript syntax
         run: |
-          node --check portal/static/app.js
-          node --check portal/static/library-structure.js
-          node --check portal/static/cite.js
-          node --check workflow/scripts/report_export.js
+          for script in portal/static/*.js workflow/scripts/*.js; do
+            node --check "$script"
+          done
   browser:
     name: Browser ${{ matrix.browser }}
     runs-on: ubuntu-latest

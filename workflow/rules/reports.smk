@@ -10,6 +10,14 @@ rule resolved_report_config:
 
 rule reports:
     input:
+        presentation_assets=[
+            "workflow/scripts/report_profiles.py",
+            "workflow/scripts/report_profiles.css",
+            "workflow/scripts/report_profiles.js",
+            "workflow/scripts/report_profile_band.py",
+            "workflow/scripts/report_mitochondrial.py",
+            "workflow/scripts/report_spike_matrix.py",
+        ],
         provenance_script="workflow/scripts/report_provenance.py",
         script="workflow/scripts/ont_qc.py",
         rna_script="workflow/scripts/rna_qc.py",
