@@ -23,6 +23,9 @@ from ont_portal.settings import Settings
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'workflow/scripts'))
 from report_refresh import refresh
+from report_spike_matrix import spike_matrix_html
+from report_metrics import REPORT_CSS
+from report_export import add_pdf_export
 
 
 OUTPUT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path('test-results/report-export')
@@ -282,6 +285,44 @@ def check_refreshed_layout(browser, original, refreshed, sample):
         for page in pages: page.close()
 
 
+def check_spike_matrix_print(browser, engine):
+    labels = ['Saccharomyces cerevisiae', 'Schizosaccharomyces pombe',
+              'Lambda phage', 'PhiX174', 'Escherichia coli', 'Drosophila melanogaster']
+    screen = {'candidates': {str(i): {'label': name} for i, name in enumerate(labels)}}
+    libs = [{'scope_id': f'lib{i+1:02}', 'spike_in_screened_reads': 2300-i*100,
+             'spike_in_species_counts': {}} for i in range(6)]
+    table = spike_matrix_html(screen, libs, 'synthetic')
+    # Retained reports still have the old inline 1% width: print must repair them too.
+    table = table.replace('<th scope="col">Sublibrary',
+                          '<th scope="col" style="width:1%;min-width:76px;max-width:120px">Sublibrary')
+    document = add_pdf_export('<html><head><meta name="viewport" content="width=device-width,initial-scale=1">'
+                             '<style>'+REPORT_CSS+'</style></head><body>'
+                             '<header class="report-hero"><h1>Print layout check</h1></header>'+table+'</body></html>')
+    page = browser.new_page()
+    try:
+        page.set_content(document)
+        for media, width in [('screen',1440), ('screen',390), ('print',703), ('print',794)]:
+            page.set_viewport_size({'width':width,'height':1000})
+            page.emulate_media(media=media)
+            widths = page.locator('.spike-matrix thead th').evaluate_all(
+                '(es)=>es.slice(2).map(e=>e.getBoundingClientRect().width)')
+            assert max(widths)-min(widths)<1
+            assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+            if media == 'print':
+                first = page.locator('.spike-matrix thead th').first
+                assert first.evaluate('(e)=>e.clientWidth>=e.scrollWidth'), 'Sublibrary heading clipped'
+                assert page.locator('.spike-matrix thead').bounding_box()['height']<50, 'Header wraps letter by letter'
+                assert page.locator('.spike-matrix th,.spike-matrix td').evaluate_all(
+                    '(es)=>es.every(e=>e.scrollWidth<=e.clientWidth+1)'), 'Printed matrix cell overflows'
+                page.screenshot(path=str(OUTPUT/f'spike-matrix-{engine}-{width}.png'))
+        if engine == 'chromium':
+            for paper in ('A4', 'Letter'):
+                page.pdf(path=str(OUTPUT/f'spike-matrix-{paper}.pdf'), format=paper,
+                         print_background=True, prefer_css_page_size=False)
+    finally:
+        page.close()
+
+
 results = []
 with tempfile.TemporaryDirectory() as directory:
     sock = socket.socket()
@@ -309,6 +350,7 @@ with tempfile.TemporaryDirectory() as directory:
                 options = {'executable_path': os.environ['ONT_WEBKIT_EXECUTABLE']} if engine == 'webkit' and os.environ.get('ONT_WEBKIT_EXECUTABLE') else {}
                 browser = getattr(playwright, engine).launch(**options)
                 try:
+                    check_spike_matrix_print(browser, engine)
                     for sample in ('HL120', 'HL240'):
                         check_refreshed_layout(browser, ROOT/'example_report', examples, sample)
                         results.append(check_report(browser, origin, sample, engine))
