@@ -2678,21 +2678,7 @@ button.structure-block:hover {
   line-height: 1.3;
 }
 
-.tasks-summary {
-  grid-column: 1/-1;
-  margin: 2px 0 0;
-  font-size: 13px;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
 
-#tasks-description {
-  grid-column: 1/-1;
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.65;
-  color: var(--muted);
-}
 
 #tasks-view .tasks-heading button {
   min-height: 38px;
@@ -2881,11 +2867,6 @@ button.structure-block:hover {
   margin-top: 14px;
 }
 
-.tasks-privacy {
-  margin-top: 20px;
-  font-size: 12px;
-  line-height: 1.7;
-}
 
 @media (max-width:600px) {
   .tasks-heading {

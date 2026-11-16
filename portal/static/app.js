@@ -398,25 +398,14 @@ async function followReportLink(event, task, field) {
   }
   renderTasks();
 }
-const { taskState, syncChildren, updateTaskView } = window.ONTTaskViews({
+const { syncChildren, updateTaskView } = window.ONTTaskViews({
   node, assayLabel, labels, getCatalog: () => catalog, followReportLink,
   privateLink, saveText, api, refreshTask, renderTasks
 });
 function renderTasks() {
   $('new-nav').removeAttribute('aria-current');
   const single = tasks.length === 1;
-  const unavailable = tasks.length > 0 && tasks.every(t => t.job?.status === 'expired');
   $('tasks-title').textContent = single ? 'Analysis' : 'Analyses';
-  const counts = new Map();
-  tasks.forEach(task => { const state = taskState(task); counts.set(state, (counts.get(state) || 0) + 1); });
-  const summaryLabels = { succeeded: 'ready', running: 'analyzing', queued: 'queued', uploading: 'uploading', waiting: 'waiting to upload', created: 'waiting to upload', uploaded: 'uploaded', failed: 'failed', cancelling: 'cancelling', cancelled: 'cancelled', expired: 'expired', deleted: 'deleted', deleting: 'deleting', loading: 'loading' };
-  const summary = [...counts].map(([state, count]) => count + ' ' + (summaryLabels[state] || state)).join(' · ');
-  if ($('tasks-summary').textContent !== summary) $('tasks-summary').textContent = summary;
-  $('tasks-summary').hidden = tasks.length < 2;
-  $('tasks-description').textContent = unavailable
-    ? 'Reports cannot be restored after deletion. The removal reason is shown below.'
-    : (tasks.length && tasks.every(t => t.job?.mail_status === 'disabled') ? 'No email will be sent. ' : '')
-      + (single ? 'Copy your private link to return to this analysis.' : 'Copy one private link to return to these analyses.');
   $('save-links').textContent = Date.now() < privateLinkCopiedUntil ? 'Link copied' : 'Copy link';
   $('page-loading').hidden = true; $('submission-view').hidden = true; $('tasks-view').hidden = false;
   syncChildren($('task-list'), tasks.map(updateTaskView));

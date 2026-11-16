@@ -64,5 +64,5 @@ def spike_matrix_html(screen, sublibraries, sample, note=''):
     return ("<section class='report-section' id='spike-screen'><style>"+MATRIX_CSS+"</style><h2>Spike-in candidate screen</h2>"
             "<p class='muted'>Percentages are within each sublibrary’s screened inserts. Yellow: signal detected; gray: no signal. N/A: not assessable.</p>"
             '<div class="table-scroll spike-matrix-frame" tabindex="0" aria-label="Spike-in candidates by sublibrary"><table class="spike-matrix"><thead><tr><th scope="col">Sublibrary</th><th scope="col">Screened inserts</th>'+headers+'</tr></thead><tbody>'+''.join(rows)+'</tbody></table></div>'
-            +note+"<p class='muted'>Candidate signals do not establish intentional spike-in. Zero hits do not establish absence.</p>"
+            +note
             +f"<p><a href='../qc/spike_in/{sample}.assignments.tsv.gz'>Per-unit assignments</a> · <a href='../qc/spike_in/{sample}.json'>Screen details</a></p></section>")
