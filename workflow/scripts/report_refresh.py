@@ -19,6 +19,7 @@ import uuid
 import zipfile
 
 from report_bundle import validate
+from report_export import add_pdf_export
 from report_metrics import REPORT_CSS, REPORT_TOOLTIP_SCRIPT
 from report_profiles import render_profiles_card
 
@@ -101,16 +102,50 @@ def refresh_page(root, sample):
         if sid is None or sid in scope_html: raise ValueError('Cannot identify historical profile scope: '+sample)
         scope_html[sid] = parsed.fragment(node)
     if set(scope_html) != {s['scope_id'] for s in scopes}: raise ValueError('Retained profile scopes do not match metrics: '+sample)
-    new = render_profiles_card(sample, scopes, [scope_html[s['scope_id']] for s in scopes],
-                               root/'assets', root/'data/gene_profile', '../assets/')
+    if len(scopes) == 1:
+        # Single-library figures are already retained verbatim. Older reports
+        # embed them inside Library quality; do not add a second card frame.
+        new = parsed.fragment(section)
+        ancestor = section['parent']
+        while ancestor and ancestor['attrs'].get('id') != 'library-shape':
+            ancestor = ancestor['parent']
+        if ancestor and 'report-section' in section['attrs'].get('class', '').split():
+            new = ("<div class='library-profiles' id='profiles'><h3>Size and genomic profiles</h3>"
+                   + scope_html['total'] + '</div>')
+    else:
+        new = render_profiles_card(sample, scopes, [scope_html[s['scope_id']] for s in scopes],
+                                   root/'assets', root/'data/gene_profile', '../assets/')
     replacements = [(section, new)]
+    page.write_text(refresh_presentation(replace_ranges(text, replacements)))
+
+
+def refresh_presentation(text):
+    """Refresh owned resources without replacing independent component styles.
+
+    Legacy reports have an unnamed base style. Export/print styles also mention
+    hero and tooltip selectors, so content alone cannot identify ownership.
+    Reinstall the export component to repair reports affected by older refreshes.
+    """
+    parsed = Elements(text)
+    base = [node for node in parsed.elements if node['tag'] == 'style' and
+            (node['attrs'].get('id') == 'report-base-style' or
+             (not node['attrs'].get('id') and '.report-hero' in parsed.fragment(node)
+              and '.metric-tip' in parsed.fragment(node)))]
+    if not base:
+        raise ValueError('Expected one base report style')
+    # Older refreshes replaced the named export style with a second, unnamed
+    # copy of the base CSS. Only collapse byte-identical duplicates, never
+    # discard a different unowned component based on selector overlap.
+    contents = [parsed.fragment(node).split('>', 1)[1].rsplit('</style>', 1)[0] for node in base]
+    if len(set(contents)) != 1:
+        raise ValueError('Ambiguous base report styles')
+    replacements = [(base[0], '<style id="report-base-style">'+REPORT_CSS+'</style>')]
+    replacements.extend((node, '') for node in base[1:])
     for node in parsed.elements:
-        fragment = text[node['start']:node['end']]
-        if node['tag'] == 'style' and '.report-hero' in fragment and '.metric-tip' in fragment:
-            replacements.append((node, '<style>'+REPORT_CSS+'</style>'))
-        if node['tag'] == 'script' and "tip.id = 'metric-tooltip'" in fragment:
+        if node['tag'] == 'script' and "tip.id = 'metric-tooltip'" in parsed.fragment(node):
             replacements.append((node, REPORT_TOOLTIP_SCRIPT))
-    page.write_text(replace_ranges(text, replacements))
+    return add_pdf_export(replace_ranges(text, replacements), refresh=True)
+
 
 
 def remove_retired_cohort(root):

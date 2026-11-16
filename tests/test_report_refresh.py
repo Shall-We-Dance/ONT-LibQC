@@ -9,6 +9,8 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'workflow/scripts'))
 from report_refresh import refresh, rollback, build_archive, hashes
 from report_profiles import render_profiles_card
 from report_metrics import REPORT_CSS
+from report_export import add_pdf_export
+from report_refresh import refresh_presentation, Elements
 
 
 class RefreshTests(unittest.TestCase):
@@ -39,6 +41,54 @@ class RefreshTests(unittest.TestCase):
                 self.assertEqual(z.read('report/samples/demo.html'),(root/'samples/demo.html').read_bytes())
                 self.assertNotIn('report/report.zip',z.namelist())
             rollback(root,result['backup']);self.assertEqual(hashes(root),before)
+
+    def test_export_styles_survive_refresh_and_repair_prior_corruption(self):
+        for corrupted in (False, "named", "unnamed"):
+            with self.subTest(corrupted=corrupted), tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp)/'report';self.fixture(root)
+                page=root/'samples/demo.html'
+                document=page.read_text().replace('<body>', '<body><header class="report-hero"><h1>Demo</h1></header>')
+                document=add_pdf_export(document)
+                # Another component can reference the same selectors; its ID
+                # must keep it outside the base-style replacement boundary.
+                component='<style id="custom-component">.report-hero .metric-tip{color:red}</style>'
+                document=document.replace('</head>',component+'</head>')
+                parsed=Elements(document)
+                export=next(n for n in parsed.elements if n['attrs'].get('id')=='report-export-style')
+                expected=parsed.fragment(export)
+                if corrupted:
+                    tag='<style id="report-export-style">' if corrupted=='named' else '<style>'
+                    document=document.replace(expected,tag+REPORT_CSS+'</style>')
+                page.write_text(document)
+                refresh(root,True)
+                updated=page.read_text()
+                self.assertIn(expected,updated)
+                self.assertIn(component,updated)
+                self.assertEqual(updated.count('id="report-base-style"'),1)
+                self.assertEqual(updated.count('id="report-export-style"'),1)
+                self.assertEqual(updated.count('id="report-export-pdf"'),1)
+                self.assertEqual(updated.count('id="report-export-script"'),1)
+                self.assertEqual(refresh_presentation(updated),updated)
+                with zipfile.ZipFile(root/'report.zip') as z:
+                    self.assertEqual(z.read('report/samples/demo.html'),page.read_bytes())
+
+    def test_single_library_preserves_embedded_card_layout(self):
+        for wrapper in ("div class='library-profiles'", "section class='report-section'"):
+            with self.subTest(wrapper=wrapper), tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp)/'report';self.fixture(root)
+                metric=root/'data/metrics/demo.json'
+                metric.write_text(json.dumps({'sample':'demo','assay':'chromatin','sub_libraries':[]}))
+                scope="<section class='profile-scope'><h3>Total library</h3><p>Retained figure</p></section>"
+                page=root/'samples/demo.html'
+                page.write_text("<html><head><style>"+REPORT_CSS+"</style></head><body>"
+                                "<section id='library-shape'><"+wrapper+" id='profiles'><h3>Size and genomic profiles</h3>"
+                                +scope+"</"+wrapper.split()[0]+"></section></body></html>")
+                refresh(root,True)
+                nodes=Elements(page.read_text()).elements
+                profile=next(n for n in nodes if n['attrs'].get('id')=='profiles')
+                self.assertEqual(profile['tag'],'div')
+                self.assertEqual(profile['attrs']['class'],'library-profiles')
+                self.assertIn(scope,page.read_text())
 
     def test_missing_numeric_input_leaves_original_unchanged(self):
         with tempfile.TemporaryDirectory() as tmp:

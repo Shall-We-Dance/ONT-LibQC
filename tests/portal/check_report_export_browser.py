@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import socket
+import shutil
 import sys
 import tempfile
 import threading
@@ -17,6 +18,11 @@ import uvicorn
 from playwright.sync_api import sync_playwright
 from ont_portal.app import create_app
 from ont_portal.settings import Settings
+
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / 'workflow/scripts'))
+from report_refresh import refresh
 
 
 OUTPUT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path('test-results/report-export')
@@ -230,12 +236,59 @@ def check_report(browser, origin, sample, engine):
         context.close()
 
 
+def check_refreshed_layout(browser, original, refreshed, sample):
+    """Retained reports must keep export controls and print geometry after refresh."""
+    pages = [browser.new_page() for _ in range(2)]
+    selectors = ['.report-hero', '.report-hero h1', '.hero-meta',
+                 '.report-export-controls', '#report-export-content', '#report-export-pdf',
+                 '.report-nav', '.scope-card', '.qc-metrics', '.metric-group',
+                 '.identity-card', '.profile-scope', '.plot-card']
+    properties = ['display', 'position', 'float', 'grid-template-columns', 'flex-direction',
+                  'gap', 'margin', 'padding', 'font-size', 'line-height', 'color',
+                  'background-color', 'border', 'width', 'height', 'max-width',
+                  'overflow', 'break-inside', 'break-before', 'break-after']
+    try:
+        for page, root in zip(pages, (original, refreshed)):
+            page.goto((root/'samples'/f'{sample}.html').as_uri())
+            page.evaluate('document.fonts.ready')
+        for media, width in [('screen',1440),('screen',900),('screen',390),('screen',320),('print',794)]:
+            snapshots=[]
+            for page in pages:
+                page.set_viewport_size({'width':width,'height':1000})
+                page.emulate_media(media=media)
+                snapshots.append(page.evaluate("""({selectors,properties}) => selectors.map(selector =>
+                    [...document.querySelectorAll(selector)].map(node => {
+                        const style=getComputedStyle(node), rect=node.getBoundingClientRect();
+                        return {style:properties.map(p=>style.getPropertyValue(p)),
+                                box:[rect.x,rect.width,rect.height],
+                                top:node.closest('.report-hero') ? rect.y : null};
+                    }))""", {'selectors':selectors,'properties':properties}))
+            differences=[(selectors[i],a,b) for i,(a,b) in enumerate(zip(*snapshots)) if a!=b]
+            assert not differences, (sample,media,width,'Refresh changed report layout',differences[:1])
+            button=pages[1].locator('#report-export-pdf')
+            if media=='print':
+                assert button.is_hidden()
+                assert pages[1].locator('.plot-card').first.evaluate('(e)=>getComputedStyle(e).breakInside')=='avoid'
+            else:
+                assert button.is_visible()
+                assert pages[1].evaluate('document.documentElement.scrollWidth <= innerWidth+1')
+                if width>=900:
+                    controls=pages[1].locator('.report-export-controls').bounding_box()
+                    hero=pages[1].locator('.report-hero').bounding_box()
+                    assert controls['x'] > hero['x']+hero['width']/2
+    finally:
+        for page in pages: page.close()
+
+
 results = []
 with tempfile.TemporaryDirectory() as directory:
     sock = socket.socket()
     sock.bind(('127.0.0.1', 0))
     origin = f'http://127.0.0.1:{sock.getsockname()[1]}'
-    settings = Settings(state=Path(directory) / 'state', public_url=origin,
+    examples=Path(directory)/'examples'
+    shutil.copytree(ROOT/'example_report',examples)
+    refresh(examples, apply=True)
+    settings = Settings(examples=examples, state=Path(directory) / 'state', public_url=origin,
                         allowed_hosts=['127.0.0.1'], secret='local-export-test-' * 4,
                         submission_key='', public_catalog={'references': []},
                         min_free_bytes=0, require_https=False, mail_enabled=False)
@@ -255,6 +308,7 @@ with tempfile.TemporaryDirectory() as directory:
                 browser = getattr(playwright, engine).launch(**options)
                 try:
                     for sample in ('HL120', 'HL240'):
+                        check_refreshed_layout(browser, ROOT/'example_report', examples, sample)
                         results.append(check_report(browser, origin, sample, engine))
                 finally:
                     browser.close()
