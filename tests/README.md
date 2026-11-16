@@ -33,3 +33,17 @@ HOMER result handling and screening visibility. Set `HOMER2` to a HOMER 5.1
 `homer2` executable to include the planted-motif integration test; CI skips that
 external-tool test when HOMER is unavailable. Browser CI also checks RNA/CLIP
 default screens, opt-out persistence and reference availability.
+
+Report presentation maintenance:
+
+```sh
+python tests/check_profile_interaction_browser.py chromium
+python tests/check_profile_interaction_browser.py webkit
+for script in portal/static/*.js workflow/scripts/*.js; do
+  node --check "$script"
+done
+```
+
+`report_profiles.py` embeds its adjacent CSS/JS resources in the generated HTML;
+keep those files with the renderer. Presentation resources must also be listed
+in `workflow/rules/reports.smk` so the workflow can detect their changes.

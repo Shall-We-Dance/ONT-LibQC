@@ -2,6 +2,7 @@ rule prepare_library_units:
     input:
         fastqs=fastqs,
         script="workflow/scripts/ont_qc.py",
+        analysis_modules=["workflow/scripts/qc_analysis.py", "workflow/scripts/library_sequences.py", "workflow/scripts/profile_data.py"],
         structure_script="workflow/scripts/library_structure.py",
     output:
         inserts=temp(f"{OUT}/prepared/{{sample}}.inserts.fastq.gz"),

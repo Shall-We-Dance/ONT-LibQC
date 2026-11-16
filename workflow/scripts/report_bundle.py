@@ -170,12 +170,15 @@ def build(work, report, config_path):
         for path in (work / 'summary').glob('*'):
             if path.suffix in {'.json', '.tsv'}: queue.append(path)
         for sample in samples:
+            queue.extend((work / 'reports/assets').glob(f'{sample}.*.regions.json'))
             queue += [work / 'qc/metrics' / f'{sample}.json',
                       work / 'qc/adapters' / f'{sample}.summary.json',
                       work / 'qc/mycoplasma' / f'{sample}.json',
                       work / 'qc/spike_in' / f'{sample}.json']
             for category, pattern in [('gene_profile', f'{sample}*.profile.tsv'),
+                                      ('gene_profile', f'{sample}*.profile.json'),
                                       ('rna_alignment', f'{sample}.json'),
+                                      ('chromatin_alignment', f'{sample}.json'),
                                       ('rna_preparation', f'{sample}.json'),
                                       ('rna_preparation', f'{sample}.units.tsv.gz'),
                                       ('rna_sources', f'{sample}.json'),

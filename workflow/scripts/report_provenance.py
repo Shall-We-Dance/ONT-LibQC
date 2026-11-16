@@ -4,7 +4,7 @@ import hashlib
 from pathlib import Path
 
 # Keep aligned with the GitHub release tag when publishing a new release.
-RELEASE_VERSION = "v1.1.0"
+RELEASE_VERSION = "v1.1.1"
 
 
 def capture_analysis(root=None, now=None):
@@ -43,6 +43,9 @@ def analysis_record(metric, provenance=None):
 
 def analysis_label(record):
     version = record.get('pipeline_version') or 'Version unrecorded'
+    revision = record.get('analysis_revision')
+    if revision:
+        version += f' · {revision}'
     timestamp = record.get('analysis_completed_utc')
     try:
         parsed = datetime.datetime.fromisoformat(str(timestamp).replace('Z', '+00:00'))

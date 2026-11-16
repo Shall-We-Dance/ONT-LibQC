@@ -38,6 +38,18 @@ class ReportBundleTests(unittest.TestCase):
         moved=self.root/'moved';shutil.move(self.report,moved)
         self.assertEqual(validate(moved)['sample_reports'],1)
 
+    def test_numeric_sidecars_survive_bundle_and_work_cleanup(self):
+        values = {
+            'qc/gene_profile/example.lib01.profile.json': {'schema_version':1,'kind':'gene_profile','data':{'mean':[1,2]}},
+            'reports/assets/example.lib01.regions.json': {'schema_version':1,'kind':'genomic_regions','data':{'gene_body_rate':.5}},
+        }
+        for name,value in values.items():
+            path=self.work/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(json.dumps(value))
+        build(self.work,self.report,self.config)
+        self.assertTrue(cleanup_work(self.work,self.report))
+        self.assertEqual(json.loads((self.report/'data/gene_profile/example.lib01.profile.json').read_text()),values['qc/gene_profile/example.lib01.profile.json'])
+        self.assertEqual(json.loads((self.report/'assets/example.lib01.regions.json').read_text()),values['reports/assets/example.lib01.regions.json'])
+
     def test_invalid_dependency_preserves_previous_delivery(self):
         build(self.work,self.report,self.config)
         before=(self.report/'manifest.json').read_bytes()

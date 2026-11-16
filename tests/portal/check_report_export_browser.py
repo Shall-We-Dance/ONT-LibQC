@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import socket
+import shutil
 import sys
 import tempfile
 import threading
@@ -17,6 +18,14 @@ import uvicorn
 from playwright.sync_api import sync_playwright
 from ont_portal.app import create_app
 from ont_portal.settings import Settings
+
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / 'workflow/scripts'))
+from report_refresh import refresh
+from report_spike_matrix import spike_matrix_html
+from report_metrics import REPORT_CSS
+from report_export import add_pdf_export
 
 
 OUTPUT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path('test-results/report-export')
@@ -61,6 +70,7 @@ def restore_and_check(page, before):
     assert page.locator('#report-export-pdf').is_enabled()
     assert page.locator('.report-print-definitions').count() == 0
     assert not page.locator('#report-export-pdf').get_attribute('aria-busy')
+    assert page.locator('#report-export-status').inner_text() == ''
 
 
 def draw_custom_bed(page):
@@ -167,6 +177,7 @@ def check_report(browser, origin, sample, engine):
         assert page.evaluate('window.printCalls') == 0
         held[0].continue_()
         wait_js(page, 'window.printCalls === 1')
+        assert page.locator('#report-export-status').inner_text() == ''
         assert page.evaluate('Array.from(document.images).every(i => i.complete && i.naturalWidth > 0)')
         assert_prepared(page)
         restore_and_check(page, before)
@@ -230,12 +241,97 @@ def check_report(browser, origin, sample, engine):
         context.close()
 
 
+def check_refreshed_layout(browser, original, refreshed, sample):
+    """Retained reports must keep export controls and print geometry after refresh."""
+    pages = [browser.new_page() for _ in range(2)]
+    selectors = ['.report-hero', '.report-hero h1', '.hero-meta',
+                 '.report-export-controls', '#report-export-content', '#report-export-pdf',
+                 '.report-nav', '.scope-card', '.qc-metrics', '.metric-group',
+                 '.identity-card', '.profile-scope', '.plot-card']
+    properties = ['display', 'position', 'float', 'grid-template-columns', 'flex-direction',
+                  'gap', 'margin', 'padding', 'font-size', 'line-height', 'color',
+                  'background-color', 'border', 'width', 'height', 'max-width',
+                  'overflow', 'break-inside', 'break-before', 'break-after']
+    try:
+        for page, root in zip(pages, (original, refreshed)):
+            page.goto((root/'samples'/f'{sample}.html').as_uri())
+            page.evaluate('document.fonts.ready')
+        for media, width in [('screen',1440),('screen',900),('screen',390),('screen',320),('print',794)]:
+            snapshots=[]
+            for page in pages:
+                page.set_viewport_size({'width':width,'height':1000})
+                page.emulate_media(media=media)
+                snapshots.append(page.evaluate("""({selectors,properties}) => selectors.map(selector =>
+                    [...document.querySelectorAll(selector)].map(node => {
+                        const style=getComputedStyle(node), rect=node.getBoundingClientRect();
+                        return {style:properties.map(p=>style.getPropertyValue(p)),
+                                box:[rect.x,rect.width,rect.height],
+                                top:node.closest('.report-hero') ? rect.y : null};
+                    }))""", {'selectors':selectors,'properties':properties}))
+            differences=[(selectors[i],a,b) for i,(a,b) in enumerate(zip(*snapshots)) if a!=b]
+            assert not differences, (sample,media,width,'Refresh changed report layout',differences[:1])
+            button=pages[1].locator('#report-export-pdf')
+            if media=='print':
+                assert button.is_hidden()
+                assert pages[1].locator('.plot-card').first.evaluate('(e)=>getComputedStyle(e).breakInside')=='avoid'
+            else:
+                assert button.is_visible()
+                assert pages[1].evaluate('document.documentElement.scrollWidth <= innerWidth+1')
+                if width>=900:
+                    controls=pages[1].locator('.report-export-controls').bounding_box()
+                    hero=pages[1].locator('.report-hero').bounding_box()
+                    assert controls['x'] > hero['x']+hero['width']/2
+    finally:
+        for page in pages: page.close()
+
+
+def check_spike_matrix_print(browser, engine):
+    labels = ['Saccharomyces cerevisiae', 'Schizosaccharomyces pombe',
+              'Lambda phage', 'PhiX174', 'Escherichia coli', 'Drosophila melanogaster']
+    screen = {'candidates': {str(i): {'label': name} for i, name in enumerate(labels)}}
+    libs = [{'scope_id': f'lib{i+1:02}', 'spike_in_screened_reads': 2300-i*100,
+             'spike_in_species_counts': {}} for i in range(6)]
+    table = spike_matrix_html(screen, libs, 'synthetic')
+    # Retained reports still have the old inline 1% width: print must repair them too.
+    table = table.replace('<th scope="col">Sublibrary',
+                          '<th scope="col" style="width:1%;min-width:76px;max-width:120px">Sublibrary')
+    document = add_pdf_export('<html><head><meta name="viewport" content="width=device-width,initial-scale=1">'
+                             '<style>'+REPORT_CSS+'</style></head><body>'
+                             '<header class="report-hero"><h1>Print layout check</h1></header>'+table+'</body></html>')
+    page = browser.new_page()
+    try:
+        page.set_content(document)
+        for media, width in [('screen',1440), ('screen',390), ('print',703), ('print',794)]:
+            page.set_viewport_size({'width':width,'height':1000})
+            page.emulate_media(media=media)
+            widths = page.locator('.spike-matrix thead th').evaluate_all(
+                '(es)=>es.slice(2).map(e=>e.getBoundingClientRect().width)')
+            assert max(widths)-min(widths)<1
+            assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+            if media == 'print':
+                first = page.locator('.spike-matrix thead th').first
+                assert first.evaluate('(e)=>e.clientWidth>=e.scrollWidth'), 'Sublibrary heading clipped'
+                assert page.locator('.spike-matrix thead').bounding_box()['height']<50, 'Header wraps letter by letter'
+                assert page.locator('.spike-matrix th,.spike-matrix td').evaluate_all(
+                    '(es)=>es.every(e=>e.scrollWidth<=e.clientWidth+1)'), 'Printed matrix cell overflows'
+                page.screenshot(path=str(OUTPUT/f'spike-matrix-{engine}-{width}.png'))
+        if engine == 'chromium':
+            for paper in ('A4', 'Letter'):
+                page.pdf(path=str(OUTPUT/f'spike-matrix-{paper}.pdf'), format=paper,
+                         print_background=True, prefer_css_page_size=False)
+    finally:
+        page.close()
+
+
 results = []
 with tempfile.TemporaryDirectory() as directory:
     sock = socket.socket()
     sock.bind(('127.0.0.1', 0))
     origin = f'http://127.0.0.1:{sock.getsockname()[1]}'
-    settings = Settings(state=Path(directory) / 'state', public_url=origin,
+    examples=Path(directory)/'examples'
+    shutil.copytree(ROOT/'example_report',examples)
+    refresh(examples, apply=True)
+    settings = Settings(examples=examples, state=Path(directory) / 'state', public_url=origin,
                         allowed_hosts=['127.0.0.1'], secret='local-export-test-' * 4,
                         submission_key='', public_catalog={'references': []},
                         min_free_bytes=0, require_https=False, mail_enabled=False)
@@ -254,7 +350,9 @@ with tempfile.TemporaryDirectory() as directory:
                 options = {'executable_path': os.environ['ONT_WEBKIT_EXECUTABLE']} if engine == 'webkit' and os.environ.get('ONT_WEBKIT_EXECUTABLE') else {}
                 browser = getattr(playwright, engine).launch(**options)
                 try:
+                    check_spike_matrix_print(browser, engine)
                     for sample in ('HL120', 'HL240'):
+                        check_refreshed_layout(browser, ROOT/'example_report', examples, sample)
                         results.append(check_report(browser, origin, sample, engine))
                 finally:
                     browser.close()

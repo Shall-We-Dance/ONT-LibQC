@@ -10,7 +10,32 @@ SHORT_NAMES = {
 
 
 
-MATRIX_CSS = '\n#spike-screen .spike-matrix-frame{border:1px solid #dce5ef;border-radius:8px;overflow:auto;background:#fff;scrollbar-width:thin;scrollbar-color:#bac7d6 #f6f8fb}\n#spike-screen .spike-matrix{margin:0;border:0;border-collapse:separate;border-spacing:0;border-radius:0;box-shadow:none}\n#spike-screen .spike-matrix th,#spike-screen .spike-matrix td{border:0;border-bottom:1px solid #e8edf3;padding:12px 14px}\n#spike-screen .spike-matrix thead th{background:#f5f7fa;border-bottom:1px solid #dce5ef}\n#spike-screen .spike-matrix tbody th{background:transparent}\n#spike-screen .spike-matrix tr:last-child>*{border-bottom:0}\n#spike-screen .spike-matrix th:first-child{border-right:1px solid #e8edf3}\n#spike-screen .spike-matrix tbody tr:hover>*{background:#f8fafc}\n#spike-screen .spike-matrix-frame:focus-visible{outline:2px solid #5176a5;outline-offset:3px}\n'
+MATRIX_CSS = """
+#spike-screen .spike-matrix-frame{border:1px solid #dce5ef;border-radius:8px;overflow:auto;background:#fff;scrollbar-width:thin;scrollbar-color:#bac7d6 #f6f8fb}
+#spike-screen .spike-matrix{margin:0;border:0;border-collapse:separate;border-spacing:0;border-radius:0;box-shadow:none}
+#spike-screen .spike-matrix th,#spike-screen .spike-matrix td{border:0;border-bottom:1px solid #e8edf3;padding:12px 14px}
+#spike-screen .spike-matrix thead th{background:#f5f7fa;border-bottom:1px solid #dce5ef}
+#spike-screen .spike-matrix tbody th{background:transparent}
+#spike-screen .spike-matrix tr:last-child>*{border-bottom:0}
+#spike-screen .spike-matrix th:first-child{border-right:1px solid #e8edf3}
+#spike-screen .spike-matrix tbody tr:hover>*{background:#f8fafc}
+#spike-screen .spike-matrix-frame:focus-visible{outline:2px solid #5176a5;outline-offset:3px}
+
+@media screen {
+  #spike-screen .spike-matrix{width:100%;min-width:1000px;table-layout:fixed}
+  #spike-screen .spike-matrix thead th:first-child{width:112px!important}
+  #spike-screen .spike-matrix thead th:nth-child(2){width:132px}
+}
+@media print {
+  #spike-screen .spike-matrix-frame{width:100%;overflow:visible;border:0;border-radius:0}
+  #spike-screen .spike-matrix{width:100%;min-width:0;table-layout:fixed;border-collapse:collapse}
+  #spike-screen .spike-matrix th,#spike-screen .spike-matrix td{padding:2mm 1mm;font-size:8pt;line-height:1.35;vertical-align:middle;overflow-wrap:normal;word-break:normal}
+  #spike-screen .spike-matrix th:first-child{width:12%!important;min-width:0!important;max-width:none!important}
+  #spike-screen .spike-matrix thead th:first-child{white-space:nowrap}
+  #spike-screen .spike-matrix thead th:nth-child(2){width:14%}
+  #spike-screen .spike-matrix tbody th{white-space:normal!important;overflow-wrap:anywhere}
+}
+"""
 
 
 def spike_matrix_html(screen, sublibraries, sample, note=''):
@@ -34,10 +59,10 @@ def spike_matrix_html(screen, sublibraries, sample, note=''):
                 tip = f'{count:,} / {n:,} screened inserts in this sublibrary.'
             cells.append('<td style="white-space:nowrap;font-variant-numeric:tabular-nums" title="'+html.escape(tip,quote=True)+'"><span class="light '+color+'" aria-hidden="true" style="display:inline-block;margin-right:7px"></span>'+html.escape(value)+'</td>')
         label = html.escape(str(lib.get('scope_name',lib.get('scope_id',''))))
-        rows.append('<tr><th scope="row" style="width:1%;min-width:76px;max-width:120px;white-space:nowrap">'+label+'</th><td>'+ (f'{n:,}' if n is not None else 'N/A')+'</td>'+''.join(cells)+'</tr>')
+        rows.append('<tr><th scope="row" style="white-space:nowrap">'+label+'</th><td>'+ (f'{n:,}' if n is not None else 'N/A')+'</td>'+''.join(cells)+'</tr>')
     sample = html.escape(sample,quote=True)
     return ("<section class='report-section' id='spike-screen'><style>"+MATRIX_CSS+"</style><h2>Spike-in candidate screen</h2>"
             "<p class='muted'>Percentages are within each sublibrary’s screened inserts. Yellow: signal detected; gray: no signal. N/A: not assessable.</p>"
-            '<div class="table-scroll spike-matrix-frame" tabindex="0" aria-label="Spike-in candidates by sublibrary"><table class="spike-matrix"><thead><tr><th scope="col" style="width:1%;min-width:76px;max-width:120px">Sublibrary</th><th scope="col">Screened inserts</th>'+headers+'</tr></thead><tbody>'+''.join(rows)+'</tbody></table></div>'
+            '<div class="table-scroll spike-matrix-frame" tabindex="0" aria-label="Spike-in candidates by sublibrary"><table class="spike-matrix"><thead><tr><th scope="col">Sublibrary</th><th scope="col">Screened inserts</th>'+headers+'</tr></thead><tbody>'+''.join(rows)+'</tbody></table></div>'
             +note+"<p class='muted'>Candidate signals do not establish intentional spike-in. Zero hits do not establish absence.</p>"
             +f"<p><a href='../qc/spike_in/{sample}.assignments.tsv.gz'>Per-unit assignments</a> · <a href='../qc/spike_in/{sample}.json'>Screen details</a></p></section>")

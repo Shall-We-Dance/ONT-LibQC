@@ -51,6 +51,7 @@ rule rna_qc:
     input:
         script="workflow/scripts/rna_qc.py",
         motifs="workflow/scripts/rna_motifs.py",
+        sequences="workflow/scripts/library_sequences.py",
         bam=f"{OUT}/bam/{{sample}}.bam",
         bai=f"{OUT}/bam/{{sample}}.bam.bai",
         annotation=annotation_input,

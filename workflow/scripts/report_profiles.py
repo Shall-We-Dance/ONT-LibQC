@@ -9,30 +9,32 @@ import re
 
 from report_sublibrary import COLORS
 from report_profile_band import read_profile_band
+from profile_data import read_gene_profile, read_numeric_profile, read_data
 
-CSS = '''
-.profile-comparison-legend{display:flex;flex-wrap:wrap;gap:8px 22px;list-style:none;margin:8px 0 14px;padding:0;font-size:13px}
-.profile-comparison-legend i,.profile-detail summary i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:7px;print-color-adjust:exact;-webkit-print-color-adjust:exact}
-.profile-comparison-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,.43fr);gap:12px;align-items:stretch}
-.profile-comparison .plot-card{margin:0;min-width:0;padding:8px;border-radius:9px;display:flex;flex-direction:column}.profile-comparison img{display:block;width:100%;height:auto;min-height:0}
-.profile-comparison-grid .plot-card>a{display:block}
-.profile-comparison-grid img{width:100%;height:auto;object-fit:contain}
-.profile-comparison-grid .comparison-gel>a{position:relative;flex:1;min-height:0}
-.profile-comparison-grid .comparison-gel img{position:absolute;inset:0;width:100%;height:100%}
-.profile-comparison .comparison-metaplot{max-width:850px;margin:12px auto 0}
-.profile-genomic-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start;margin-top:12px}
-.profile-genomic-grid .comparison-metaplot{max-width:none;margin:0}
-@media(max-width:1000px){.profile-genomic-grid{grid-template-columns:minmax(0,1fr)}}
-@media print{.profile-genomic-grid{display:block}.profile-genomic-grid .plot-card{margin-bottom:4mm}}
-.profile-comparison .figure-link{margin-top:6px;font-size:11px}
-.profile-comparison .comparison-note{font-size:12px;color:var(--muted);margin:8px 0 16px}
-.profile-detail{margin:12px 0 0;border:1px solid var(--line);border-radius:8px;padding:0;background:#fff}
-.profile-detail>summary{padding:13px 16px;color:var(--deep);font-weight:550}.profile-detail>summary small{font-weight:400;color:var(--muted);margin-left:12px}
-.profile-detail>.profile-scope{margin:0;padding:0 16px 16px;border:0}.profile-detail .primary-size-plots{margin-top:8px}
-#profiles{scroll-margin-top:80px}#profiles>.profile-scope{border:0;margin-top:0;padding-top:0}
-@media(max-width:700px){.profile-comparison-grid{grid-template-columns:minmax(0,1fr)}.profile-comparison-grid .plot-card>a{height:auto}.profile-comparison-grid .comparison-gel>a{flex:none;height:320px}.profile-detail>summary small{display:block;margin:5px 0 0 20px}}
-@media print{.profile-comparison-grid{display:block}.profile-comparison .plot-card{max-width:100%;break-inside:avoid}.profile-detail{border:0}.profile-detail>summary{padding:2mm 0}.profile-detail>.profile-scope{padding:0}}
-'''
+CSS = Path(__file__).with_name("report_profiles.css").read_text()
+
+
+INTERACTION_SCRIPT = "<script>" + Path(__file__).with_name("report_profiles.js").read_text() + "</script>"
+
+
+def size_figure(svg, url, legend=""):
+    """Inline the generated vector plot so highlighting also works in offline ZIPs."""
+    escaped = html.escape(url, quote=True)
+    # Keep the standalone SVG intact; use a responsive HTML heading in the report.
+    svg = re.sub(r"<text\b[^>]*>Full-library size profiles</text>", '', svg)
+    svg = re.sub(r"<text\b[^>]*>ONT-derived · length-weighted</text>", '', svg)
+    svg = svg.replace("viewBox='0 0 780 390'", "viewBox='0 54 780 336'")
+    heading = ("<div class='profile-size-heading'><div><h3>Full-library size profiles</h3>"
+               "<p>ONT-derived · length-weighted</p></div>"+legend+"</div>")
+    return ("<figure class='plot-card comparison-size'>"+heading+"<div class='profile-size-chart'>"+svg+
+            "</div><figcaption class='figure-link'><a href='"+escaped+
+            "' target='_blank' rel='noopener'>Open figure ↗</a></figcaption></figure>")
+
+
+def legend_item(scope, label, color):
+    esc = html.escape
+    return (f"<li><button type='button' data-scope='{esc(scope,quote=True)}' aria-label='Highlight {esc(label,quote=True)}' aria-pressed='false' style='--legend-tint:{color}0f;--legend-active:{color}24;--legend-border:{color}30'>"
+            f"<i style='background:{color}' aria-hidden='true'></i>{esc(label)}</button></li>")
 
 
 def svg_start(width, height, title):
@@ -67,19 +69,6 @@ def read_size_profile(path):
     return xs, ys
 
 
-def read_gene_profile(path):
-    if not Path(path).is_file(): return None
-    with Path(path).open() as handle: rows = list(csv.reader(handle, delimiter='\t'))
-    if len(rows) == 1 and rows[0][0].startswith('No '): return None
-    if len(rows) != 3 or rows[0][:1] != ['bin labels'] or rows[1][:1] != ['bins']:
-        raise ValueError('Unsupported gene profile table')
-    labels, xs, ys = rows[0][2:], [float(v) for v in rows[1][2:]], [float(v) for v in rows[2][2:]]
-    if len(xs) < 2 or len(xs) != len(ys) or len(xs) != len(labels) or any(not math.isfinite(x) for x in xs) or any(b <= a for a, b in zip(xs, xs[1:])):
-        raise ValueError('Invalid gene profile axis')
-    if any(math.isinf(y) or y < 0 for y in ys): raise ValueError('Invalid gene coverage')
-    return labels, xs, ys
-
-
 def size_comparison(series):
     # Match the individual electropherogram: the same grids, type and baseline.
     left, right, top, bottom = 64, 744, 64, 314
@@ -98,7 +87,7 @@ def size_comparison(series):
     for row in series:
         xs, ys = row['sizes']
         points = ' '.join(f'{x(bp):.3f},{bottom-v/100*(bottom-top):.3f}' for bp,v in zip(xs,ys))
-        svg.append(f"<polygon points='{x(xs[0]):.3f},{bottom} {points} {x(xs[-1]):.3f},{bottom}' fill='{row['color']}' opacity='.06'/>")
+        svg.append(f"<polygon data-scope='{html.escape(row['id'],quote=True)}' points='{x(xs[0]):.3f},{bottom} {points} {x(xs[-1]):.3f},{bottom}' fill='{row['color']}' fill-opacity='.06'/>")
     for row in series:
         xs, ys = row['sizes']
         svg.append(polyline([x(v) for v in xs], [bottom-v/100*(bottom-top) for v in ys], row['color'], row['id']))
@@ -133,7 +122,7 @@ def virtual_lanes(series):
     return ''.join(svg)
 
 
-def gene_comparison(series):
+def _gene_panel(series):
     rows = [row for row in series if row.get('gene')]
     if not rows: return None
     labels, bins, _ = rows[0]['gene']
@@ -183,9 +172,33 @@ def gene_comparison(series):
 
 
 
+def gene_comparison(series):
+    """Small multiples retain CPM values and use an independent y axis per panel."""
+    rows = [row for row in series if row.get('gene')]
+    if not rows:
+        return None
+    labels, bins, _ = rows[0]['gene']
+    if any(row['gene'][:2] != (labels, bins) for row in rows):
+        raise ValueError('Sublibrary gene profiles must share the same bin coordinates')
+    columns = min(2, len(rows))
+    width, height = 820 * columns, 440 * math.ceil(len(rows) / columns)
+    result = [f"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 {width} {height}' role='img' aria-label='Sublibrary TSS–TES profiles with independent y axes'>",
+              '<title>Sublibrary TSS–TES profiles · independent CPM axes</title>']
+    for i, row in enumerate(rows):
+        panel = _gene_panel([row])
+        panel = panel.replace('profile-frame', f'profile-frame-{i}')
+        panel = panel.replace('TSS–TES metaplot', html.escape(str(row['label']), quote=True))
+        panel = panel.replace('<svg ', f"<svg x='{820*(i%columns)}' y='{440*(i//columns)}' width='820' height='440' data-panel='{html.escape(row['id'],quote=True)}' ", 1)
+        result.append(panel)
+    result.append('</svg>')
+    return ''.join(result)
+
+
 def read_region_metrics(path):
     """Use the same saved values as each individual genomic-region figure."""
     path = Path(path)
+    numeric = path.with_suffix('.json')
+    if numeric.is_file(): return read_data(numeric, 'genomic_regions')
     if not path.is_file():
         return None
     node = ET.fromstring(path.read_text()).find("{*}metadata[@id='genomic-region-metrics']")
@@ -222,7 +235,7 @@ def region_comparison(series):
             for x, value in [(535,percent(rate)),(658,percent(bg)),(796,'—' if fold is None else f'{fold:,.2f}×')]:
                 svg.append(text(x,y+4,value,'end',14,'#34495e'))
             svg.append('</g>')
-    svg.append(text(24,height-13,'Bar: sample proportion · Tick: matched background','start',12))
+    svg.append(text(24,height-13,'Bar: sample proportion · Tick: genome background','start',12))
     svg.append('</svg>')
     return ''.join(svg)
 
@@ -243,16 +256,22 @@ def render_profiles_card(sample, scopes, scope_html, asset_dir, gene_dir, asset_
                            sizes=read_size_profile(asset_dir/f'{sample}.{sid}.full_library_profiles.tsv'),
                            gene=read_gene_profile(gene_dir/f'{sample}.{sid}.profile.tsv')))
         series[-1]['regions'] = read_region_metrics(asset_dir/f'{sample}.{sid}.regions.svg')
-        series[-1]['band'] = read_profile_band(asset_dir/f'{sample}.{sid}.TSS_TES.svg', series[-1]['gene'])
-    parts += ["<div class='profile-comparison'><ul class='profile-comparison-legend'>"]
+        numeric = gene_dir/f'{sample}.{sid}.profile.json'
+        if numeric.is_file():
+            series[-1]['gene'], series[-1]['band'] = read_numeric_profile(numeric, series[-1]['gene'])
+        else:
+            series[-1]['band'] = read_profile_band(asset_dir/f'{sample}.{sid}.TSS_TES.svg', series[-1]['gene'])
+    parts.append("<div class='profile-comparison'>")
+    legend = ["<ul class='profile-comparison-legend' aria-label='Size profile sublibraries'>"]
     for row in series:
         label=row['label'] if row['label']==row['id'] else row['id']+' · '+row['label']
-        parts.append(f"<li><i style='background:{row['color']}'></i>{esc(label)}</li>")
-    parts.append('</ul>')
+        legend.append(legend_item(row['id'],label,row['color']))
+    legend.append('</ul>')
     size_name=f'{sample}.sublibraries.size_profiles.svg';gel_name=f'{sample}.sublibraries.virtual_gel.svg'
     (asset_dir/size_name).write_text(size_comparison(series));(asset_dir/gel_name).write_text(virtual_lanes(series))
-    parts.append("<div class='profile-comparison-grid'>"+figure(size_name,'Sublibrary full-library size traces')+figure(gel_name,'Sublibrary virtual lanes','comparison-gel')+'</div>')
+    parts.append("<div class='profile-comparison-grid'>"+size_figure((asset_dir/size_name).read_text(),asset_prefix+size_name,''.join(legend))+figure(gel_name,'Sublibrary virtual lanes','comparison-gel')+'</div>')
     parts.append("<p class='comparison-note'>ONT-derived full-library sizes, length-weighted; each trace and lane is scaled to its own peak of 100.</p>")
+    parts.append(INTERACTION_SCRIPT)
     meta=gene_comparison(series)
     regions=region_comparison(series)
     if regions:
@@ -260,7 +279,8 @@ def render_profiles_card(sample, scopes, scope_html, asset_dir, gene_dir, asset_
         parts.append("<div class='profile-genomic-grid'>"+figure(name,'Sublibrary genomic region proportions, backgrounds and enrichment','comparison-regions'))
     if meta:
         name=f'{sample}.sublibraries.TSS_TES.svg';(asset_dir/name).write_text(meta)
-        parts.append(figure(name,'Sublibrary TSS–TES profiles on a shared CPM axis','comparison-metaplot'))
+        parts.append(figure(name,'Sublibrary TSS–TES profiles with independent CPM axes','comparison-metaplot'))
+        parts.append("<p class='comparison-note'>Each metaplot has its own y-axis range; CPM values and SEM bands are unchanged.</p>")
         missing=[r['label'] for r in series if not r['gene']]
         if missing:parts.append("<p class='comparison-note'>No mapped profile: "+esc(', '.join(missing))+'.</p>')
     if regions:parts.append('</div>')
@@ -269,6 +289,6 @@ def render_profiles_card(sample, scopes, scope_html, asset_dir, gene_dir, asset_
         label=scope.get('scope_name',scope['scope_id']);color=series[i]['color']
         content=re.sub(r'<h3>.*?</h3>','',scope_html[i+1],count=1,flags=re.S)
         count=int(scope.get('library_units',0))
-        parts.append(f"<details class='profile-detail' data-scope='{esc(scope['scope_id'],quote=True)}'><summary><i style='background:{color}'></i>{esc(label)}<small>{count:,} units · individual profiles</small></summary>{content}</details>")
+        parts.append(f"<details class='profile-detail' data-scope='{esc(scope['scope_id'],quote=True)}' style='--scope-tint:{color}0f;--scope-border:{color}38'><summary><i style='background:{color}'></i>{esc(label)}<small>{count:,} units</small></summary>{content}</details>")
     parts.append("<details class='profile-detail pooled-profile'><summary>Total library · pooled profiles</summary>"+scope_html[0]+'</details>')
     return ''.join(parts)+'</section>'

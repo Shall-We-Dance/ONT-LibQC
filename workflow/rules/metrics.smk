@@ -15,6 +15,7 @@ rule sample_metrics:
         insert_lengths=f"{OUT}/qc/lengths/{{sample}}.insert.tsv",
         chrom_sizes=reference_input("chrom_sizes"),
         script="workflow/scripts/ont_qc.py",
+        analysis_modules=["workflow/scripts/qc_analysis.py", "workflow/scripts/library_sequences.py", "workflow/scripts/profile_data.py"],
         plot_metrics="workflow/scripts/qc_plot_metrics.py",
         definitions="workflow/scripts/metric_definitions.json",
         definition_script="workflow/scripts/qc_definitions.py",

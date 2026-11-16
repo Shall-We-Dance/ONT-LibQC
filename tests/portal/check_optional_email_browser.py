@@ -86,7 +86,7 @@ with tempfile.TemporaryDirectory() as directory:
                         # Stub clipboard deterministically on both browser engines.
                         page.evaluate("Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.copiedPrivateLink=text;}}})")
                         button=page.locator('#save-links')
-                        assert button.inner_text()=='Copy private link'
+                        assert button.inner_text()=='Copy link'
                         button.click();wait_js(page,"Boolean(window.copiedPrivateLink)")
                         saved=page.evaluate('window.copiedPrivateLink')
                         assert saved==return_link

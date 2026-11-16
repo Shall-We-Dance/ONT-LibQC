@@ -14,13 +14,22 @@ class ProfileComparisonTests(unittest.TestCase):
         return [dict(id='lib01',label='First <library>',color='#2a6cbd',sizes=([0,100,2000],[0,100,0]),gene=(['TSS','','TES'],[1,2,3],[1,2,3])),
                 dict(id='lib02',label='Second',color='#23877f',sizes=([0,100,2000],[0,50,100]),gene=(['TSS','','TES'],[1,2,3],[10,20,30]))]
 
-    def test_shared_cpm_scale_keeps_tenfold_signal_difference(self):
+    def test_independent_cpm_axes_and_two_by_two_layout(self):
         root=ET.fromstring(gene_comparison(self.rows()))
-        curves=root.findall('{*}polyline')
+        curves=root.findall('.//{*}polyline')
         self.assertEqual([c.attrib['stroke'] for c in curves],['#2a6cbd','#23877f'])
         low=float(curves[0].attrib['points'].split()[-1].split(',')[1])
         high=float(curves[1].attrib['points'].split()[-1].split(',')[1])
-        self.assertAlmostEqual((350-high)/(350-low),10)
+        self.assertAlmostEqual(low,high)
+        panels=root.findall('{*}svg')
+        self.assertEqual([p.get('x') for p in panels],['0','820'])
+        labels=[''.join(p.itertext()) for p in panels]
+        self.assertIn('30',labels[1])
+        four=self.rows()*2
+        grid=ET.fromstring(gene_comparison(four)).findall('{*}svg')
+        self.assertEqual([(p.get('x'),p.get('y')) for p in grid],[('0','0'),('820','0'),('0','440'),('820','440')])
+        ids=[n.get('id') for n in ET.fromstring(gene_comparison(four)).iter() if n.get('id')]
+        self.assertEqual(len(ids),len(set(ids)))
         incompatible=self.rows();incompatible[1]['gene']=(['TSS','','TES'],[1,2,4],[10,20,30])
         with self.assertRaises(ValueError):gene_comparison(incompatible)
 
@@ -33,7 +42,7 @@ class ProfileComparisonTests(unittest.TestCase):
             dark=[r for r in lane.findall('{*}rect') if r.get('fill')=='rgb(43,43,43)']
             self.assertEqual(len(dark),1);peak_y.append(float(dark[0].get('y')))
         self.assertLess(peak_y[1],peak_y[0])  # Larger fragments run closer to the top.
-        traces=ET.fromstring(size_comparison(self.rows())).findall('{*}polyline')
+        traces=ET.fromstring(size_comparison(self.rows())).findall('.//{*}polyline')
         self.assertEqual(len(traces),2)
 
     def test_profile_data_missing_bins_and_empty_libraries_are_not_fabricated(self):
@@ -44,7 +53,7 @@ class ProfileComparisonTests(unittest.TestCase):
             p.write_text('bin labels\t\tTSS\t\tTES\nbins\t\t1\t2\t3\nlib\tgenes\t1\tnan\t3\n')
             data=read_gene_profile(p);self.assertTrue(math.isnan(data[2][1]))
             rows=self.rows();rows[0]['gene']=data;rows[1]['gene']=None
-            curves=ET.fromstring(gene_comparison(rows)).findall('{*}polyline')
+            curves=ET.fromstring(gene_comparison(rows)).findall('.//{*}polyline')
             self.assertEqual(len(curves),2)  # No connecting line across the missing bin.
 
     def test_comparison_replaces_pooled_overview_and_details_start_collapsed(self):
@@ -54,7 +63,11 @@ class ProfileComparisonTests(unittest.TestCase):
                 (p/f's.{sid}.full_library_profiles.tsv').write_text('size_bp\tlength_weighted_relative_signal\n0\t0\n100\t100\n2000\t0\n')
             scopes=[{'scope_id':'total'},{'scope_id':'lib01','scope_name':'A & B','library_units':12},{'scope_id':'lib02','library_units':2}]
             sections=["<section class='profile-scope'><h3>"+s['scope_id']+'</h3><p>Detail</p></section>' for s in scopes]
+            # Retained prototype assets must not reactivate a withdrawn panel.
+            (p/'s.sublibraries.similarity.json').write_text('{}')
             doc=render_profiles_card('s',scopes,sections,p,p)
+            self.assertNotIn('sublibrary-similarity',doc)
+            self.assertNotIn('similarity.json',doc)
             self.assertEqual(doc.count("class='profile-detail'"),2)
             self.assertIn('A &amp; B',doc)
             self.assertNotIn(' open',doc)
