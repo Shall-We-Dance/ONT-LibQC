@@ -164,6 +164,7 @@
     button.disabled = false;
     button.removeAttribute('aria-busy');
     button.querySelector('span').textContent = 'Export PDF';
+    status.textContent = '';
   }
 
   async function readyImages() {
@@ -193,7 +194,7 @@
       prepare();
       await Promise.race([readyImages(), new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error('timeout')), 20000); })]);
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-      status.textContent = 'Choose Save as PDF. Turn off headers and footers for a clean report without the private page URL.';
+      status.textContent = '';
       printing = true;
       button.querySelector('span').textContent = 'Save as PDF…';
       window.print();

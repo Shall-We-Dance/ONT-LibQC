@@ -10,7 +10,23 @@ SHORT_NAMES = {
 
 
 
-MATRIX_CSS = '\n#spike-screen .spike-matrix-frame{border:1px solid #dce5ef;border-radius:8px;overflow:auto;background:#fff;scrollbar-width:thin;scrollbar-color:#bac7d6 #f6f8fb}\n#spike-screen .spike-matrix{margin:0;border:0;border-collapse:separate;border-spacing:0;border-radius:0;box-shadow:none}\n#spike-screen .spike-matrix th,#spike-screen .spike-matrix td{border:0;border-bottom:1px solid #e8edf3;padding:12px 14px}\n#spike-screen .spike-matrix thead th{background:#f5f7fa;border-bottom:1px solid #dce5ef}\n#spike-screen .spike-matrix tbody th{background:transparent}\n#spike-screen .spike-matrix tr:last-child>*{border-bottom:0}\n#spike-screen .spike-matrix th:first-child{border-right:1px solid #e8edf3}\n#spike-screen .spike-matrix tbody tr:hover>*{background:#f8fafc}\n#spike-screen .spike-matrix-frame:focus-visible{outline:2px solid #5176a5;outline-offset:3px}\n'
+MATRIX_CSS = """
+#spike-screen .spike-matrix-frame{border:1px solid #dce5ef;border-radius:8px;overflow:auto;background:#fff;scrollbar-width:thin;scrollbar-color:#bac7d6 #f6f8fb}
+#spike-screen .spike-matrix{margin:0;border:0;border-collapse:separate;border-spacing:0;border-radius:0;box-shadow:none}
+#spike-screen .spike-matrix th,#spike-screen .spike-matrix td{border:0;border-bottom:1px solid #e8edf3;padding:12px 14px}
+#spike-screen .spike-matrix thead th{background:#f5f7fa;border-bottom:1px solid #dce5ef}
+#spike-screen .spike-matrix tbody th{background:transparent}
+#spike-screen .spike-matrix tr:last-child>*{border-bottom:0}
+#spike-screen .spike-matrix th:first-child{border-right:1px solid #e8edf3}
+#spike-screen .spike-matrix tbody tr:hover>*{background:#f8fafc}
+#spike-screen .spike-matrix-frame:focus-visible{outline:2px solid #5176a5;outline-offset:3px}
+
+@media screen {
+  #spike-screen .spike-matrix{width:100%;min-width:1000px;table-layout:fixed}
+  #spike-screen .spike-matrix thead th:first-child{width:112px!important}
+  #spike-screen .spike-matrix thead th:nth-child(2){width:132px}
+}
+"""
 
 
 def spike_matrix_html(screen, sublibraries, sample, note=''):

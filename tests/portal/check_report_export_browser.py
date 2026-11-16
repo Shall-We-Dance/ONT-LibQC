@@ -67,6 +67,7 @@ def restore_and_check(page, before):
     assert page.locator('#report-export-pdf').is_enabled()
     assert page.locator('.report-print-definitions').count() == 0
     assert not page.locator('#report-export-pdf').get_attribute('aria-busy')
+    assert page.locator('#report-export-status').inner_text() == ''
 
 
 def draw_custom_bed(page):
@@ -173,6 +174,7 @@ def check_report(browser, origin, sample, engine):
         assert page.evaluate('window.printCalls') == 0
         held[0].continue_()
         wait_js(page, 'window.printCalls === 1')
+        assert page.locator('#report-export-status').inner_text() == ''
         assert page.evaluate('Array.from(document.images).every(i => i.complete && i.naturalWidth > 0)')
         assert_prepared(page)
         restore_and_check(page, before)
