@@ -4,7 +4,7 @@ import hashlib
 from pathlib import Path
 
 # Keep aligned with the GitHub release tag when publishing a new release.
-RELEASE_VERSION = "v1.1.0"
+RELEASE_VERSION = "v1.1.1"
 
 
 def capture_analysis(root=None, now=None):

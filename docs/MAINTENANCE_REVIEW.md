@@ -15,8 +15,8 @@ are unchanged. This is not an exhaustive security audit or biological validation
 | Ad hoc report refresh scripts | `report_refresh.py` provides an external inventory, dry run, validation, immutable scientific records, ownership preservation, ZIP rebuild, per-report backups, failure recovery and rollback. See `REPORT_REFRESH.md`. |
 
 Workflow inputs track the extracted analysis/report resources. CI checks every
-browser JavaScript file. The release remains v1.1.0; this maintenance change does
-not claim a new release or alter historical analysis timestamps.
+browser JavaScript file. These changes are included in v1.1.1. New analyses record
+that release version; historical analysis versions and timestamps are preserved.
 
 ## Validation
 
