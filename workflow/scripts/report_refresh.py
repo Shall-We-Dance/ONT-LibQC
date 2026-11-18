@@ -8,6 +8,7 @@ import argparse
 import datetime
 import fcntl
 import hashlib
+import html
 from html.parser import HTMLParser
 import json
 import os
@@ -20,7 +21,7 @@ import zipfile
 
 from report_bundle import validate
 from report_export import add_pdf_export
-from report_metrics import REPORT_CSS, REPORT_TOOLTIP_SCRIPT
+from report_metrics import COLLISION_ROWS, METRIC_META, REPORT_CSS, REPORT_TOOLTIP_SCRIPT, scoped_metric_rows
 from report_profiles import render_profiles_card
 
 VOID = {'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'}
@@ -139,9 +140,33 @@ def refresh_profile_layout(root, sample, text):
     return replace_ranges(text, replacements)
 
 
+def refresh_collision_rows(root, sample, text):
+    """Update only the collision rows using the retained per-scope counts."""
+    label = METRIC_META["collision_oe"][0]
+    if label not in text:
+        return text
+    metric = json.loads((root/'data/metrics'/f'{sample}.json').read_text())
+    scopes = [dict(metric, scope_name='Total library'), *metric.get('sub_libraries', [])]
+    parsed = Elements(text)
+    labels = [METRIC_META[k][0] for k in COLLISION_ROWS]
+    rows = [n for n in parsed.elements if n['tag'] == 'tr' and
+            any('>' + name + ' <b>' in parsed.fragment(n) for name in labels)]
+    if not rows:
+        return text
+    parent = rows[0]['parent']
+    headers = [html.unescape(parsed.fragment(n)[4:-5]) for n in parsed.elements
+               if n['tag'] == 'th' and n['parent']['parent'] is parent]
+    if (headers[1:-1] != [s.get('scope_name', s.get('scope_id')) for s in scopes]
+            or any(n['parent'] is not parent for n in rows)
+            or '>' + label + ' <b>' not in parsed.fragment(rows[0])):
+        raise ValueError('Collision table columns do not match the retained metrics')
+    rendered = scoped_metric_rows(scopes, COLLISION_ROWS, {})
+    return replace_ranges(text, [(rows[0], rendered)] + [(n, '') for n in rows[1:]])
+
+
 def refresh_page(root, sample):
     page = root/'samples'/f'{sample}.html'
-    page.write_text(refresh_presentation(refresh_profile_layout(root, sample, page.read_text())))
+    page.write_text(refresh_presentation(refresh_profile_layout(root, sample, refresh_collision_rows(root, sample, page.read_text()))))
 
 
 def refresh_presentation(text):

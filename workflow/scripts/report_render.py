@@ -17,7 +17,7 @@ from report_provenance import analysis_record, analysis_label
 from report_regions import region_counts as annotation_region_counts, svg_region_bars, load_te_bed, prepare_background
 from library_sequences import FAMILIES
 from qc_analysis import build_sublibrary_gene_profile, read_numbers, read_scope_profiles, svg_bars, sam_primary_records, base_unit_id, json_dump, read_index_assignments, resolve_chromosome_sets, read_chrom_sizes, write_library_size_assets, write_karyoploter, load_gene_annotation
-from report_metrics import display_value, fmt, traffic_html, assay_reference_ranges, svg_contact_funnel, METRIC_META, scoped_table_html, REPORT_CSS, svg_contact_evidence, merged_reference_ranges, summary_overview_svg, REPORT_TOOLTIP_SCRIPT, metric_reading_html
+from report_metrics import COLLISION_ROWS, display_value, fmt, traffic_html, assay_reference_ranges, svg_contact_funnel, METRIC_META, scoped_table_html, REPORT_CSS, svg_contact_evidence, merged_reference_ranges, summary_overview_svg, REPORT_TOOLTIP_SCRIPT, metric_reading_html
 
 def library_structure_html(metric, adapter_summary=None, unit_rows=None, rna_summary=None):
     from report_library_structure import library_structure_html as render_structure
@@ -356,7 +356,7 @@ def render_sample_report(sample, cfg, out, report_params, prior_provenance, anno
     library_keys=(["scope_unit_fraction"] if metric.get("sub_libraries") else [])+["outer_complete_units","outer_complete_unit_rate","index_assignment_rate","index_ambiguous_fraction","index_unassigned_fraction","unreconstructed_probable_dimer_reads","adapter_dimer_unit_rate","concatemer_rate","insert_median_bp","library_units","units_per_complete_read","mappable_library_units","canonical_adapter_dimer_units","probable_adapter_dimer_units","adapter_dimer_rate","raw_structure_dimer_rate","adapter_dimer_call","primary_mapping_rate"]
     screen_keys=["mycoplasma_status","mycoplasma_screened_reads","mycoplasma_qualifying_reads","mycoplasma_qualifying_loci","mycoplasma_qualifying_fraction"]
     if metric["assay"]=="chromatin":
-        type_specific_keys=["collision_oe","collision_contributing_molecules","usable_fragments","usable_fragment_rate","mitochondrial_fraction"]+screen_keys
+        type_specific_keys=[*COLLISION_ROWS,"collision_contributing_molecules","usable_fragments","usable_fragment_rate","mitochondrial_fraction"]+screen_keys
         type_specific_title="Chromatin QC"
     elif metric["assay"] in {"rnaseq", "clip"}:
         type_specific_keys=["usable_fragments","usable_fragment_rate","mitochondrial_fraction"]+screen_keys
