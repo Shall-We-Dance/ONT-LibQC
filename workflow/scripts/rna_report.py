@@ -276,8 +276,7 @@ def render_rna_section(summary_path, relative_prefix=None, scope_labels=None):
     prefix = (relative_prefix or '../qc/rna/' + quote(data['sample'], safe='')).rstrip('/')
     title = 'CLIP-seq QC' if data['assay'] == 'clip' else 'RNA-seq QC'
     scope_labels = scope_labels or {}
-    parts = ['<section class="report-section rna-report" id="rna-qc"><h2>' + title + ' <span class="rna-beta">Beta</span></h2>',
-        '<p class="muted">Beta version — still being tested.</p>']
+    parts = ['<section class="report-section rna-report" id="rna-qc"><h2>' + title + ' <span class="rna-beta">Beta</span></h2>']
     unit_path = path.parent / 'units.tsv.gz'
     with gzip.open(unit_path, 'rt') if unit_path.exists() else __import__('io').StringIO('') as handle:
         unit_rows = list(csv.DictReader(handle, delimiter='\t'))

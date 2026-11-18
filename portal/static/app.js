@@ -104,9 +104,8 @@ function updateAssay(entry) {
     return;
   }
   const assay = entry.assay.value, rna = isRnaAssay(assay);
-  const betaNote = 'Beta version — still being tested.';
-  entry.availabilityNote.textContent = rna ? betaNote : reference?.availability_note || '';
-  entry.availabilityNote.hidden = !rna && (assay !== 'microc' || !reference?.availability_note);
+  entry.availabilityNote.textContent = assay === 'microc' ? reference?.availability_note || '' : '';
+  entry.availabilityNote.hidden = !entry.availabilityNote.textContent;
   entry.mapper.disabled = !assay || !entry.ref.value;
   const defaultMapper = rna ? 'STARlong' : assay === 'microc' ? (r.microc_mapper || 'bwa-mem2').toUpperCase() : 'Bowtie2';
   entry.mapper.replaceChildren(node('option', { value: 'auto' }, !assay ? 'Choose a library assay first' : `Default · ${defaultMapper}`),
