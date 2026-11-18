@@ -118,40 +118,62 @@ def render(data):
     columns = [*data["panel"], AMBIG, NONE]
     colors = {k: color for k, color in zip(data["panel"], ["#296ab5", "#18857e", "#8862a9", "#bf6b2d", "#587b49", "#985679", "#417a92", "#715a49"])}
     colors.update({AMBIG: "#a7aab8", NONE: "#e2e7ec"})
-    def header(k):
-        text = NAMES.get(k, k) + (" (expected)" if k == data["reference"] else "")
-        color = colors.get(k, "#536b80")
-        return f"<th scope='col'><span aria-hidden='true' style='color:{color}'>■</span> {html.escape(text)}</th>"
+    labels = {k: html.escape(NAMES.get(k, k) + (" (expected)" if k == data["reference"] else ""))
+              for k in columns}
+
+    def percent(n, total):
+        value = 100 * n / total
+        return "&lt;0.1%" if 0 < value < 0.1 else f"{value:.1f}%" if n else "0%"
+
     def row(r):
         cells = []
         for species in columns:
             n = r["counts"].get(species, 0)
             value = "—"
             if r["n"]:
-                percent = 100 * n / r["n"]
-                fraction = f"{percent:.1f}%" if n else "0%"
-                if 0 < percent < 0.1:
-                    fraction = "&lt;0.1%"
-                value = f"{n:,} ({fraction})"
+                value = f"{n:,} ({percent(n, r['n'])})"
             cells.append(f"<td>{value}</td>")
         return "<tr><th scope='row'>" + html.escape(r["scope"]) + f"</th><td>{r['n']:,}</td>" + "".join(cells) + "</tr>"
     rows = data["rows"]
-    segments = []
-    offset = 0
-    for key in columns:
-        count = rows[0]["counts"].get(key, 0)
-        if count:
-            width = 100 * count / rows[0]["n"]
-            segments.append(f"<rect x='{offset:.6f}' width='{width:.6f}' height='1' fill='{colors.get(key, '#536b80')}'/>")
-            offset += width
-    bar = ("<svg viewBox='0 0 100 1' width='100%' height='12' preserveAspectRatio='none' "
-           "role='img' aria-label='Species proportions among all screened inserts'>" + "".join(segments) + "</svg>") if segments else ""
+    bars = []
+    visible = set()
+    for scope in rows:
+        if scope["scope"] in {TOTAL, RAW, "Unassigned index", "Ambiguous index"} or not scope["n"]:
+            continue
+        segments, descriptions = [], []
+        for key in columns:
+            n = scope["counts"].get(key, 0)
+            if not n:
+                continue
+            visible.add(key)
+            description = f"{labels[key]} {percent(n, scope['n'])}"
+            descriptions.append(description)
+            width = 100 * n / scope["n"]
+            segments.append(f"<span title='{description}' style='width:{width:.8f}%;background:{colors.get(key, '#536b80')}'></span>")
+        label = html.escape(scope["scope"])
+        description_list = ", ".join(descriptions)
+        bars.append(f"<div class='species-row'><span class='mixture-label'>{label}</span>"
+                    f"<div class='species-bar' role='img' aria-label='{label}, {description_list}'>"
+                    + "".join(segments) + "</div></div>")
+    legend = "".join(f"<li><i aria-hidden='true' style='background:{colors.get(k, '#536b80')}'></i>{labels[k]}</li>"
+                     for k in columns if k in visible)
+    chart = ("".join(bars) + f"<ul class='species-legend'>{legend}</ul>" if bars
+             else "<p class='muted'>No inserts assigned to a sublibrary.</p>")
     windows = " · ".join(html.escape(NAMES.get(k,k)) + f" {rows[0]['windows'].get(k,0):,}" for k in data["panel"])
     return ("<section class='report-section' id='species-composition'><h2>Species composition</h2>"
-            "<p>Each reconstructed, non-dimer insert is counted once. Reads without a reconstructed insert are shown separately.</p>"
-            + bar + "<div class='table-scroll'><table><thead><tr><th>Library</th><th>Screened</th>" +
-            "".join(map(header, columns)) + "</tr></thead><tbody>" + "".join(map(row, rows)) +
-            "</tbody></table></div><details><summary>Mapping evidence</summary><p>Distinct 10 kb windows with a "
+            "<style>.species-row{display:grid;grid-template-columns:minmax(5em,18%) minmax(0,1fr);"
+            "align-items:center;gap:1em;margin:.65em 0}.species-row .mixture-label{overflow-wrap:anywhere}"
+            ".species-bar{display:flex;height:1.2em;border-radius:4px;overflow:hidden}"
+            ".species-legend{display:flex;flex-wrap:wrap;gap:.35em 1em;padding:0;list-style:none}"
+            ".species-legend li{display:inline-flex;align-items:center;gap:.4em}"
+            ".species-legend i{width:.85em;height:.85em;border-radius:2px}"
+            ".species-bar,.species-legend i{print-color-adjust:exact;-webkit-print-color-adjust:exact}</style>"
+            + chart + "<details><summary>Counts and whole-library totals</summary>"
+            "<p>Percentages are within each row. Total inserts includes reconstructed, non-dimer inserts. "
+            "Reads without a reconstructed insert are counted separately.</p>"
+            "<div class='table-scroll'><table><thead><tr><th>Library</th><th>Screened</th>" +
+            "".join(f"<th scope='col'>{labels[k]}</th>" for k in columns) + "</tr></thead><tbody>" +
+            "".join(map(row, rows)) + "</tbody></table></div><p>Distinct 10 kb windows with a "
             "confidently placed total-library insert (MAPQ ≥20): " + windows +
             ".</p><p>Bowtie 2 compares local alignments across the listed genomes. A match requires at least "
             "30 aligned bases, 70% query coverage, 85% identity and a 6-point lead over the next genome. "

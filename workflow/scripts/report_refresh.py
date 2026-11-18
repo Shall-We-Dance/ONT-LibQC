@@ -23,6 +23,7 @@ from report_bundle import validate
 from report_export import add_pdf_export
 from report_metrics import COLLISION_ROWS, METRIC_META, REPORT_CSS, REPORT_TOOLTIP_SCRIPT, scoped_metric_rows
 from report_profiles import render_profiles_card
+from species_composition import render as render_species
 
 VOID = {'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'}
 
@@ -164,9 +165,32 @@ def refresh_collision_rows(root, sample, text):
     return replace_ranges(text, [(rows[0], rendered)] + [(n, '') for n in rows[1:]])
 
 
+def refresh_species_layout(root, sample, text):
+    data = root / 'data/species_composition' / f'{sample}.json'
+    if not data.is_file():
+        return text
+    parsed = Elements(text)
+    sections = {n['attrs'].get('id'): n for n in parsed.elements if n['tag'] == 'section'}
+    links = {n['attrs'].get('href'): n for n in parsed.elements
+             if n['tag'] == 'a' and n['parent'] and n['parent']['tag'] == 'nav'}
+    section = render_species(json.loads(data.read_text()))
+    mixture = sections.get('sublibrary-composition')
+    anchor = mixture or sections['sequencing']
+    original = parsed.fragment(anchor)
+    nav_anchor = links['#sequencing']
+    changes = [(anchor, original + section if mixture else section + original),
+               (nav_anchor, "<a href='#species-composition'>Species</a>" + parsed.fragment(nav_anchor))]
+    for previous in (sections.get('species-composition'), links.get('#species-composition')):
+        if previous:
+            changes.append((previous, ''))
+    return replace_ranges(text, changes)
+
+
 def refresh_page(root, sample):
     page = root/'samples'/f'{sample}.html'
-    page.write_text(refresh_presentation(refresh_profile_layout(root, sample, refresh_collision_rows(root, sample, page.read_text()))))
+    text = refresh_collision_rows(root, sample, page.read_text())
+    text = refresh_profile_layout(root, sample, text)
+    page.write_text(refresh_presentation(refresh_species_layout(root, sample, text)))
 
 
 def refresh_presentation(text):

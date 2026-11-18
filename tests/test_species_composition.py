@@ -1,4 +1,5 @@
 import gzip
+import json
 import io
 from pathlib import Path
 import random
@@ -39,6 +40,38 @@ class SpeciesCompositionTests(unittest.TestCase):
         self.assertEqual(data["rows"][0]["windows"], {"hg38": 1})
         self.assertIn("Human (expected)", render(data))
         self.assertEqual(classify([], [], panel, "hg38")["rows"][0]["n"], 0)
+
+    def test_visible_bars_use_each_assigned_library_as_denominator(self):
+        hit = ("hg38", 60, True, ("chr1", 0))
+        scopes = ["lib01", "lib01", "lib02", "Unassigned index", "Ambiguous index", RAW]
+        data = classify(scopes, [[hit], [], [hit], [], [], []], ["hg38", "mm39"], "hg38")
+        chart, details = render(data).split("<details>")
+        self.assertEqual(chart.count("class='species-bar'"), 2)
+        self.assertIn("lib01, Human (expected) 50.0%", chart)
+        self.assertIn("lib02, Human (expected) 100.0%", chart)
+        for scope in (TOTAL, RAW, "Unassigned index", "Ambiguous index"):
+            self.assertNotIn(scope, chart)
+            self.assertIn(scope, details)
+        empty = classify([], [], ["hg38", "mm39"], "hg38")
+        self.assertIn("No inserts assigned to a sublibrary", render(empty))
+
+    def test_refresh_moves_existing_section_and_navigation_once(self):
+        from report_refresh import refresh_species_layout
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            directory = root / "data/species_composition"
+            directory.mkdir(parents=True)
+            data = classify(["lib01"], [[]], ["hg38", "mm39"], "hg38")
+            (directory / "sample.json").write_text(json.dumps(data))
+            sequencing = "<section id='sequencing'></section>"
+            mixture = "<section id='sublibrary-composition'><h2>Sublibrary composition</h2></section>"
+            nav = "<nav><a href='#sequencing'>Sequencing</a><a href='#species-composition'>Species</a></nav>"
+            for previous in (mixture, ""):
+                page = nav + previous + sequencing + render(data)
+                new = refresh_species_layout(root, "sample", page)
+                self.assertIn(previous + render(data) + sequencing, new)
+                self.assertIn("<nav><a href='#species-composition'>", new)
+                self.assertEqual(refresh_species_layout(root, "sample", new), new)
 
     @unittest.skipUnless(shutil.which("bowtie2-build") and shutil.which("bowtie2"), "Bowtie 2 required")
     def test_known_mixture_including_shared_sequence(self):
