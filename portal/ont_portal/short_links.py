@@ -11,9 +11,6 @@ def link_key(secret, kind, identity):
     digest = hmac.new(secret.encode(), ('short:' + kind + ':' + identity).encode(), hashlib.sha256).digest()
     return base64.urlsafe_b64encode(digest[:16]).decode().rstrip('=')
 
-def name_edit_token(secret, row):
-    return link_key(secret, 'sublibrary-names', f"{row['id']}:{int(row['expires'])}")
-
 def key_hash(key):
     return hashlib.sha256(key.encode()).hexdigest()
 

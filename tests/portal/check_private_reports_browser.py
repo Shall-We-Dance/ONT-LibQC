@@ -78,8 +78,12 @@ with tempfile.TemporaryDirectory() as directory:
                         report.wait_for_url('**/r/*')
                         if sample == 'sample':
                             report.set_viewport_size({'width': 390 if engine == 'webkit' else 1280, 'height': 850})
-                            report.get_by_role('link', name='Edit names').click()
+                            edit = report.get_by_role('link', name='Edit names')
+                            assert edit.evaluate("a => getComputedStyle(a).backgroundColor") == 'rgb(42, 108, 189)'
+                            edit.click()
                             name = report.get_by_role('textbox', name='Name for lib01')
+                            name.wait_for()
+                            assert report.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
                             name.fill('Control ' + engine)
                             report.get_by_role('button', name='Save names').click()
                             report.wait_for_url('**/r/*')
@@ -87,18 +91,11 @@ with tempfile.TemporaryDirectory() as directory:
                             assert report.locator('.scope-name').first.inner_text() == 'Control ' + engine
                             assert 'Control ' + engine in report.locator('.table-scroll th').first.inner_text()
                             viewer = context.new_page()
-                            # A bookmarked report must work even if the browser blocks the tab handoff.
+                            # A bookmarked report must work without browser storage.
                             viewer.add_init_script("Object.defineProperty(window, 'sessionStorage', {get() { throw new Error('Unavailable'); }});")
                             viewer.goto(report.url)
                             assert viewer.locator('.scope-name').first.inner_text() == 'Control ' + engine
                             viewer.get_by_role('link', name='Edit names').click()
-                            link_input = viewer.get_by_role('textbox', name='Private analysis link')
-                            assert viewer.get_by_role('button', name='Save names').is_hidden()
-                            link_input.fill(report.url)
-                            viewer.get_by_role('button', name='Unlock editing').click()
-                            viewer.get_by_text('Use the private link from Copy link on your analysis page.').wait_for()
-                            link_input.fill(page.url)
-                            viewer.get_by_role('button', name='Unlock editing').click()
                             restored = viewer.get_by_role('textbox', name='Name for lib01')
                             assert restored.input_value() == 'Control ' + engine
                             restored.fill('Repeat ' + engine)

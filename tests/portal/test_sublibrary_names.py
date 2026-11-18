@@ -10,7 +10,6 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from ont_portal.app import create_app
 from ont_portal.settings import Settings
-from ont_portal.short_links import link_key
 from ont_portal.store import token_for
 from ont_portal.worker import publish_report
 
@@ -57,24 +56,22 @@ class NameTests(unittest.TestCase):
             publish_report(src, self.cfg.state/'reports'/jid)
         self.job = self.task(self.jid)
         self.api = self.job['report_url'].replace('/r/', '/api/sublibrary-names/')
-        self.auth = {'Authorization': 'Bearer ' + self.job['name_edit_token']}
 
     def task(self, jid):
         return self.client.get('/api/jobs/' + jid, headers={'Authorization': 'Bearer ' + token_for(self.cfg.secret, jid)}).json()
 
     def save(self, names, revision=0, headers=None):
-        return self.client.put(self.api, headers=self.auth if headers is None else headers,
+        return self.client.put(self.api, headers=headers or {},
                                json={'names': names, 'revision': revision})
 
     def test_save_reload_archive_and_clear(self):
-        self.assertEqual(self.client.get(self.api, headers=self.auth).json()['revision'], 0)
+        self.assertEqual(self.client.get(self.api).json()['revision'], 0)
         name = '对照组 1'
         self.assertEqual(self.save({'lib01': ' ' + name + ' '}).status_code, 200)
         response = self.client.get(self.job['report_url'])
         self.assertIn(name, response.text)
         self.assertIn('Edit names', response.text)
         self.assertIn('sandbox', response.headers['Content-Security-Policy'])
-        self.assertNotIn(self.job['name_edit_token'], response.text)
         with zipfile.ZipFile(io.BytesIO(self.client.get(self.job['download_url']).content)) as z:
             page = z.read('report/samples/sample.html').decode()
             self.assertIn(name, page)
@@ -84,7 +81,7 @@ class NameTests(unittest.TestCase):
             self.assertIn(f'sample\tlib01\t{name}\t\tACGT\n', z.read('report/data/sublibrary_names.tsv').decode())
             self.assertIsNone(z.testzip())
         self.assertEqual(self.save({'lib02': 'Changed'}).status_code, 409)
-        self.assertEqual(self.client.get(self.api, headers=self.auth).json()['names'], {'lib01': name})
+        self.assertEqual(self.client.get(self.api).json()['names'], {'lib01': name})
         self.assertEqual(self.save({'lib01': ''}, revision=1).status_code, 200)
         self.assertNotIn(name, self.client.get(self.job['report_url']).text)
 
@@ -93,7 +90,7 @@ class NameTests(unittest.TestCase):
         second = self.client.get('/reports/' + self.jid + '/samples/02.other.html', headers=owner,
                                  follow_redirects=False).headers['location']
         self.assertEqual(self.save({'lib01': 'Control'}).status_code, 200)
-        response = self.client.put(second.replace('/r/', '/api/sublibrary-names/'), headers=self.auth,
+        response = self.client.put(second.replace('/r/', '/api/sublibrary-names/'),
                                    json={'revision': 0, 'names': {'lib01': 'Treatment'}})
         self.assertEqual(response.status_code, 200)
         with zipfile.ZipFile(io.BytesIO(self.client.get(self.job['download_url']).content)) as z:
@@ -103,40 +100,17 @@ class NameTests(unittest.TestCase):
             self.assertNotIn('Treatment', z.read('report/samples/sample.html').decode())
             self.assertNotIn('Control', z.read('report/samples/02.other.html').decode())
 
-    def test_unlock_from_job_batch_selection_and_legacy_analysis_links(self):
-        other = '2' * 32
-        with self.store.connect() as db:
-            db.execute('UPDATE jobs SET batch_id=? WHERE id IN (?,?)', ('test-batch', self.jid, other))
-        entries = [{'id': jid, 'token': token_for(self.cfg.secret, jid)} for jid in (self.jid, other)]
-        compact = self.client.post('/api/links/compact', json={'jobs': entries}).json()
-        legacy = [entry['id'] + ':' + entry['token'] for entry in entries]
-        links = [compact['jobs'][0]['private_link'], compact['private_link'],
-                 '/b/#' + link_key(self.cfg.secret, 'batch', 'test-batch'),
-                 '/jobs/' + self.jid + '#' + entries[0]['token'], '/#jobs=' + ','.join(reversed(legacy))]
-        snapshot = self.client.get(self.api, headers=self.auth).json()
-        for link in links:
-            with self.subTest(path=link.split('#')[0]):
-                result = self.client.post(self.api + '/unlock', json={'link': link})
-                self.assertEqual(result.status_code, 200)
-                self.assertEqual(result.json(), snapshot | {'name_edit_token': self.job['name_edit_token']})
-        for link in (compact['jobs'][1]['private_link'], '/#jobs=' + legacy[1], self.job['report_url'],
-                     '/j/#' + self.job['report_url'].split('/')[-1], '/b/', None):
-            self.assertEqual(self.client.post(self.api + '/unlock', json={'link': link}).status_code, 403)
-        self.store.update(self.jid, expires=0)
-        self.assertEqual(self.client.post(self.api + '/unlock', json={'link': links[0]}).status_code, 404)
-
-    def test_permissions_validation_and_retention(self):
-        self.assertEqual(self.save({'lib01':'A'}, headers={}).status_code, 403)
-        other = self.task('2' * 32)
-        self.assertEqual(self.save({'lib01':'A'}, headers={'Authorization':'Bearer ' + other['name_edit_token']}).status_code, 403)
-        self.assertEqual(self.client.get('/api/jobs/' + self.jid, headers=self.auth).status_code, 404)
-        self.assertEqual(self.save({'lib01':'A'}, headers=self.auth | {'Origin':'null'}).status_code, 403)
+    def test_sample_link_scope_validation_and_retention(self):
+        archive_api = self.job['download_url'].replace('/r/', '/api/sublibrary-names/')
+        for path in (archive_api, '/api/sublibrary-names/' + 'z' * 22):
+            self.assertEqual(self.client.put(path, json={'revision': 0, 'names': {'lib01': 'A'}}).status_code, 404)
+        self.assertEqual(self.save({'lib01':'A'}, headers={'Origin':'null'}).status_code, 403)
         for values in ({'unknown':'A'}, {'lib01':'A\tB'}, {'lib02':'=1'}, {'lib01':'a' * 49},
                        {'lib01':'A<bad>'}, {'lib01':'A\u202eZ'}, {'lib01':34}):
             self.assertEqual(self.save(values).status_code, 422)
         self.assertEqual(self.save({'lib01':'Rep-1'}).status_code, 200)
         self.store.update(self.jid, expires=0)
-        self.assertEqual(self.client.get(self.api, headers=self.auth).status_code, 404)
+        self.assertEqual(self.client.get(self.api).status_code, 404)
         with self.store.connect() as db:
             self.assertIsNone(db.execute('SELECT 1 FROM sublibrary_names WHERE job_id=?', (self.jid,)).fetchone())
 

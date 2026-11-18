@@ -42,15 +42,6 @@ def scope_catalog(root, sample):
         return {}
 
 
-def has_sublibraries(root, primary):
-    # A retained bundle can contain more than the task's primary sample.
-    if scope_catalog(root, primary):
-        return True
-    folder = root/'data'/'metrics'
-    return (folder.is_dir() and folder.resolve() == root.resolve()/'data'/'metrics'
-            and any(scope_catalog(root, p.stem) for p in folder.glob('*.json') if p.stem != primary))
-
-
 def validate_names(values, catalog):
     if not isinstance(values, dict) or not values.keys() <= catalog.keys():
         raise ValueError('Choose a sublibrary listed in this report.')
@@ -113,8 +104,10 @@ def annotate_page(body, catalog, names, *, editor=None):
     style = """<style>
 @media screen and (min-width:901px){.identity-panel:has(.scope-name){grid-template-columns:minmax(235px,.61fr) minmax(0,1.4fr)}}
 .scope-name,.scope-display-name{overflow-wrap:anywhere}.scope-name{min-width:6em}
-.edit-sublibraries{float:right;font-size:inherit;font-weight:500}.scope-display-name{font-weight:normal}
-@media print{.edit-sublibraries{display:none}.pair-table .scope-name{min-width:0}}
+h3:has(>.edit-sublibraries){display:flex;align-items:center;justify-content:space-between;gap:8px}
+h3>a.edit-sublibraries{display:inline-block;background:#2a6cbd;color:#fff;padding:4px 12px;border-radius:6px;font:600 13px/1.6 system-ui,sans-serif;text-decoration:none;white-space:nowrap}
+h3>a.edit-sublibraries:hover,h3>a.edit-sublibraries:focus-visible{background:#225ca4}.scope-display-name{font-weight:normal}
+@media print{h3>a.edit-sublibraries{display:none}.pair-table .scope-name{min-width:0}}
 </style>"""
     body = body.replace('</head>', style + '</head>', 1)
     if names:

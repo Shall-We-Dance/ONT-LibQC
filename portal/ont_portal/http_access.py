@@ -5,11 +5,10 @@ from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
 from fastapi import HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 from .report_files import REPORT_FILE_SUFFIXES
-from .sublibrary_names import has_sublibraries
 from .report_entry import online_report_links
 from .schema import SAFE_NAME
 from .store import token_for, valid_report_grant
-from .short_links import KEY, link_key, key_hash, job_link, name_edit_token
+from .short_links import KEY, link_key, key_hash, job_link
 JOB_ID = re.compile(r"^[0-9a-f]{32}$")
 
 def access_services(s, store):
@@ -46,7 +45,6 @@ def access_services(s, store):
             'deletion_reason':('manual' if row['expires']==0 else 'retention') if row['status']=='expired' else None,
             'deletion_requested':row['status']!='expired' and row['expires']==0,
             'report_url':report_link(row['id'],f"samples/{opts['sample']}.html",access_expires) if available and re.fullmatch(SAFE_NAME,opts.get('sample','')) else None,
-            'name_edit_token':name_edit_token(s.secret,row) if available and has_sublibraries(s.state/'reports'/row['id'], opts.get('sample')) else None,
             'download_url':report_link(row['id'],'report.zip',access_expires) if available else None,
             'report_access_expires':access_expires,
             'private_link':job_link(s.secret,row),

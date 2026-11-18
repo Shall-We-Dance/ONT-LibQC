@@ -3275,24 +3275,21 @@ button.structure-block:hover {
 
 }
 
-.names-editor {
-  max-width: 850px;
-  margin: 36px auto;
-  padding: 0 18px;
+.names-topbar { display: flex; flex-direction: row; justify-content: space-between; gap: 12px }
+.names-topbar #back { color: var(--blue); font-weight: 600; font-size: 14px }
+.names-editor { max-width: 850px; margin: clamp(18px, 4vw, 48px) auto; padding: 0 16px }
+.names-editor .panel { padding: clamp(16px, 3vw, 32px) }
+.names-editor h1 { font-size: clamp(24px, 3vw, 32px); line-height: 1.2 }
+.names-editor [role=status] { color: var(--muted); margin-top: 6px; overflow-wrap: anywhere }
+.names-scroll { margin: 20px 0; overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius-panel) }
+.names-scroll table { width: 100%; border-collapse: collapse; font-size: 14px }
+.names-scroll th, .names-scroll td { padding: 8px 12px; text-align: left }
+.names-scroll thead { background: var(--wash); color: var(--muted) }
+.names-scroll tbody tr { border-top: 1px solid var(--line) }
+.names-scroll tbody th, .names-scroll td:nth-last-child(-n+2) { font-family: var(--font-mono); white-space: nowrap }
+.names-scroll td:nth-child(2) { width: 46%; min-width: 9em }
+.names-editor form > button { display: block; margin-left: auto }
+@media (max-width: 600px) {
+  .names-scroll th, .names-scroll td { padding: 7px 6px }
+  .names-scroll td:nth-child(2) { min-width: 7.5em }
 }
-.names-editor h1 { margin: 20px 0 4px }
-.names-editor [role=status] { overflow-wrap: anywhere }
-.names-unlock-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px }
-.names-unlock-controls input { flex: 1 1 18rem; min-width: 0 }
-.names-scroll {
-  margin: 16px 0;
-  overflow-x: auto;
-  background: white;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-}
-.names-scroll table { width: 100%; border-collapse: collapse }
-.names-scroll th, .names-scroll td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--line) }
-.names-scroll thead { background: #f5f8fa }
-.names-scroll input { width: 100%; min-width: 10em }
-.names-scroll td:nth-last-child(-n+2) { font-family: ui-monospace, monospace; white-space: nowrap }
