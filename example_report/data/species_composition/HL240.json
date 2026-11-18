@@ -6,7 +6,11 @@
     "hg38",
     "mm39",
     "dm6",
-    "ecoli"
+    "ecoli",
+    "ce11",
+    "GRCz12ab",
+    "TAIR10",
+    "sacCer3"
   ],
   "rows": [
     {

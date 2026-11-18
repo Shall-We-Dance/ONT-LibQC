@@ -43,6 +43,10 @@ mycoplasma_screen:
 #     ARS_UCD2: /path/to/cattle/index
 #     dm6: /path/to/dm6/index
 #     ecoli: /path/to/ecoli_K12/index
+#     ce11: /path/to/ce11/index
+#     GRCz12ab: /path/to/GRCz12ab/index
+#     TAIR10: /path/to/TAIR10/index
+#     sacCer3: /path/to/sacCer3/index
 
 # Optional spike-in quantification. The index must contain both host and spike-in
 # contigs. Prefix spike-in contigs consistently and match them with the regex.

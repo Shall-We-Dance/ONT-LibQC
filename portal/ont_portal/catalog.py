@@ -124,6 +124,8 @@ def job_config(options,catalog,jobdir,cores):
           'target_contig_regex':catalog.get('mycoplasma_regex','mycoplasma_target|mycoplasmopsis|mycoplasmoides|metamycoplasma|mesomycoplasma|acholeplasma|spiroplasma|ureaplasma|mollicutes')}}
     panel = catalog.get('species_composition', {}).get('indexes', {})
     if panel:
+        panel = {**panel, **{key: item['bowtie2_index'] for key, item in catalog['references'].items()
+                            if bt2_ready(item.get('bowtie2_index'))}}
         cfg['species_composition'] = {'indexes': {key: mounts.path(prefix, prefix=True)
                                                  for key, prefix in panel.items()}}
     return cfg,mounts

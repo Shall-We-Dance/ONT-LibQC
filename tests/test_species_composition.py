@@ -29,6 +29,36 @@ class SpeciesCompositionTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 queries([raw], table, io.StringIO(), 4)
 
+    def test_microc_end_queries_respect_the_contact_window(self):
+        seq = "A" * 30 + "G" * 40 + "T" * 30
+        with tempfile.TemporaryDirectory() as tmp:
+            raw = Path(tmp) / "raw.fq"
+            raw.write_text(f"@r0\n{seq}\n+\n{'I'*100}\n@raw\nTTGCAA\n+\nIIIIII\n")
+            table = Path(tmp) / "table.gz"
+            with gzip.open(table, "wt") as out:
+                out.write("read_id\traw_length\tinsert_start\tinsert_end\tinsert_length\tis_adapter_dimer\tassignment_status\tscope_id\n"
+                          "r0\t100\t0\t100\t100\t0\tassigned\tlib01\n")
+            fasta = io.StringIO()
+            scopes = queries([raw], table, fasta, 2, leg_length=30)
+            self.assertEqual(scopes, ["lib01", RAW])
+            self.assertEqual(fasta.getvalue().splitlines(), [">0", "A"*30, ">1", "A"*30, ">2", "TTGCAA"])
+
+    def test_microc_counts_inserts_once_and_keeps_conflicting_ends_ambiguous(self):
+        left = [("dm6", 80, True, ("chr2", 4))]
+        right = [("dm6", 70, True, ("chr3", 1))]
+        mouse = [("mm39", 68, True, ("chr1", 2))]
+        tied = left + [("mm39", 77, True, None)]
+        hits = [left, right, [], left, left, mouse, tied, left, [], [], mouse, []]
+        result = classify(["lib01"] * 5 + [RAW], hits, ["dm6", "mm39"], "dm6", leg_length=100)
+        self.assertEqual(result["rows"][0]["n"], 5)
+        self.assertEqual(result["rows"][0]["counts"], {"dm6": 2, AMBIG: 2, NONE: 1})
+        self.assertEqual(result["rows"][0]["windows"], {"dm6": 2})
+        self.assertEqual(result["rows"][-1]["counts"], {"mm39": 1})
+        self.assertEqual(result["end_evidence"], dict(concordant=1, one_end=1, discordant=1, ambiguous=1, neither=1))
+        chart, details = render(result).split("<details>")
+        self.assertIn("<b>40.0%</b>", chart)
+        self.assertIn("up to 100 bp per end", details)
+
     def test_score_margin_and_low_quality_hits(self):
         panel = ["hg38", "mm39"]
         strong = ("hg38", 60, True, ("chr1", 0))

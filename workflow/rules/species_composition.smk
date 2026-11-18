@@ -18,6 +18,7 @@ rule species_composition:
     params:
         python=PYTHON,
         bowtie2=Bowtie2,
+        legs=lambda wc: ["--microc-leg-length", str(int(PARAMS.get("microc_leg_length", 100)))] if assay(wc.sample) == "microc" else [],
         indexes=lambda wc: json.dumps(species_indexes(wc.sample)),
         reference=lambda wc: config["samples"][wc.sample].get("reference", DEFAULT_REFERENCE),
     log:
@@ -27,4 +28,4 @@ rule species_composition:
     shell:
         "{params.python:q} {input.script:q} --raw {input.raw:q} --table {input.table:q} "
         "--summary {input.summary:q} --reference {params.reference:q} --indexes {params.indexes:q} "
-        "--bowtie2 {params.bowtie2:q} --threads {threads} --output {output:q} > {log:q} 2>&1"
+        "--bowtie2 {params.bowtie2:q} --threads {threads} {params.legs:q} --output {output:q} > {log:q} 2>&1"
