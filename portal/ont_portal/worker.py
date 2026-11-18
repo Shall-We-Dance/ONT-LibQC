@@ -7,6 +7,7 @@ import argparse, multiprocessing, fcntl, json, math, resource, logging, os, re, 
 from pathlib import Path
 import yaml
 from .limits import DEFAULTS, load_limits
+from .worker_cpu import cpu_limits
 from .schema import Options
 from .report_files import REPORT_FILE_SUFFIXES
 from .store import Store, ACTIVE, TERMINAL, token_for
@@ -141,10 +142,8 @@ class Worker:
         self.pipeline=Path(config['pipeline_dir']).resolve()
         if self.state.resolve()==self.pipeline or self.pipeline in self.state.resolve().parents:raise ValueError('Private runtime must be outside the workflow tree')
         self.image=config.get('runner_image','ont-qc-runner:1')
-        self.cores=int(config['cores']);self.memory=config['memory']
-        self.max_jobs=int(config['max_concurrent_jobs'])
-        if not 1<=self.max_jobs<=8:raise ValueError('Invalid analysis concurrency limit')
-        if not 1<=self.cores<=64:raise ValueError('Invalid worker CPU limit')
+        self.cores, self.max_jobs, self.cpu_pool = cpu_limits(config)
+        self.memory = config['memory']
         if memory_bytes(config['max_memory'])<memory_bytes(self.memory):raise ValueError('max_memory is smaller than memory')
         self.timeout=int(config['timeout_seconds']);self.uid=os.getuid();self.gid=os.getgid()
         self.secret=json.loads(Path(config['secrets_file']).read_text())['signing_key']
@@ -232,7 +231,7 @@ class Worker:
             self.docker_stop(row['id']);self.cleanup(row['id'])
             self.store.update(row['id'],status='failed',error='The service restarted while processing this task. Please submit the file again.')
 
-    def process(self,row):
+    def process(self,row,cpu=None):
         jid=row['id']; work=self.state/'work'/jid; start=time.monotonic();proc=None
         try:
             self.store.update(jid,stage='Validating input reads')
@@ -249,9 +248,10 @@ class Worker:
             (work/'request.json').write_text(json.dumps({'compressed':row['filename'].lower().endswith('.gz'),
                 'max_expanded_bytes':self.cfg['max_expanded_bytes'],'max_reads':self.cfg['max_reads'],
                 'custom_regions':options.custom_regions,'cores':self.cores,'options':options.model_dump()}))
+            cpu_args = ['--cpus', str(self.cores)] if cpu is None else ['--cpuset-cpus', str(cpu)]
             args=['docker','run','--rm','--name','ont-qc-job-'+jid,'--network','none','--read-only',
                 '--user',f'{self.uid}:{self.gid}','--cap-drop','ALL','--security-opt','no-new-privileges',
-                '--cpus',str(self.cores),'--memory',str(budget),'--memory-swap',str(budget),'--pids-limit',str(self.cfg['pids_limit']),
+                *cpu_args,'--memory',str(budget),'--memory-swap',str(budget),'--pids-limit',str(self.cfg['pids_limit']),
                 '--ulimit','nofile=1024:1024','--ulimit',f"fsize={self.cfg['max_file_bytes']}:{self.cfg['max_file_bytes']}",
                 '--log-driver','none','--tmpfs',f"/tmp:rw,nosuid,nodev,size={self.cfg['tmp_bytes']}",
                 '--env','USER=ont-qc','--env','LOGNAME=ont-qc','--env','OMP_NUM_THREADS=1','--env','OPENBLAS_NUM_THREADS=1','--env','MKL_NUM_THREADS=1',
@@ -316,6 +316,7 @@ class Worker:
                 for jid,proc in list(children.items()):
                     if proc.is_alive():continue
                     proc.join();del children[jid]
+                    if self.cpu_pool: self.cpu_pool.release(jid)
                     row=self.store.get(jid)
                     if row and row['status'] in {'running','cancelling'}:
                         self.docker_stop(jid);self.cleanup(jid)
@@ -325,8 +326,21 @@ class Worker:
                 while len(children)<self.max_jobs and not STOP:
                     row=self.claim()
                     if not row:break
-                    proc=context.Process(target=process_job,args=(self.cfg,row),daemon=True)
-                    proc.start();children[row['id']]=proc
+                    jid = row['id']
+                    try:
+                        cpu = self.cpu_pool.reserve(jid) if self.cpu_pool else None
+                        proc = context.Process(target=process_job, args=(self.cfg, row, cpu), daemon=True)
+                        proc.start()
+                    except (OSError, subprocess.SubprocessError):
+                        if self.cpu_pool and jid in self.cpu_pool.owners:
+                            self.cpu_pool.release(jid)
+                        LOG.warning('Dispatch will be retried', exc_info=True)
+                        with self.store.connect(immediate=True) as db:
+                            db.execute("UPDATE jobs SET status='queued',updated=?,progress=0 WHERE id=? AND status='running'",
+                                       (time.time(), jid))
+                        break
+                    children[jid] = proc
+                if self.cpu_pool: self.cpu_pool.rebalance()
                 time.sleep(2)
         finally:
             for proc in children.values():
@@ -342,9 +356,9 @@ def stop_worker(signum,frame):
     STOP=True
 
 
-def process_job(config,row):
+def process_job(config,row,cpu=None):
     signal.signal(signal.SIGTERM,stop_worker);signal.signal(signal.SIGINT,stop_worker)
-    Worker(config).process(row)
+    Worker(config).process(row,cpu)
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--config',required=True);args=parser.parse_args()

@@ -2171,17 +2171,83 @@ code {
 
 .metric-reading {
   display: inline-flex;
-  max-width: 100%;
   align-items: center;
-  justify-content: flex-end;
-  gap: 7px;
+  gap: .4em;
+  width: max-content;
+  max-width: 25ch;
   font-family: inherit;
   font-variant-numeric: tabular-nums;
-  line-height: 1.5;
+  line-height: 1.4;
 }
 
-.metric-reading>span:last-child {
-  min-width: 0;
+.metric-note {
+  display: block;
+  color: #6d542a;
+  font-size: .82em;
+  white-space: nowrap;
+}
+
+.species-counts caption {
+  padding: .85em 0 .4em;
+  color: var(--ink);
+  font-size: 1em;
+  font-weight: 600;
+  text-align: left;
+  caption-side: top;
+}
+
+.species-counts td {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.species-counts small {
+  display: block;
+  color: var(--muted);
+  font-size: .85em;
+}
+
+.species-counts .species-zero {
+  color: var(--muted);
+}
+
+.species-screened {
+  font-weight: 600;
+}
+
+@media screen {
+  #species-composition .species-counts {
+    min-width: min(100%, 32em);
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  .species-counts th[scope="col"] {
+    min-width: 7em;
+    max-width: 16em;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: right;
+  }
+
+  #species-composition .species-counts th:first-child {
+    position: sticky;
+    left: 0;
+    width: 22%;
+    min-width: 9em;
+    background: #f5f7fa;
+    text-align: left;
+  }
+
+  .species-counts td, .species-counts th {
+    padding: .4em .8em;
+  }
+
+  .qc-metrics th:not(:first-child):not(:last-child) {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
 }
 
 .metric-reading .light {
@@ -2268,8 +2334,8 @@ code {
 }
 
 .qc-metrics th:first-child,.qc-metrics td:first-child {
-  width: 29%;
-  min-width: 200px;
+  width: 25%;
+  min-width: 180px;
 }
 
 .qc-metrics td {

@@ -110,6 +110,8 @@ docker compose -f /srv/ont-qc/runtime/compose.yaml up -d --force-recreate web ed
 systemctl --user restart ont-qc-portal-worker.service
 ```
 
+On a four-vCPU host, set `shared_cpus: [1, 2, 3]` and `max_concurrent_jobs: 3` to reserve CPU 0 for the service. Each workflow can use all three CPUs. Each running job has one dedicated CPU. The dispatcher shares the remaining CPUs with active containers and reclaims them as new jobs start. The worker queues jobs beyond the pool size and checks memory and disk before admission. With an empty pool, `cores` sets the quota per job.
+
 CPU, memory, process count and per-file size are hard container limits. Aggregate work-directory size is checked periodically; use filesystem/project quotas as well if your deployment requires a strict aggregate disk limit.
 
 Rate limits are not a substitute for institution-wide traffic filtering or DDoS protection. A submission code can restrict expensive analyses to invited users. Keep one Uvicorn process and one dispatcher per runtime; the in-memory HTTP concurrency and request-rate limits are per process. IPv6 application quotas use a /64 network to reduce address-rotation bypass. The edge also enforces global request and connection bounds before forwarding to the application. The hardened web container limits open file descriptors to 1,024 to bound connection overhead.

@@ -36,6 +36,7 @@ DEFAULTS = {
     'max_report_total_bytes': 2 * 1024**3,
     'max_concurrent_jobs': 2,
     'cores': 2,
+    'shared_cpus': [],
     'memory': '8g',
     'max_memory': '20g',
     'min_free_memory_bytes': 2 * 1024**3,

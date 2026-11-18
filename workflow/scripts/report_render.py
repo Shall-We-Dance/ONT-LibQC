@@ -13,7 +13,7 @@ from qc_reference_guide import reference_notes_html
 from report_sublibrary import COLORS
 from report_brand import brand_bar, copy_mark, favicon
 from report_export import add_pdf_export
-from report_provenance import analysis_record, analysis_label
+from report_provenance import RELEASE_VERSION, analysis_record, analysis_label
 from report_regions import region_counts as annotation_region_counts, svg_region_bars, load_te_bed, prepare_background
 from species_composition import render as render_species
 from library_sequences import FAMILIES
@@ -376,7 +376,7 @@ def render_sample_report(sample, cfg, out, report_params, prior_provenance, anno
         detail_keys=["short_unmapped_units","both_legs_mapped","both_legs_mapping_rate","mapq_pass_pairs","mapq_pass_pair_rate","same_fragment_pairs","same_fragment_filter_pass_pairs","same_fragment_filter_pass_rate","contact_deduplication_retention","cis_contacts","trans_contacts","long_range_cis_contacts","long_range_within_cis_fraction","cis_lt1kb","cis_1_10kb","cis_10_100kb","cis_ge100kb"]
         funnel_details = "<details class='metric-group'><summary>Contact counts and filtering details</summary>"+scoped_table_html(scopes,detail_keys,{})+"</details>"
     metric['analysis_provenance']=analysis_record(metric, prior_provenance)
-    definition_label=analysis_label(metric['analysis_provenance'])
+    definition_label=analysis_label(metric['analysis_provenance'], report_version=RELEASE_VERSION)
     from custom_regions import report_html as custom_region_report
     custom_html=custom_region_report(out,sample,report_assembly,report_chrom_sizes,report_primary,scope_records,scopes,cfg['samples'][sample],Path(__file__).resolve().parents[2],report_mapq) if metric['assay']=='chromatin' else ""
     species_file = out / "qc/species_composition" / f"{sample}.json"
@@ -391,7 +391,7 @@ def render_sample_report(sample, cfg, out, report_params, prior_provenance, anno
                 ("<h3>Micro-C valid-contact funnel</h3><div class='plots'>"+funnel_html+"</div>"+funnel_details if funnel_html else "") + "</section>")
     report=f"""<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>{sample} · ONT-LibQC</title>{favicon("assets/ont-libqc-mark.svg")}<style id="report-base-style">{REPORT_CSS}</style></head><body>
 {brand_bar("assets/ont-libqc-mark.svg")}
-<header class='report-hero'><h1 class='sample-name'>{html.escape(sample)}</h1><div class='hero-meta'><span>{html.escape({'chromatin':'Chromatin','microc':'Micro-C','rnaseq':'RNA-seq · beta','clip':'CLIP-seq · beta'}.get(metric['assay'],metric['assay']))}</span><span>{html.escape(report_assembly)}</span><span>{metric['raw_reads']:,} raw molecules</span><span>{html.escape(definition_label)}</span></div></header>
+<header class='report-hero'><h1 class='sample-name'>{html.escape(sample)}</h1><div class='hero-meta'><span>{html.escape({'chromatin':'Chromatin','microc':'Micro-C','rnaseq':'RNA-seq · beta','clip':'CLIP-seq · beta'}.get(metric['assay'],metric['assay']))}</span><span>{html.escape(report_assembly)}</span><span>{metric['raw_reads']:,} raw molecules</span><span class="report-version" title="Report release and original analysis date">{html.escape(definition_label)}</span></div></header>
 <nav class='report-nav'>{"<a href='#species-composition'>Species</a>" if species_html else ""}<a href='#sequencing'>Sequencing</a><a href='#library-shape'>Library quality</a><a href='#profiles'>Size &amp; profiles</a>{"<a href='#rna-qc'>RNA QC · beta</a><a href='#contamination'>Contamination</a>" if rna_html else ""}{"" if rna_html else "<a href='#assay-qc'>Assay metrics</a>"}{"<a href='#custom-regions'>Custom regions</a>" if custom_html else ""}{"<a href='#pairtools'>Pairtools</a><a href='#ligation'>Ligation</a><a href='#mnase'>MNase</a>" if pairtools_html else ""}{"<a href='#spike-screen'>Spike-in screen</a>" if metric.get('spike_in_mode')=='auto' or json.loads((out/'qc/spike_in'/f'{sample}.json').read_text()).get('mode')=='auto' else ''}<a href='../summary/index.html'>All samples</a></nav>
 <div class='traffic-grid'>{top}</div>
 {mixture_html}

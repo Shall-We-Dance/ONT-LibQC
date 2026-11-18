@@ -14,8 +14,8 @@ class AnalysisProvenanceTests(unittest.TestCase):
             first=capture_analysis(a,stamp);second=capture_analysis(b,stamp)
             self.assertEqual(first,second)
             (Path(b)/'workflow/a.py').write_text('x=2\n')
-            self.assertEqual(first['pipeline_version'],'v1.1.1')
-            self.assertEqual(capture_analysis(b,stamp)['pipeline_version'],'v1.1.1')
+            self.assertEqual(first['pipeline_version'],RELEASE_VERSION)
+            self.assertEqual(capture_analysis(b,stamp)['pipeline_version'],RELEASE_VERSION)
             self.assertNotEqual(first['pipeline_sha256'],capture_analysis(b,stamp)['pipeline_sha256'])
             self.assertNotIn(a,str(first))
 

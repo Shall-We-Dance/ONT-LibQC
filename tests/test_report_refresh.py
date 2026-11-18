@@ -43,10 +43,10 @@ class RefreshTests(unittest.TestCase):
             updated = refresh_collision_rows(root, 'demo', old)
             self.assertEqual(updated, scoped_table_html(scopes, COLLISION_ROWS, {}))
             self.assertEqual(updated, refresh_collision_rows(root, 'demo', updated))
-            self.assertIn('>80 · Low depth<', updated)
-            self.assertIn('>Not estimable · Low depth<', updated)
-            self.assertNotIn('>10 · Low depth<', updated)
-            self.assertEqual(updated.count(' · Low depth</span>'), 2)
+            self.assertIn(">80</span></div><small class='metric-note'>Low depth</small>", updated)
+            self.assertIn(">Not estimable</span></div><small class='metric-note'>Low depth</small>", updated)
+            self.assertNotIn(">10</span></div><small class='metric-note'>", updated)
+            self.assertEqual(updated.count("<small class='metric-note'>Low depth</small>"), 2)
             self.assertIn('>0.05</span>', updated)
 
     def test_preview_publish_archive_and_exact_rollback(self):

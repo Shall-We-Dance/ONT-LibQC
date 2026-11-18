@@ -4,7 +4,7 @@ import hashlib
 from pathlib import Path
 
 # Keep aligned with the GitHub release tag when publishing a new release.
-RELEASE_VERSION = "v1.1.1"
+RELEASE_VERSION = "v1.1.2"
 
 
 def capture_analysis(root=None, now=None):
@@ -41,8 +41,8 @@ def analysis_record(metric, provenance=None):
     return result
 
 
-def analysis_label(record):
-    version = record.get('pipeline_version') or 'Version unrecorded'
+def analysis_label(record, report_version=None):
+    version = report_version or record.get('pipeline_version') or 'Version unrecorded'
     revision = record.get('analysis_revision')
     if revision:
         version += f' · {revision}'

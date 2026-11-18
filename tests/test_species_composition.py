@@ -82,7 +82,11 @@ class SpeciesCompositionTests(unittest.TestCase):
         for scope in (TOTAL, RAW, "Unassigned index", "Ambiguous index"):
             self.assertNotIn(scope, chart)
             self.assertIn(scope, details)
+        self.assertEqual(details.count("class='species-counts'"), 2)
+        self.assertIn("<th scope='row'>Screened</th><td>2</td><td>1</td>", details)
+        self.assertIn("<td><span>1</span> <small>50.0%</small></td>", details)
         empty = classify([], [], ["hg38", "mm39"], "hg38")
+        self.assertIn("<th scope='row'>Human (expected)</th><td>—</td><td>—</td>", render(empty))
         self.assertIn("No inserts assigned to a sublibrary", render(empty))
 
     def test_refresh_moves_existing_section_and_navigation_once(self):

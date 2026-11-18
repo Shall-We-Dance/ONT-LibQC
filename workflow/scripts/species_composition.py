@@ -148,6 +148,31 @@ def align_hits(fasta, size, indexes, bowtie2, threads):
     return hits
 
 
+def percent(n, total):
+    value = 100 * n / total
+    return "&lt;0.1%" if 0 < value < 0.1 else f"{value:.1f}%" if n else "0%"
+
+
+def counts_table(title, scopes, species_keys, labels):
+    if not scopes:
+        return ""
+    heads = "".join(f"<th scope='col'>{html.escape(r['scope'])}</th>" for r in scopes)
+    totals = "".join(f"<td>{r['n']:,}</td>" for r in scopes)
+    rows = [f"<tr class='species-screened'><th scope='row'>Screened</th>{totals}</tr>"]
+    for key in species_keys:
+        cells = []
+        for scope in scopes:
+            n = scope["counts"].get(key, 0)
+            if n:
+                cells.append(f"<td><span>{n:,}</span> <small>{percent(n, scope['n'])}</small></td>")
+            else:
+                cells.append("<td class='species-zero'>0</td>" if scope["n"] else "<td>—</td>")
+        rows.append(f"<tr><th scope='row'>{labels[key]}</th>{''.join(cells)}</tr>")
+    return (f"<div class='table-scroll' tabindex='0' aria-label='{title}'><table class='species-counts'>"
+            f"<caption>{title}</caption><thead><tr><th scope='col'>Species</th>{heads}</tr></thead>"
+            f"<tbody>{''.join(rows)}</tbody></table></div>")
+
+
 def render(data):
     columns = [*data["panel"], AMBIG, NONE]
     colors = {k: color for k, color in zip(data["panel"], ["#296ab5", "#18857e", "#8862a9", "#bf6b2d", "#587b49", "#985679", "#417a92", "#715a49", "#595ca2"])}
@@ -155,24 +180,17 @@ def render(data):
     labels = {k: html.escape(NAMES.get(k, k) + (" (expected)" if k == data["reference"] else ""))
               for k in columns}
 
-    def percent(n, total):
-        value = 100 * n / total
-        return "&lt;0.1%" if 0 < value < 0.1 else f"{value:.1f}%" if n else "0%"
-
-    def row(r):
-        cells = []
-        for species in columns:
-            n = r["counts"].get(species, 0)
-            value = "—"
-            if r["n"]:
-                value = f"{n:,} ({percent(n, r['n'])})"
-            cells.append(f"<td>{value}</td>")
-        return "<tr><th scope='row'>" + html.escape(r["scope"]) + f"</th><td>{r['n']:,}</td>" + "".join(cells) + "</tr>"
     rows = data["rows"]
+    extras = {TOTAL, RAW, "Unassigned index", "Ambiguous index"}
+    libraries = [r for r in rows if r["scope"] not in extras]
+    whole = [r for r in rows if r["scope"] in extras]
+    table_order = sorted(data["panel"], key=lambda key: key != data["reference"]) + [AMBIG, NONE]
+    tables = (counts_table("Sublibraries", libraries, table_order, labels)
+              + counts_table("Whole library", whole, table_order, labels))
     bars = []
     visible = set()
-    for scope in rows:
-        if scope["scope"] in {TOTAL, RAW, "Unassigned index", "Ambiguous index"} or not scope["n"]:
+    for scope in libraries:
+        if not scope["n"]:
             continue
         segments, descriptions = [], []
         for key in columns:
@@ -215,11 +233,9 @@ def render(data):
             ".species-legend i{width:.85em;height:.85em;border-radius:2px}"
             ".species-bar,.species-legend i{print-color-adjust:exact;-webkit-print-color-adjust:exact}</style>"
             + chart + "<details><summary>Counts and whole-library totals</summary>"
-            "<p>Percentages are within each row. Total inserts includes reconstructed, non-dimer inserts. "
+            "<p>Counts and percentages use the screened total in each column. Total inserts excludes adapter dimers. "
             "Reads without a reconstructed insert are counted separately.</p>"
-            "<div class='table-scroll'><table><thead><tr><th>Library</th><th>Screened</th>" +
-            "".join(f"<th scope='col'>{labels[k]}</th>" for k in columns) + "</tr></thead><tbody>" +
-            "".join(map(row, rows)) + "</tbody></table></div>" + microc_note + "<p>Distinct 10 kb windows with a "
+            + tables + microc_note + "<p>Distinct 10 kb windows with a "
             "confidently placed total-library insert (MAPQ ≥20): " + windows +
             ".</p><p>Bowtie 2 compares local alignments across the listed genomes. A match requires at least "
             "30 aligned bases, 70% query coverage, 85% identity and a 6-point lead over the next genome. "

@@ -23,6 +23,7 @@ from report_bundle import validate
 from report_export import add_pdf_export
 from report_metrics import COLLISION_ROWS, METRIC_META, REPORT_CSS, REPORT_TOOLTIP_SCRIPT, scoped_metric_rows
 from report_profiles import render_profiles_card
+from report_provenance import RELEASE_VERSION
 from species_composition import render as render_species
 
 VOID = {'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'}
@@ -186,11 +187,16 @@ def refresh_species_layout(root, sample, text):
     return replace_ranges(text, changes)
 
 
+def refresh_tables(root, sample, text):
+    text = refresh_collision_rows(root, sample, text)
+    text = refresh_species_layout(root, sample, text)
+    return refresh_presentation(text)
+
+
 def refresh_page(root, sample):
     page = root/'samples'/f'{sample}.html'
-    text = refresh_collision_rows(root, sample, page.read_text())
-    text = refresh_profile_layout(root, sample, text)
-    page.write_text(refresh_presentation(refresh_species_layout(root, sample, text)))
+    text = refresh_profile_layout(root, sample, page.read_text())
+    page.write_text(refresh_tables(root, sample, text))
 
 
 def refresh_presentation(text):
@@ -216,6 +222,13 @@ def refresh_presentation(text):
     replacements = [(base[0], '<style id="report-base-style">'+REPORT_CSS+'</style>')]
     replacements.extend((node, '') for node in base[1:])
     for node in parsed.elements:
+        parent = node['parent']
+        if (node['tag'] == 'span' and parent and 'hero-meta' in parent['attrs'].get('class', '').split()):
+            content = parsed.fragment(node).split('>', 1)[1].rsplit('</span>', 1)[0]
+            match = re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+( · [^<>]+)', content)
+            if match:
+                replacements.append((node, '<span class="report-version" title="Report release and original analysis date">'
+                                      + RELEASE_VERSION + match[1] + '</span>'))
         if node['tag'] == 'script' and "tip.id = 'metric-tooltip'" in parsed.fragment(node):
             replacements.append((node, REPORT_TOOLTIP_SCRIPT))
     return add_pdf_export(replace_ranges(text, replacements), refresh=True)
@@ -274,6 +287,7 @@ def refresh(root, apply=False, expected_manifest_sha256=None):
                 protected = name.startswith('data/') or (name != 'manifest.json' and Path(name).suffix in {'.tsv', '.csv', '.json', '.gz'})
                 if protected and hashlib.sha256((stage/name).read_bytes()).hexdigest() != digest:
                     raise ValueError('Scientific record changed: '+name)
+            data['report_version'] = RELEASE_VERSION
             data['validation'] = audit
             data['presentation_refresh'] = {'schema_version': 1, 'created_utc': datetime.datetime.now(datetime.timezone.utc).isoformat()}
             (stage/'manifest.json').write_text(json.dumps(data, indent=2)+'\n')

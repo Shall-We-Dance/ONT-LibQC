@@ -405,16 +405,17 @@ def traffic_html(scope, ranges=None, assay=None):
     return f"<section class='scope-card'><h3>{html.escape(label)}</h3>"+''.join(f"<div class='traffic' title='{html.escape(tip,quote=True)}'><span class='light {call_class(v)}'></span><b>{html.escape(k)}</b><em>{html.escape(display_value(k, v, ranges).replace('_',' ').capitalize())}</em></div>" for k,v,tip in items)+"</section>"
 
 
-def metric_reading_html(rendered, light, state):
+def metric_reading_html(rendered, light, state, note=None):
     unavailable = rendered in {"Not attributable", "Sample-level"}
     classes = " metric-unavailable" if unavailable else ""
     marker = "" if light == "gray" else f"<span class='light {light}' aria-hidden='true'></span>"
     value = "—" if unavailable else rendered.replace("NOT_CONFIGURED", "Not configured")
     if "_" in value and value.isupper():
         value = value.replace("_", " ").capitalize()
+    annotation = f"<small class='metric-note'>{html.escape(note)}</small>" if note else ""
     return (f"<div class='metric-cell'><div class='metric-reading metric-tip metric-status{classes}' tabindex='0' data-tip='{html.escape(state, quote=True)}'"
             f" aria-label='{html.escape(rendered + ': ' + state, quote=True)}'>"
-            f"{marker}<span>{html.escape(value)}</span></div></div>")
+            f"{marker}<span>{html.escape(value)}</span></div>{annotation}</div>")
 
 
 def scoped_value_html(key, value, ranges, descriptive=False):
@@ -476,7 +477,7 @@ def scope_metric_cell(scope, key, ranges):
         observed = scope.get("collision_observed_pairs")
         if observed is not None and observed < 5:
             ratio = display_value(key, value, ranges) if value is not None else "Not estimable"
-            return f"<td>{metric_reading_html(ratio + ' · Low depth', 'amber', 'Fewer than 5 observed same-bin pairs.')}</td>"
+            return f"<td>{metric_reading_html(ratio, 'amber', 'Fewer than 5 observed same-bin pairs.', 'Low depth')}</td>"
         if value is not None:
             bin_size = scope.get("collision_bin_size")
             tip = f"{bin_size:,} bp bins" if bin_size else "Observed / expected same-bin pairs"

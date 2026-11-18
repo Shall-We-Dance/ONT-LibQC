@@ -12,6 +12,40 @@ from ont_portal import worker
 GIB=1024**3
 
 
+class CpuPoolTests(unittest.TestCase):
+    def test_exclusive_cpus_survive_delayed_starts_and_reclaim_failures(self):
+        config = worker.DEFAULTS | {'shared_cpus': [3, 1, 2], 'max_concurrent_jobs': 5}
+        with patch('os.sched_getaffinity', return_value={0, 1, 2, 3}):
+            cores, jobs, pool = worker.cpu_limits(config)
+            self.assertEqual((cores, jobs), (3, 3))
+            for value in ([1, 1], [4], [False], '1-3', None):
+                with self.subTest(value=value), self.assertRaises(ValueError):
+                    worker.cpu_limits(config | {'shared_cpus': value})
+        with patch('subprocess.run') as docker:
+            docker.return_value = subprocess.CompletedProcess([], 1, stderr='Error: No such container')
+            self.assertEqual(pool.reserve('a'), 1)
+            pool.rebalance()
+            self.assertNotIn('a', pool.applied)
+            docker.return_value = subprocess.CompletedProcess([], 0)
+            pool.rebalance()
+            self.assertEqual(pool.applied, {'a': {1, 2, 3}})
+            docker.side_effect = subprocess.TimeoutExpired('docker', 5)
+            with self.assertRaises(subprocess.TimeoutExpired): pool.reserve('b')
+            self.assertEqual(pool.owners, {'a': 1})
+            docker.side_effect = None
+            self.assertEqual(pool.reserve('b'), 2)
+            pool.rebalance()
+            self.assertEqual(pool.applied, {'a': {1, 3}, 'b': {2, 3}})
+            self.assertEqual(pool.reserve('c'), 3)
+            pool.rebalance()
+            self.assertEqual(pool.applied, {'a': {1}, 'b': {2}, 'c': {3}})
+            pool.release('a')
+            pool.release('c')
+            pool.rebalance()
+            self.assertEqual(pool.applied, {'b': {1, 2, 3}})
+        self.assertEqual(worker.cpu_limits(config | {'shared_cpus': []}), (2, 5, None))
+
+
 class AdmissionTests(unittest.TestCase):
     def setUp(self):
         self.directory=tempfile.TemporaryDirectory()
