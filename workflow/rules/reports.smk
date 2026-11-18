@@ -16,6 +16,8 @@ rule reports:
             "workflow/scripts/report_base.css",
             "workflow/scripts/report_tooltips.js",
             "workflow/scripts/report_profiles.py",
+            "workflow/scripts/report_svg.py",
+            "workflow/scripts/rna_comparison.css",
             "workflow/scripts/report_profiles.css",
             "workflow/scripts/report_profiles.js",
             "workflow/scripts/report_profile_band.py",

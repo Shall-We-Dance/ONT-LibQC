@@ -10,6 +10,7 @@ from pathlib import Path
 from qc_definitions import profile as metric_profile, configured_params
 from qc_plot_metrics import svg_size_trace
 from qc_reference_guide import reference_notes_html
+from report_sublibrary import COLORS
 from report_brand import brand_bar, copy_mark, favicon
 from report_export import add_pdf_export
 from report_provenance import analysis_record, analysis_label
@@ -285,7 +286,7 @@ def render_sample_report(sample, cfg, out, report_params, prior_provenance, anno
                     report_mapq, report_reference["chrom_sizes"], report_chrom_sizes, report_primary,
                     profile_upstream, profile_downstream, profile_body, profile_bin, profile_threads)
     profile_sections=[]
-    for scope in scopes:
+    for scope_index, scope in enumerate(scopes):
         scope_id=scope["scope_id"]; label=scope.get("scope_name",scope_id)
         profile={"raw_lengths":raw,"insert_lengths":inserts} if scope_id=="total" else scope_profiles.get(scope_id, {"raw_lengths":[],"insert_lengths":[]})
         raw_asset=out/"reports"/"assets"/f"{sample}.{scope_id}.raw_lengths.svg"
@@ -300,7 +301,7 @@ def render_sample_report(sample, cfg, out, report_params, prior_provenance, anno
             scope_profiles.get(scope_id, {}).get("unit_rows", []), adapter_summary, trace_max, trace_bandwidth)
         if metric["assay"] == "chromatin":
             region_metric=region_metrics if scope_id == "total" else sub_region_metrics[scope_id]
-            region_asset.write_text(svg_region_bars(region_metric,f"{label}: genomic regions"))
+            region_asset.write_text(svg_region_bars(region_metric, f"{label}: genomic regions", COLORS[max(0, scope_index - 1) % len(COLORS)]))
             write_data(region_asset.with_suffix(".json"), "genomic_regions", region_metric)
         else:
             region_asset.unlink(missing_ok=True)

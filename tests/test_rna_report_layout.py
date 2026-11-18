@@ -25,5 +25,19 @@ class LayoutTests(unittest.TestCase):
         self.assertIn('Not evaluable', empty)
         self.assertNotIn('0.0%', empty)
 
+    def test_scope_overview_uses_local_denominators_and_links(self):
+        def metrics(units, bases):
+            return dict(units=units, region_denominator_bases=bases, family_counts={'rRNA': 2},
+                        region_bases={'CDS': 2}, plots={'profiles': 'profile.svg'})
+        scopes = {'total': metrics(20, 50), 'lib01': metrics(4, 10), 'lib02': metrics(4, 0)}
+        overview = report.rna_scope_overview(scopes, ['lib01', 'lib02'], {'lib01': 'A & B', 'lib02': 'C'},
+                                             {'lib01': '#2a6cbd', 'lib02': '#23877f'}, '../data/rna/sample')
+        self.assertIn('20.0%', overview)
+        self.assertIn('50.0%', overview)
+        self.assertIn('—', overview)
+        self.assertIn('A &amp; B', overview)
+        self.assertEqual(overview.count('transcript coverage'), 2)
+        self.assertNotIn('>total<', overview)
+
 if __name__ == '__main__':
     unittest.main()

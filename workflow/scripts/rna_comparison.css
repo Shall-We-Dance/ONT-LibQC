@@ -1,0 +1,17 @@
+.rna-comparison{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
+.rna-comparison h3{margin:0 0 12px;font-size:1rem}
+.rna-composition-card,.rna-transcript-panels{padding:14px;border:1px solid var(--line,#dce5ef);border-radius:8px;margin:0 0 12px}
+.rna-comparison-scroll{overflow-x:auto}
+.rna-comparison-scroll table{width:100%;min-width:0;border-collapse:collapse;font-size:13px}
+.rna-comparison-scroll th,.rna-comparison-scroll td{padding:6px 8px;text-align:right;vertical-align:middle;font-variant-numeric:tabular-nums}
+.rna-comparison-scroll th:first-child{text-align:left;overflow-wrap:anywhere}
+.rna-comparison-scroll th:not(:first-child){overflow-wrap:anywhere}
+.rna-comparison-track{display:block;min-width:35px;height:5px;margin:3px 0 0;border-radius:2px;overflow:hidden;background:#eef2f6}
+.rna-comparison-track i{display:block;height:100%}
+.rna-key{display:inline-block;width:.7em;height:.7em;border-radius:2px;margin-right:.35em}
+.rna-transcript-panels .plot-card{margin:10px 0 0;padding:8px}
+.rna-transcript-panels figcaption{font-weight:600}
+.rna-transcript-panels img{display:block;width:100%;height:auto}
+.rna-comparison .muted{margin:8px 0 0}
+@media(max-width:850px){.rna-comparison{grid-template-columns:minmax(0,1fr)}}
+@media print{.rna-comparison{display:block}.rna-comparison-track,.rna-key{print-color-adjust:exact;-webkit-print-color-adjust:exact}.rna-comparison-scroll{overflow:visible}.rna-transcript-panels figure,.rna-composition-card tr{break-inside:avoid}}

@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
+from report_sublibrary import scope_color
+
 
 def esc(value):
     return html.escape(str(value), quote=True)
@@ -228,6 +230,57 @@ def render_motifs(motif):
     return ''.join(parts)
 
 
+def rna_scope_overview(scopes, sublibraries, labels, colors, prefix):
+    """Compare each library using its own unit and matched-base denominators."""
+    parts = ['<div class="rna-comparison"><div>']
+    for heading, field, denom, categories in [
+        ('RNA regions', 'region_bases', 'region_denominator_bases', REGION_LABELS),
+        ('RNA family', 'family_counts', 'units', {name: name for name in FAMILIES}),
+    ]:
+        parts.append('<section class="rna-composition-card"><h3>' + heading + '</h3>')
+        # Keep every column readable in the PDF, even for large multiplexes.
+        for start in range(0, len(sublibraries), 4):
+            group = sublibraries[start:start + 4]
+            parts.append('<div class="rna-comparison-scroll" tabindex="0"><table><thead><tr><th scope="col">Category</th>')
+            for scope in group:
+                parts.append(f'<th scope="col"><i class="rna-key" style="background:{colors[scope]}"></i>{esc(labels[scope])}</th>')
+            parts.append('</tr></thead><tbody>')
+            for category, name in categories.items():
+                parts.append('<tr><th scope="row">' + esc(name) + '</th>')
+                for scope in group:
+                    metrics = scopes[scope]
+                    total = metrics[denom]
+                    count = metrics[field].get(category, 0)
+                    rate = count / total if total else None
+                    bar = '' if rate is None else f'<i style="width:{rate:.6%};background:{colors[scope]}"></i>'
+                    value = '—' if rate is None else percent(rate)
+                    parts.append(f'<td title="{count:,} / {total:,}">{value}<span class="rna-comparison-track">{bar}</span></td>')
+                parts.append('</tr>')
+            parts.append('</tbody></table></div>')
+        parts.append('<p class="muted">' + ('Share of matched bases.' if field == 'region_bases' else 'Share of recovered units.') + '</p></section>')
+    parts.append('</div><section class="rna-transcript-panels"><h3>Transcript metaplots</h3>')
+    for scope in sublibraries:
+        target = esc(prefix + '/' + scopes[scope]['plots']['profiles'])
+        label = esc(labels[scope])
+        parts.append(f'<figure class="plot-card"><figcaption><i class="rna-key" style="background:{colors[scope]}"></i>{label}</figcaption>'
+                     f'<a href="{target}" target="_blank" rel="noopener"><img src="{target}" alt="{label} transcript coverage"></a></figure>')
+    return ''.join(parts) + '</section></div>'
+
+
+def rna_scope_card(scope, label, count, color, content):
+    scope_id = esc(quote(scope, safe=''))
+    if color is None:
+        attrs = 'class="profile-detail pooled-profile"'
+        marker = ''
+    else:
+        attrs = (f'class="profile-detail" data-scope="{esc(scope)}" '
+                 f'style="--scope-tint:{color}0f;--scope-border:{color}38"')
+        marker = f'<i style="background:{color}" aria-hidden="true"></i>'
+    return (f'<details {attrs} id="rna-scope-{scope_id}"><summary>{marker}{esc(label)}'
+            f'<small>{count:,} recovered units</small></summary><section class="profile-scope rna-scope">'
+            + content + '</section></details>')
+
+
 def render_rna_section(summary_path, relative_prefix=None, scope_labels=None):
     path = Path(summary_path)
     if not path.exists():
@@ -253,11 +306,18 @@ def render_rna_section(summary_path, relative_prefix=None, scope_labels=None):
     def scope_label(scope):
         return scope_labels.get(scope) or ('Whole sample' if scope == 'total' else 'Sublibrary ' + scope)
 
-    if len(data['scopes']) > 1:
-        parts.append('<nav class="rna-scope-nav" aria-label="RNA QC scopes">' + ''.join('<a href="#rna-scope-' + esc(quote(scope, safe='')) + '">' + esc(scope_label(scope)) + '</a>' for scope in data['scopes']) + '</nav>')
-    for scope, metrics in data['scopes'].items():
-        label = scope_label(scope)
-        parts.append('<section class="profile-scope rna-scope' + (' rna-primary' if scope == 'total' else '') + '" id="rna-scope-' + esc(quote(scope, safe='')) + '" aria-label="' + esc(label) + '"><header class="rna-scope-heading"><h3>' + esc(label) + '</h3><span>' + number(metrics['units']) + ' recovered units</span></header>')
+    scopes = data['scopes']
+    order = list(dict.fromkeys([*scope_labels, *scopes]))
+    colors = {scope: scope_color(scope, i) for i, scope in enumerate(s for s in order if s != 'total')}
+    sublibraries = [scope for scope in colors if scope in scopes]
+    labels = {scope: scope_labels.get(scope) or scope for scope in sublibraries}
+    if sublibraries:
+        parts.append('<style>' + Path(__file__).with_name('rna_comparison.css').read_text() + '</style>')
+        parts.append(rna_scope_overview(scopes, sublibraries, labels, colors, prefix))
+    for scope in [*sublibraries, 'total']:
+        metrics = scopes[scope]
+        label = labels.get(scope) or scope_label(scope)
+        scope_parts = []
         strand = metrics['physical_sense_wilson95']
         confidence = 'Not evaluable' if strand[0] is None else f'{100 * strand[0]:.1f}–{100 * strand[1]:.1f}%'
         bias = metrics['profiles']['bias']
@@ -303,24 +363,29 @@ def render_rna_section(summary_path, relative_prefix=None, scope_labels=None):
         if comparison.get('status') in {'available', 'no_assigned_source_evidence'}:
             rows.insert(3, ('Non-host-only RNA-panel candidates', number(comparison.get('non_host_only_candidate_units')) + ' / ' + number(comparison.get('denominator_units')), percent(comparison.get('non_host_only_fraction_of_all_units')) + '; candidate reference evidence, not a contamination or mismatch diagnosis'))
         selected_rows = unit_rows if scope == 'total' else [row for row in unit_rows if row['scope_id'] == scope]
-        parts.append(core_figures(metrics, selected_rows, prefix, label))
+        scope_parts.append(core_figures(metrics, selected_rows, prefix, label))
         motif = metrics['motifs']
         if data['assay'] == 'clip':
-            parts.append(render_motifs(motif))
-        parts.append('<details class="rna-auxiliary"><summary>Counts, UMI and methods</summary>')
+            scope_parts.append(render_motifs(motif))
+        scope_parts.append('<details class="rna-auxiliary"><summary>Counts, UMI and methods</summary>')
         if data['assay'] == 'clip':
-            parts.append('<h4>Motif method</h4><p>' + esc(motif['interpretation']) + '. ' + esc(motif.get('background', '')) + '.</p>')
+            scope_parts.append('<h4>Motif method</h4><p>' + esc(motif['interpretation']) + '. ' + esc(motif.get('background', '')) + '.</p>')
             if motif.get('engine') == 'HOMER' and motif.get('motifs'):
-                parts.append(table(('Motif', 'HOMER log10 P (discovery score)'), [(row['motif'], number(row['homer_log10_p'], 2)) for row in motif['motifs']]))
-        parts.append(table(('Evidence', 'Observed', 'Denominator / interpretation'), rows))
-        parts.append(render_structure_evidence(preparation, scope, scope_labels, prefix))
-        parts.append(render_source_evidence(data, metrics, prefix))
+                scope_parts.append(table(('Motif', 'HOMER log10 P (discovery score)'), [(row['motif'], number(row['homer_log10_p'], 2)) for row in motif['motifs']]))
+        scope_parts.append(table(('Evidence', 'Observed', 'Denominator / interpretation'), rows))
+        scope_parts.append(render_structure_evidence(preparation, scope, scope_labels, prefix))
+        scope_parts.append(render_source_evidence(data, metrics, prefix))
         if scope == 'total':
-            parts.extend(annotation_notes)
-        parts.append('</details>')
+            scope_parts.extend(annotation_notes)
+        scope_parts.append('</details>')
         if metrics['ambiguous_family_sets']:
-            parts.append('<details><summary>Ambiguous RNA families</summary>' + table(('Candidate family set', 'Units'), sorted(metrics['ambiguous_family_sets'].items(), key=lambda item: -item[1])) + '</details>')
-        parts.append('</section>')
+            scope_parts.append('<details><summary>Ambiguous RNA families</summary>' + table(('Candidate family set', 'Units'), sorted(metrics['ambiguous_family_sets'].items(), key=lambda item: -item[1])) + '</details>')
+        content = ''.join(scope_parts)
+        if sublibraries:
+            parts.append(rna_scope_card(scope, label, metrics['units'], colors.get(scope), content))
+        else:
+            parts.append('<section class="profile-scope rna-scope rna-primary" id="rna-scope-total">'
+                         '<header class="rna-scope-heading"><h3>' + esc(label) + '</h3></header>' + content + '</section>')
     parts.append('<details class="metric-group"><summary>Methods, limitations and source data</summary><ul>' + ''.join('<li>' + esc(text) + '</li>' for text in data['limitations']) + '</ul>')
     model_sources = []
     for index, url in enumerate(((data.get('preparation') or {}).get('auto_grip') or {}).get('sources', []), 1):

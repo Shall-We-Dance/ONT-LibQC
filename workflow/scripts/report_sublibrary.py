@@ -2,6 +2,15 @@
 import html
 
 COLORS = ('#2a6cbd', '#23877f', '#8364b2', '#b66b35', '#427c9b', '#a4547c', '#68863b', '#675ea4')
+
+def scope_color(scope, index):
+    # Standard libNN identifiers retain their color when a scope has no RNA reads.
+    suffix = scope.removeprefix('lib')
+    if suffix != scope and suffix.isascii() and suffix.isdecimal() and int(suffix) > 0:
+        index = int(suffix) - 1
+    return COLORS[index % len(COLORS)]
+
+
 CSS = '''
 .sublibrary-mixture{break-inside:avoid}
 .mixture-bar{display:flex;height:38px;width:100%;overflow:hidden;border-radius:6px;background:#edf2f7;print-color-adjust:exact;-webkit-print-color-adjust:exact}

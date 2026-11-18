@@ -23,6 +23,8 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from report_sublibrary import COLORS, scope_color
+
 BIOTYPES = ('rRNA', 'mt-rRNA', 'mt-mRNA', 'tRNA', 'snRNA', 'snoRNA', 'protein_coding', 'lncRNA', 'other', 'unknown', 'ambiguous_family')
 REGIONS = ('CDS', 'five_prime_UTR', 'three_prime_UTR', 'other_exon', 'intron', 'genic_unannotated', 'intergenic')
 LIMITATIONS = [
@@ -699,14 +701,13 @@ def bars_svg(values, title, footnote='', percentage=True):
     return ''.join(svg)
 
 
-def profile_svg(profiles, title):
+def profile_svg(profiles, title, color=COLORS[0]):
     """Display observed 5′ UTR/CDS/3′ UTR coverage, including single-insert genes."""
     import io
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     import numpy as np
-    color = '#3276b5'
     with plt.rc_context({'svg.fonttype': 'none', 'font.family': 'DejaVu Sans', 'font.size': 9,
                          'axes.spines.top': False, 'axes.spines.right': False}):
         fig, ax = plt.subplots(figsize=(7.6, 3.1))
@@ -948,7 +949,7 @@ def run_analysis(bam, gtf, read_table, fastq, sample, assay, out_dir, samtools='
         (out / 'source_summary.json').write_text(json.dumps(source_metadata, indent=2) + '\n')
         summary['files'].append('source_summary.json')
     genes_out, junctions_out, rare_out, profile_out, motif_out = [], [], [], [], []
-    for scope, data in summaries.items():
+    for index, (scope, data) in enumerate(summaries.items()):
         for gene_id, count in sorted(data['gene_counts'].items(), key=lambda item: (-item[1], item[0])):
             gene = annotation.genes[gene_id]
             genes_out.append({'scope_id': scope, 'gene_id': gene_id, 'gene_name': gene.name, 'biotype': gene.biotype, 'family': gene.family, 'family_evidence': gene.family_evidence, 'units': count})
@@ -969,7 +970,8 @@ def run_analysis(bam, gtf, read_table, fastq, sample, assay, out_dir, samtools='
         plots = {'composition': slug + '.composition.svg', 'regions': slug + '.regions.svg', 'profiles': slug + '.profiles.svg', 'rarefaction': slug + '.rarefaction.svg'}
         (out / plots['composition']).write_text(bars_svg(data['family_counts'], sample + ' · ' + scope + ': RNA families', 'All extracted non-dimer units; ambiguous family mappings retained.'))
         (out / plots['regions']).write_text(bars_svg(data['region_bases'], sample + ' · ' + scope + ': annotated regions', 'Unique MAPQ-pass matched bases; intron skips do not contribute coverage.'))
-        (out / plots['profiles']).write_text(profile_svg(data['profiles'], sample + ' · ' + scope + ': transcript coverage'))
+        (out / plots['profiles']).write_text(profile_svg(data['profiles'], sample + ' · ' + scope + ': transcript coverage',
+                                                      scope_color(scope, max(0, index - 1))))
         (out / plots['rarefaction']).write_text(rarefaction_svg(data['rarefaction'], sample + ' · ' + scope + ': observed gene detection'))
         data['plots'] = plots
         summary['files'].extend(plots.values())

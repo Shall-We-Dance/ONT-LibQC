@@ -50,6 +50,7 @@ rule rna_sources:
 rule rna_qc:
     input:
         script="workflow/scripts/rna_qc.py",
+        palette="workflow/scripts/report_sublibrary.py",
         motifs="workflow/scripts/rna_motifs.py",
         sequences="workflow/scripts/library_sequences.py",
         bam=f"{OUT}/bam/{{sample}}.bam",

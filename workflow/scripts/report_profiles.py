@@ -8,6 +8,8 @@ from pathlib import Path
 import re
 
 from report_sublibrary import COLORS
+from report_svg import svg_start, text
+from report_regions import REGION_ROWS, REGION_LEGEND, region_track, region_percent
 from report_profile_band import read_profile_band
 from profile_data import read_gene_profile, read_numeric_profile, read_data
 
@@ -35,16 +37,6 @@ def legend_item(scope, label, color):
     esc = html.escape
     return (f"<li><button type='button' data-scope='{esc(scope,quote=True)}' aria-label='Highlight {esc(label,quote=True)}' aria-pressed='false' style='--legend-tint:{color}0f;--legend-active:{color}24;--legend-border:{color}30'>"
             f"<i style='background:{color}' aria-hidden='true'></i>{esc(label)}</button></li>")
-
-
-def svg_start(width, height, title):
-    return [f"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 {width} {height}' role='img' aria-label='{html.escape(title, quote=True)}' style='font-family:Arial,Helvetica,sans-serif'>",
-            f'<title>{html.escape(title)}</title>', "<rect width='100%' height='100%' fill='white'/>",
-            f"<text x='64' y='27' font-size='17' fill='#293f53' font-weight='600'>{html.escape(title)}</text>"]
-
-
-def text(x, y, label, anchor='middle', size=12, color='#526579'):
-    return f"<text x='{x:.3f}' y='{y:.3f}' text-anchor='{anchor}' font-size='{size}' fill='{color}'>{html.escape(str(label))}</text>"
 
 
 def polyline(xs, ys, color, label):
@@ -208,34 +200,27 @@ def read_region_metrics(path):
 def region_comparison(series):
     if not any(row.get('regions') is not None for row in series):
         return None
-    rows = [('Promoter', 'promoter_proximal'), ('Gene body', 'gene_body'), ('Distal', 'intergenic')]
     height = 98 + 3 * (32 + 25 * len(series))
     svg = svg_start(820, height, 'Sublibrary genomic regions')
     svg.append("<metadata id='sublibrary-region-metrics'>" + html.escape(json.dumps([
         dict(scope_id=row['id'], color=row['color'], metrics=row.get('regions')) for row in series])) + '</metadata>')
     for x, label in [(535, 'Sample'), (658, 'Background'), (796, 'Enrichment')]:
         svg.append(text(x, 60, label, 'end', 13))
-    percent = lambda value: '—' if value is None else f'{value:.1%}' if value == 0 or value >= .001 else f'{100*value:.3g}%'
-    for group_index, (label, key) in enumerate(rows):
+    for group_index, (label, key) in enumerate(REGION_ROWS):
         top = 84 + group_index * (32 + 25 * len(series))
         svg.append(text(24, top, label, 'start', 16, '#203040'))
         for i, row in enumerate(series):
             y = top + 23 + i * 25
             metric = row.get('regions') or {}
             rate, bg, fold = (metric.get(key + suffix) for suffix in ('_rate', '_background_rate', '_enrichment'))
-            tip = f"{row['label']} · {label}: {percent(rate)}, background {percent(bg)}"
+            tip = f"{row['label']} · {label}: {region_percent(rate)}, background {region_percent(bg)}"
             svg.append(f"<g data-scope='{html.escape(row['id'],quote=True)}' data-region='{key}'><title>{html.escape(tip)}</title>")
             svg.append(text(28, y + 4, row['id'], 'start', 13, row['color']))
-            svg.append(f"<rect x='108' y='{y-7}' width='322' height='11' rx='2' fill='#eef2f6'/>")
-            if rate is not None:
-                svg.append(f"<rect data-value='{rate}' x='108' y='{y-7}' width='{322*rate:.3f}' height='11' rx='2' fill='{row['color']}'/>")
-            if bg is not None:
-                x=108+322*bg
-                svg.append(f"<line x1='{x:.3f}' x2='{x:.3f}' y1='{y-10}' y2='{y+7}' stroke='#536475' stroke-width='1.3'/>")
-            for x, value in [(535,percent(rate)),(658,percent(bg)),(796,'—' if fold is None else f'{fold:,.2f}×')]:
+            svg.append(region_track(rate, bg, row['color'], 108, y, 322))
+            for x, value in [(535,region_percent(rate)),(658,region_percent(bg)),(796,'—' if fold is None else f'{fold:,.2f}×')]:
                 svg.append(text(x,y+4,value,'end',14,'#34495e'))
             svg.append('</g>')
-    svg.append(text(24,height-13,'Bar: sample proportion · Tick: genome background','start',12))
+    svg.append(text(24,height-13,REGION_LEGEND,'start',12))
     svg.append('</svg>')
     return ''.join(svg)
 
