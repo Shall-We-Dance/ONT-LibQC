@@ -29,7 +29,7 @@ def write_report(root):
     panel = identity_panel_html(metric, dict(mode='multiplexed_library'), pairs)
     body = ('<!doctype html><html><head><title>Sample</title></head><body><main id="library-shape">' + panel +
             '<div class="table-scroll"><table><tr><th>lib01</th><th>B</th></tr></table></div></main></body></html>')
-    for sample in ('sample', 'other'):
+    for sample in ('sample', '02.other'):
         (root/'data/metrics'/(sample+'.json')).write_text(json.dumps(metric))
         (root/'samples'/(sample+'.html')).write_text(body if sample == 'sample' else
             body.replace(' data-sublibrary="lib01"', '').replace(' data-sublibrary="lib02"', ''))
@@ -78,7 +78,7 @@ class NameTests(unittest.TestCase):
             page = z.read('report/samples/sample.html').decode()
             self.assertIn(name, page)
             self.assertNotIn('Edit names', page)
-            self.assertNotIn(name, z.read('report/samples/other.html').decode())
+            self.assertNotIn(name, z.read('report/samples/02.other.html').decode())
             self.assertNotIn(name, z.read('report/data/metrics/sample.json').decode())
             self.assertIn(f'sample\tlib01\t{name}\t\tACGT\n', z.read('report/data/sublibrary_names.tsv').decode())
             self.assertIsNone(z.testzip())
@@ -89,7 +89,7 @@ class NameTests(unittest.TestCase):
 
     def test_same_scope_in_two_samples_has_independent_names(self):
         owner = {'Authorization': 'Bearer ' + token_for(self.cfg.secret, self.jid)}
-        second = self.client.get('/reports/' + self.jid + '/samples/other.html', headers=owner,
+        second = self.client.get('/reports/' + self.jid + '/samples/02.other.html', headers=owner,
                                  follow_redirects=False).headers['location']
         self.assertEqual(self.save({'lib01': 'Control'}).status_code, 200)
         response = self.client.put(second.replace('/r/', '/api/sublibrary-names/'), headers=self.auth,
@@ -97,10 +97,10 @@ class NameTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         with zipfile.ZipFile(io.BytesIO(self.client.get(self.job['download_url']).content)) as z:
             mapping = z.read('report/data/sublibrary_names.tsv').decode()
-            self.assertIn('other\tlib01\tTreatment\t', mapping)
+            self.assertIn('02.other\tlib01\tTreatment\t', mapping)
             self.assertIn('sample\tlib01\tControl\t', mapping)
             self.assertNotIn('Treatment', z.read('report/samples/sample.html').decode())
-            self.assertNotIn('Control', z.read('report/samples/other.html').decode())
+            self.assertNotIn('Control', z.read('report/samples/02.other.html').decode())
 
     def test_permissions_validation_and_retention(self):
         self.assertEqual(self.save({'lib01':'A'}, headers={}).status_code, 403)
@@ -120,8 +120,8 @@ class NameTests(unittest.TestCase):
     def test_older_page_and_single_library(self):
         from ont_portal.sublibrary_names import annotate_page, scope_catalog
         root = self.cfg.state/'reports'/self.jid
-        old = (root/'samples/other.html').read_text().replace('Physical indexes', 'Physical index pairs')
-        self.assertIn('Alias A', annotate_page(old, scope_catalog(root, 'other'), {'lib01': 'Alias A'}))
+        old = (root/'samples/02.other.html').read_text().replace('Physical indexes', 'Physical index pairs')
+        self.assertIn('Alias A', annotate_page(old, scope_catalog(root, '02.other'), {'lib01': 'Alias A'}))
         (root/'data/metrics/sample.json').write_text('{"sub_libraries":[]}')
         self.assertNotIn('Edit names', self.client.get(self.job['report_url']).text)
         self.assertEqual(self.save({'lib01':'A'}).status_code, 404)

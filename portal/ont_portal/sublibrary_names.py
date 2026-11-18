@@ -5,8 +5,8 @@ import re
 import unicodedata
 from pathlib import Path
 
-from .schema import SAFE_NAME
-
+# Standalone pipeline bundles may start a sample name with a digit or include dots.
+SAMPLE_STEM = r'[A-Za-z0-9][A-Za-z0-9_.-]{0,249}'
 SCOPE = re.compile(r'lib[0-9]{2,6}')
 MAX_NAME = 48
 MAP_FILE = 'data/sublibrary_names.tsv'
@@ -14,8 +14,13 @@ TABLE = re.compile(r"(<h3>Physical (?:indexes|index pairs)</h3>)(<div class=['\"
 LIBRARY_CELL = re.compile(r'<tr(?: data-sublibrary="(lib[0-9]{2,6})")?><td><strong>([^<]*)</strong></td>')
 
 
+def report_sample(file):
+    match = re.fullmatch(r'samples/(' + SAMPLE_STEM + r')\.html', file)
+    return match[1] if match else None
+
+
 def scope_catalog(root, sample):
-    if not isinstance(sample, str) or not re.fullmatch(SAFE_NAME, sample):
+    if not isinstance(sample, str) or not re.fullmatch(SAMPLE_STEM, sample):
         return {}
     root = Path(root)
     path = root/'data'/'metrics'/(sample + '.json')

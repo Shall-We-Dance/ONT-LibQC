@@ -1,20 +1,13 @@
 """The trusted editor is outside the sandbox used to display analysis reports."""
 import hmac
 import json
-import re
 import time
 
 from fastapi import HTTPException, Request
 from fastapi.responses import FileResponse
 
-from .schema import SAFE_NAME
 from .short_links import KEY, name_edit_token
-from .sublibrary_names import scope_catalog, validate_names
-
-
-def report_sample(file):
-    match = re.fullmatch(r'samples/(' + SAFE_NAME + r')\.html', file)
-    return match[1] if match else None
+from .sublibrary_names import report_sample, scope_catalog, validate_names
 
 
 def register(api, s, store, access):

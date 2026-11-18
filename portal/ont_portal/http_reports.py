@@ -7,8 +7,7 @@ from .report_download import archive_filename
 from .schema import SAFE_NAME
 from .short_links import KEY
 from .http_access import JOB_ID
-from .http_sublibrary_names import report_sample
-from .sublibrary_names import annotate_page, scope_catalog
+from .sublibrary_names import annotate_page, report_sample, scope_catalog
 from .named_archive import NamedArchiveResponse
 
 def register(api, s, store, access, example_inputs):
