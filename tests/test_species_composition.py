@@ -28,6 +28,18 @@ class SpeciesCompositionTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 queries([raw], table, io.StringIO(), 4)
 
+    def test_score_margin_and_low_quality_hits(self):
+        panel = ["hg38", "mm39"]
+        strong = ("hg38", 60, True, ("chr1", 0))
+        mixed = [strong, ("mm39", 55, True, None)]
+        separated = [strong, ("mm39", 54, True, None)]
+        weak = [("hg38", 90, False, None)]
+        data = classify(["lib01"] * 3, [mixed, separated, weak], panel, "hg38")
+        self.assertEqual(data["rows"][0]["counts"], {AMBIG: 1, "hg38": 1, NONE: 1})
+        self.assertEqual(data["rows"][0]["windows"], {"hg38": 1})
+        self.assertIn("Human (expected)", render(data))
+        self.assertEqual(classify([], [], panel, "hg38")["rows"][0]["n"], 0)
+
     @unittest.skipUnless(shutil.which("bowtie2-build") and shutil.which("bowtie2"), "Bowtie 2 required")
     def test_known_mixture_including_shared_sequence(self):
         rng = random.Random(27)

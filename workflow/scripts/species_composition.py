@@ -74,16 +74,6 @@ def parse_hit(line):
 
 def classify(scopes, hits, panel, reference):
     counts = collections.defaultdict(collections.Counter)
-    segments = []
-    offset = 0
-    for key in columns:
-        count = rows[0]["counts"].get(key, 0)
-        if count:
-            width = 100 * count / rows[0]["n"]
-            segments.append(f"<rect x='{offset:.6f}' width='{width:.6f}' height='1' fill='{colors.get(key, '#536b80')}'/>")
-            offset += width
-    bar = ("<svg viewBox='0 0 100 1' width='100%' height='12' preserveAspectRatio='none' "
-           "role='img' aria-label='Species proportions among all screened inserts'>" + "".join(segments) + "</svg>") if segments else ""
     windows = collections.defaultdict(lambda: collections.defaultdict(set))
     counts[TOTAL]
     counts[RAW]
