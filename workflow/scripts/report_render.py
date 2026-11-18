@@ -39,10 +39,13 @@ def identity_panel_html(metric, pairing, pairs, unit_rows=None):
     top=pairing.get("top_pair_fraction")
     top_text="NA" if top is None else f"{top:.1%}"
     pair_rows=[]
+    sub_ids = {scope['scope_id'] for scope in metric.get('sub_libraries', [])}
     for pair in pairs:
         matched = families.get(pair.get('scope_id'), {})
         adapter = ' / '.join(family_label(name) for name in sorted(matched, key=lambda name: (-matched[name], name))) or 'Unresolved'
-        pair_rows.append("<tr>" + "".join([
+        sid = pair.get('scope_id')
+        row = f'<tr data-sublibrary="{html.escape(sid, quote=True)}">' if sid in sub_ids else '<tr>'
+        pair_rows.append(row + "".join([
             f"<td><strong>{html.escape(str(pair.get('name',pair.get('scope_id','library'))))}</strong></td>",
             f"<td>{html.escape(adapter)}</td>",
             f"<td><code>{html.escape('Not detected' if pair.get('i5') is None else pair['i5'] or 'No index')}</code></td>",

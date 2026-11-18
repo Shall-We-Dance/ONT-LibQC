@@ -231,7 +231,7 @@ def render_motifs(motif):
 
 
 def rna_family_comparison(scopes, sublibraries, labels, colors):
-    parts = ['<details class="rna-composition-card"><summary>RNA family distribution</summary>']
+    parts = ['<section class="rna-composition-card plot-card"><h3>RNA family distribution</h3>']
     # Keep every column readable in the PDF, even for large multiplexes.
     for start in range(0, len(sublibraries), 4):
         group = sublibraries[start:start + 4]
@@ -251,7 +251,7 @@ def rna_family_comparison(scopes, sublibraries, labels, colors):
                 parts.append(f'<td title="{number(count)} / {number(total)}">{value}<span class="rna-comparison-track">{bar}</span></td>')
             parts.append('</tr>')
         parts.append('</tbody></table></div>')
-    return ''.join(parts) + '<p class="muted">Share of recovered units.</p></details>'
+    return ''.join(parts) + '<p class="muted">Share of recovered units.</p></section>'
 
 
 def rna_scope_card(scope, label, count, color, content):

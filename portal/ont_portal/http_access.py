@@ -8,7 +8,7 @@ from .report_files import REPORT_FILE_SUFFIXES
 from .report_entry import online_report_links
 from .schema import SAFE_NAME
 from .store import token_for, valid_report_grant
-from .short_links import KEY, link_key, key_hash, job_link
+from .short_links import KEY, link_key, key_hash, job_link, name_edit_token
 JOB_ID = re.compile(r"^[0-9a-f]{32}$")
 
 def access_services(s, store):
@@ -45,6 +45,7 @@ def access_services(s, store):
             'deletion_reason':('manual' if row['expires']==0 else 'retention') if row['status']=='expired' else None,
             'deletion_requested':row['status']!='expired' and row['expires']==0,
             'report_url':report_link(row['id'],f"samples/{opts['sample']}.html",access_expires) if available and re.fullmatch(SAFE_NAME,opts.get('sample','')) else None,
+            'name_edit_token':name_edit_token(s.secret,row) if available else None,
             'download_url':report_link(row['id'],'report.zip',access_expires) if available else None,
             'report_access_expires':access_expires,
             'private_link':job_link(s.secret,row),
@@ -66,7 +67,7 @@ def access_services(s, store):
         return '/r/'+key
 
 
-    def safe_report(root,file,links=None,download_name=None):
+    def safe_report(root,file,links=None,download_name=None,page_transform=None):
         if '\\' in file or any(part in {'.','..'} or part.startswith('.') for part in file.split('/')):
             raise HTTPException(404,'File not found')
         root=root.resolve(); path=root/file
@@ -91,7 +92,7 @@ def access_services(s, store):
                 target=urlunsplit(('', '', links(file_path), urlencode(query), parts.fragment))
                 return attr+'='+quote+html.escape(target,quote=True)+quote
             body=re.sub(r"\b(href|src)\s*=\s*(['\"])(.*?)\2",local_link,online_report_links(path.read_text(),file),flags=re.I)
-            return HTMLResponse(body)
+            return HTMLResponse(page_transform(body) if page_transform else body)
         return FileResponse(path,media_type=media)
 
 

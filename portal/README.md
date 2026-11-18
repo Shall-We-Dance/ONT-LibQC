@@ -65,6 +65,8 @@ New submissions use compact private links: `/j/#<key>` for one task and `/b/#<ke
 
 Online jobs open their sample directly. **Download complete report (ZIP)** includes saved HTML, figures, tables and settings. Extract it and open `report/index.html`; keep the folder together.
 
+For multiplexed reports, open **Physical indexes → Edit names** from your private analysis page. Saved names appear beside the original sublibrary IDs in shared reports. The next ZIP download includes the names in the sample page and in `data/sublibrary_names.tsv` for joining with analysis tables.
+
 ### Custom BED profiles
 
 Chromatin reports keep the BED plot submitted with the analysis and accept additional BEDs in the browser. Choose **Plot mode** (`Auto`, `Reference point` or `Region (scaled)`), confirm the assembly coordinates and click **Draw metaplot**.

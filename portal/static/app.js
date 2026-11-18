@@ -378,7 +378,8 @@ async function binaryUpload(task, file, endpoint, onprogress) {
 const labels = { created: 'Waiting for upload', uploading: 'Uploading', uploaded: 'Upload complete', queued: 'Queued', running: 'Analyzing', succeeded: 'Report ready', failed: 'Analysis failed', cancelling: 'Cancelling', cancelled: 'Cancelled', expired: 'Expired', deleted: 'Deleted', deleting: 'Deleting', waiting: 'Waiting to upload', loading: 'Loading' };
 async function followReportLink(event, task, field) {
   if (event.type === 'auxclick' && event.button !== 1) return;
-  if (task.job?.report_access_expires > Date.now() / 1000 + 30) return;
+  const fresh = task.job?.report_access_expires > Date.now() / 1000 + 30;
+  if (fresh && (field !== 'report_url' || !task.job.name_edit_token)) return;
   event.preventDefault();
   // A suspended tab may have outlived its read-only links. Renew using the private
   // task credential, reserving a report tab during the click to avoid popup blocks.
@@ -387,11 +388,16 @@ async function followReportLink(event, task, field) {
   if (popup) popup.opener = null;
   try {
     if (newTab && !popup) throw new Error('Allow this site to open a report tab, then try again.');
-    task.job = await api('/api/jobs/' + task.id, 'GET', undefined, task.token);
+    if (!fresh) task.job = await api('/api/jobs/' + task.id, 'GET', undefined, task.token);
     task.lastChecked = Date.now(); task.fetchError = null;
     const target = task.job[field];
     if (!target) throw new Error('This report is no longer available. Check the task status below.');
-    (popup || window).location.assign(target);
+    if (popup && field === 'report_url' && task.job.name_edit_token) {
+      // Only the trusted editor can read this tab's storage. The report has an opaque origin.
+      try { popup.sessionStorage.setItem('ont-sublibrary-editor', task.job.name_edit_token); }
+      catch { /* Viewing also works with storage disabled. */ }
+    }
+    (popup || window).location.replace(target);
   } catch (error) {
     if (popup) popup.close();
     task.fetchError = error.message;

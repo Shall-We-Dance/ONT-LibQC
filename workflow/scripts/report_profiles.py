@@ -311,8 +311,8 @@ def render_profiles_card(sample, scopes, scope_html, asset_dir, gene_dir, asset_
         name = f'{sample}.rna_region_distribution.svg'
         (asset_dir/name).write_text(rna_region_comparison(series, metrics))
         prefix = rna_prefix or '../qc/rna/' + quote(sample, safe='')
-        parts.extend(["<div class='profile-genomic-grid'><div>", figure(name, 'RNA region distribution', 'comparison-regions'), family, '</div>',
-                      transcript_panels(series, metrics, prefix), '</div>'])
+        parts.extend(["<div class='profile-genomic-grid rna-distributions'>", figure(name, 'RNA region distribution', 'comparison-regions'),
+                      family, '</div>', transcript_panels(series, metrics, prefix)])
     meta=gene_comparison(series)
     regions=region_comparison(series)
     if regions:

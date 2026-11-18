@@ -44,6 +44,15 @@ class LayoutTests(unittest.TestCase):
                 regions = (folder/'s.rna_region_distribution.svg').read_text()
                 self.assertLess(overview.index('virtual_gel.svg'), overview.index('rna_region_distribution.svg'))
                 self.assertLess(overview.index('rna_region_distribution.svg'), overview.index('<h3>Transcript metaplots'))
+                from report_refresh import Elements
+                parsed = Elements(overview)
+                def card(cls):
+                    return next(n for n in parsed.elements if cls in n['attrs'].get('class', '').split())
+                left, right, lower = (card(cls) for cls in ('comparison-regions', 'rna-composition-card', 'rna-profile-panels'))
+                self.assertIs(left['parent'], right['parent'])
+                self.assertEqual(right['tag'], 'section')
+                self.assertLessEqual(right['parent']['end'], lower['start'])
+                self.assertIs(left['parent']['parent'], lower['parent'])
                 self.assertIn('../data/rna/s/profile.svg', overview)
                 self.assertEqual(overview.count(' transcript coverage'), max(1, len(ids)-1))
                 if len(ids)>1:

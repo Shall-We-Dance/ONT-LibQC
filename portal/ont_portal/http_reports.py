@@ -1,5 +1,5 @@
 """Reports HTTP routes; registered by the application factory."""
-import json, re, time
+import asyncio, json, re, time
 from pathlib import Path
 from fastapi import Request, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -7,8 +7,12 @@ from .report_download import archive_filename
 from .schema import SAFE_NAME
 from .short_links import KEY
 from .http_access import JOB_ID
+from .http_sublibrary_names import report_sample
+from .sublibrary_names import annotate_page, scope_catalog
+from .named_archive import NamedArchiveResponse
 
 def register(api, s, store, access, example_inputs):
+    archive_slots = asyncio.Semaphore(2)
     owned = access.owned
     report_link = access.report_link
     safe_report = access.safe_report
@@ -51,11 +55,31 @@ def register(api, s, store, access, example_inputs):
             document=request.headers.get('sec-fetch-dest')=='document' or 'text/html' in request.headers.get('accept','')
             if document:return RedirectResponse('/r/',status_code=303)
             raise HTTPException(404,'Report not found or expired')
-        row,link=record
+        row, link = record
+        root, file = s.state/'reports'/row['id'], link['file']
+        sample = report_sample(file)
         with store.connect() as c:
-            return safe_report(s.state/'reports'/row['id'],link['file'],
-                               lambda file:report_link(row['id'],file,min(link['expires'],int(row['expires'])),c),
-                               download_name=archive_filename(s.state/'reports'/row['id'],json.loads(row['options'] or '{}').get('sample'),row['created']) if link['file']=='report.zip' else None)
+            if file == 'report.zip':
+                filename = archive_filename(root, json.loads(row['options'] or '{}').get('sample'), row['created'])
+                download = safe_report(root, file, download_name=filename)
+                annotations = {}
+                for saved in c.execute("SELECT sample,names FROM sublibrary_names WHERE job_id=? AND names!='{}' ORDER BY sample", (row['id'],)):
+                    catalog = scope_catalog(root, saved['sample'])
+                    if catalog:
+                        annotations[saved['sample']] = (catalog, json.loads(saved['names']))
+                if annotations:
+                    return NamedArchiveResponse(download, annotations, archive_slots)
+                return download
+            transform = None
+            if sample:
+                catalog = scope_catalog(root, sample)
+                if catalog:
+                    saved = c.execute('SELECT names FROM sublibrary_names WHERE job_id=? AND sample=?',
+                                      (row['id'], sample)).fetchone()
+                    names = json.loads(saved[0]) if saved else {}
+                    transform = lambda body: annotate_page(body, catalog, names, editor='/sublibrary-names/' + key)
+            return safe_report(root, file, lambda target: report_link(row['id'], target, min(link['expires'], int(row['expires'])), c),
+                               page_transform=transform)
 
 
     def authorized_report_image(scope):

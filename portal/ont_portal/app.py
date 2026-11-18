@@ -21,7 +21,7 @@ PUBLIC_CSP = APP_CSP.replace("script-src 'self'", "script-src 'self' https://sta
 EXAMPLE_INDEX_CSP = PUBLIC_CSP.replace("style-src 'self'", "style-src 'unsafe-inline' 'self'")
 
 from .http_access import access_services
-from . import http_jobs, http_links, http_reports, http_public
+from . import http_jobs, http_links, http_reports, http_public, http_sublibrary_names
 def create_app(settings=None):
     s = settings or Settings.load()
     store = Store(s.state)
@@ -41,6 +41,7 @@ def create_app(settings=None):
     http_links.register(api, s, store, access, example_inputs)
     http_jobs.register(api, s, store, access, example_inputs)
     report_image = http_reports.register(api, s, store, access, example_inputs)
+    http_sublibrary_names.register(api, s, store, access)
     http_public.register(api, s, store, access, example_inputs)
     api.add_middleware(RequestGate, settings=s, report_image=report_image)
     api.add_middleware(RequestSecurity, settings=s, app_csp=APP_CSP, report_csp=REPORT_CSP,

@@ -3274,3 +3274,23 @@ button.structure-block:hover {
   }
 
 }
+
+.names-editor {
+  max-width: 850px;
+  margin: 36px auto;
+  padding: 0 18px;
+}
+.names-editor h1 { margin: 20px 0 4px }
+.names-editor [role=status] { overflow-wrap: anywhere }
+.names-scroll {
+  margin: 16px 0;
+  overflow-x: auto;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.names-scroll table { width: 100%; border-collapse: collapse }
+.names-scroll th, .names-scroll td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--line) }
+.names-scroll thead { background: #f5f8fa }
+.names-scroll input { width: 100%; min-width: 10em }
+.names-scroll td:nth-last-child(-n+2) { font-family: ui-monospace, monospace; white-space: nowrap }
