@@ -6,6 +6,7 @@ rule all:
 include: "workflow/rules/prepare.smk"
 include: "workflow/rules/alignment.smk"
 include: "workflow/rules/spikein.smk"
+include: "workflow/rules/species_composition.smk"
 include: "workflow/rules/mycoplasma.smk"
 include: "workflow/rules/ligation.smk"
 include: "workflow/rules/pairtools.smk"

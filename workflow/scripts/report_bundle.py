@@ -175,6 +175,8 @@ def build(work, report, config_path):
                       work / 'qc/adapters' / f'{sample}.summary.json',
                       work / 'qc/mycoplasma' / f'{sample}.json',
                       work / 'qc/spike_in' / f'{sample}.json']
+            if config.get("species_composition", {}).get("indexes"):
+                queue.append(work / "qc/species_composition" / f"{sample}.json")
             for category, pattern in [('gene_profile', f'{sample}*.profile.tsv'),
                                       ('gene_profile', f'{sample}*.profile.json'),
                                       ('rna_alignment', f'{sample}.json'),

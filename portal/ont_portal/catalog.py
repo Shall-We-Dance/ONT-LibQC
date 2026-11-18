@@ -122,4 +122,8 @@ def job_config(options,catalog,jobdir,cores):
          'references':{options.reference:reference},'samples':{options.sample:sample},'params':params,'qc_reference_ranges':ranges,
          'spike_in':spike,'mycoplasma_screen':{'enabled':options.mycoplasma,'minimum_screened_reads':options.screen_minimum_reads,
           'target_contig_regex':catalog.get('mycoplasma_regex','mycoplasma_target|mycoplasmopsis|mycoplasmoides|metamycoplasma|mesomycoplasma|acholeplasma|spiroplasma|ureaplasma|mollicutes')}}
+    panel = catalog.get('species_composition', {}).get('indexes', {})
+    if panel:
+        cfg['species_composition'] = {'indexes': {key: mounts.path(prefix, prefix=True)
+                                                 for key, prefix in panel.items()}}
     return cfg,mounts

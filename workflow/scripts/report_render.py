@@ -15,6 +15,7 @@ from report_brand import brand_bar, copy_mark, favicon
 from report_export import add_pdf_export
 from report_provenance import analysis_record, analysis_label
 from report_regions import region_counts as annotation_region_counts, svg_region_bars, load_te_bed, prepare_background
+from species_composition import render as render_species
 from library_sequences import FAMILIES
 from qc_analysis import build_sublibrary_gene_profile, read_numbers, read_scope_profiles, svg_bars, sam_primary_records, base_unit_id, json_dump, read_index_assignments, resolve_chromosome_sets, read_chrom_sizes, write_library_size_assets, write_karyoploter, load_gene_annotation
 from report_metrics import COLLISION_ROWS, display_value, fmt, traffic_html, assay_reference_ranges, svg_contact_funnel, METRIC_META, scoped_table_html, REPORT_CSS, svg_contact_evidence, merged_reference_ranges, summary_overview_svg, REPORT_TOOLTIP_SCRIPT, metric_reading_html
@@ -378,6 +379,8 @@ def render_sample_report(sample, cfg, out, report_params, prior_provenance, anno
     definition_label=analysis_label(metric['analysis_provenance'])
     from custom_regions import report_html as custom_region_report
     custom_html=custom_region_report(out,sample,report_assembly,report_chrom_sizes,report_primary,scope_records,scopes,cfg['samples'][sample],Path(__file__).resolve().parents[2],report_mapq) if metric['assay']=='chromatin' else ""
+    species_file = out / "qc/species_composition" / f"{sample}.json"
+    species_html = render_species(json.loads(species_file.read_text())) if cfg.get("species_composition", {}).get("indexes") else ""
     rna_html = ""
     if metric['assay'] in {'rnaseq', 'clip'}:
         from rna_report import render_rna_section
@@ -389,7 +392,7 @@ def render_sample_report(sample, cfg, out, report_params, prior_provenance, anno
     report=f"""<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>{sample} · ONT-LibQC</title>{favicon("assets/ont-libqc-mark.svg")}<style id="report-base-style">{REPORT_CSS}</style></head><body>
 {brand_bar("assets/ont-libqc-mark.svg")}
 <header class='report-hero'><h1 class='sample-name'>{html.escape(sample)}</h1><div class='hero-meta'><span>{html.escape({'chromatin':'Chromatin','microc':'Micro-C','rnaseq':'RNA-seq · beta','clip':'CLIP-seq · beta'}.get(metric['assay'],metric['assay']))}</span><span>{html.escape(report_assembly)}</span><span>{metric['raw_reads']:,} raw molecules</span><span>{html.escape(definition_label)}</span></div></header>
-<nav class='report-nav'><a href='#sequencing'>Sequencing</a><a href='#library-shape'>Library quality</a><a href='#profiles'>Size &amp; profiles</a>{"<a href='#rna-qc'>RNA QC · beta</a><a href='#contamination'>Contamination</a>" if rna_html else ""}{"" if rna_html else "<a href='#assay-qc'>Assay metrics</a>"}{"<a href='#custom-regions'>Custom regions</a>" if custom_html else ""}{"<a href='#pairtools'>Pairtools</a><a href='#ligation'>Ligation</a><a href='#mnase'>MNase</a>" if pairtools_html else ""}{"<a href='#spike-screen'>Spike-in screen</a>" if metric.get('spike_in_mode')=='auto' or json.loads((out/'qc/spike_in'/f'{sample}.json').read_text()).get('mode')=='auto' else ''}<a href='../summary/index.html'>All samples</a></nav>
+<nav class='report-nav'><a href='#sequencing'>Sequencing</a><a href='#library-shape'>Library quality</a><a href='#profiles'>Size &amp; profiles</a>{"<a href='#species-composition'>Species</a>" if species_html else ""}{"<a href='#rna-qc'>RNA QC · beta</a><a href='#contamination'>Contamination</a>" if rna_html else ""}{"" if rna_html else "<a href='#assay-qc'>Assay metrics</a>"}{"<a href='#custom-regions'>Custom regions</a>" if custom_html else ""}{"<a href='#pairtools'>Pairtools</a><a href='#ligation'>Ligation</a><a href='#mnase'>MNase</a>" if pairtools_html else ""}{"<a href='#spike-screen'>Spike-in screen</a>" if metric.get('spike_in_mode')=='auto' or json.loads((out/'qc/spike_in'/f'{sample}.json').read_text()).get('mode')=='auto' else ''}<a href='../summary/index.html'>All samples</a></nav>
 <div class='traffic-grid'>{top}</div>
 {mixture_html}
 <section class='report-section' id='sequencing'><h2>ONT sequencing</h2>{ont_table}</section>
@@ -401,6 +404,7 @@ def render_sample_report(sample, cfg, out, report_params, prior_provenance, anno
 <details><summary>Size and adapter interpretation</summary><p>The 120–170 bp raw-size window is supportive only. Dimer-like units have a ≤{fmt(metric.get('adapter_dimer_max_bp'))}-bp central gap. Unreconstructed template matches remain candidates; resolved 11–50 bp inserts are retained. Full-library sizes include expected outer adapters and inferred physical indexes, including units with undetected outer handles. The main profile weights each recovered unit by its modeled full-library length; count-based profiles are expandable. Curves are conditional on sequencing and adapter recovery and do not measure TapeStation fluorescence or NGS molarity.</p></details>
 </section>
 {profiles_html}
+{species_html}
 {rna_html}
 {screen_html}
 {assay_html}

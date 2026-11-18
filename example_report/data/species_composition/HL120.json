@@ -1,0 +1,59 @@
+{
+  "method": "competitive-local-v1",
+  "reference": "dm6",
+  "panel": [
+    "ARS_UCD2",
+    "hg38",
+    "mm39",
+    "dm6",
+    "ecoli"
+  ],
+  "rows": [
+    {
+      "scope": "Total inserts",
+      "n": 4749,
+      "counts": {
+        "No confident match": 2905,
+        "dm6": 1839,
+        "Ambiguous species": 5
+      },
+      "windows": {
+        "dm6": 1326
+      }
+    },
+    {
+      "scope": "Unassigned index",
+      "n": 71,
+      "counts": {
+        "No confident match": 40,
+        "dm6": 31
+      },
+      "windows": {
+        "dm6": 24
+      }
+    },
+    {
+      "scope": "lib01",
+      "n": 4678,
+      "counts": {
+        "No confident match": 2865,
+        "dm6": 1808,
+        "Ambiguous species": 5
+      },
+      "windows": {
+        "dm6": 1307
+      }
+    },
+    {
+      "scope": "Reads without a reconstructed insert",
+      "n": 266,
+      "counts": {
+        "No confident match": 258,
+        "dm6": 8
+      },
+      "windows": {
+        "dm6": 7
+      }
+    }
+  ]
+}

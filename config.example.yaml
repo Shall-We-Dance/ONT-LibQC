@@ -34,6 +34,16 @@ mycoplasma_screen:
   target_contig_regex: "mycoplasma_target|mycoplasmopsis|mycoplasmoides|metamycoplasma|mesomycoplasma|acholeplasma|spiroplasma|ureaplasma|mollicutes"
   minimum_screened_reads: 500
 
+# Optional species composition screen. Supply one Bowtie 2 genome per species.
+# The sample's selected reference is added automatically (or replaces its panel entry).
+# species_composition:
+#   indexes:
+#     hg38: /path/to/hg38/index
+#     mm39: /path/to/mm39/index
+#     ARS_UCD2: /path/to/cattle/index
+#     dm6: /path/to/dm6/index
+#     ecoli: /path/to/ecoli_K12/index
+
 # Optional spike-in quantification. The index must contain both host and spike-in
 # contigs. Prefix spike-in contigs consistently and match them with the regex.
 spike_in:
