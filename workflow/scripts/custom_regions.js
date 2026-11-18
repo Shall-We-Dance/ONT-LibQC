@@ -93,10 +93,9 @@ bedInput.addEventListener('change',async()=>{
   document.getElementById('custom-assembly').checked=false;
   clearResult();showBedName();
   if(!bedInput.files.length){message.textContent='';runButton.disabled=false;return;}
-  message.textContent='Checking BED file…';runButton.disabled=true;
+  message.textContent='';runButton.disabled=true;
   try{
     await CustomRegions.checkedBedFile(bedInput);
-    if(version===selectionVersion)message.textContent='Confirm coordinates and click Draw metaplot to analyze the selected BED.';
   }catch(e){
     if(version===selectionVersion){bedInput.value='';showBedName();message.textContent=e.message;}
   }finally{if(version===selectionVersion)runButton.disabled=false;}
@@ -114,13 +113,11 @@ runButton.addEventListener('click',async()=>{
   try {
     if(!document.getElementById('custom-assembly').checked)throw Error(`Confirm that the BED uses ${payload.reference} coordinates`);
     const file=await CustomRegions.checkedBedFile(bedInput);if(version!==selectionVersion)return;
-    if(localResult)localResult.hidden=false;if(currentSource)currentSource.textContent='BED: '+file.name;
     message.textContent='Calculating…';await new Promise(resolve=>setTimeout(resolve,0));
     const text=await file.text();if(version!==selectionVersion)return;
     const bed=CustomRegions.parseBed(text,payload.sizes,payload.primary),scope=payload.scopes[document.getElementById('custom-scope').value],params=CustomRegions.resolveParameters(bed.rows,{...payload.parameters,mode:document.getElementById('custom-mode').value}),p=CustomRegions.compute(scope.records,bed.rows,payload.sizes,params);
     const point=params.mode==='reference_point',modeLabel=point?'Reference point (interval midpoint)':'Region (scaled body)';
-    message.textContent=`${params.requested_mode==='auto'?'Auto → ':''}${modeLabel} · ${bed.rows.length} regions · ${p.eligible_alignments.toLocaleString()} eligible alignments · ${bed.skipped} non-primary rows skipped · ${bed.duplicates} duplicates removed · ${bed.unknown.length} regions on absent contigs excluded${bed.unknown.length ? ": "+[...new Set(bed.unknown.map(x=>x.chrom))].join(", ") : ""}`;
-    if(!p.eligible_alignments){message.textContent+=' · No eligible nuclear alignments; profile unavailable.';return;}
+    if(!p.eligible_alignments)throw Error('No eligible nuclear alignments for this library.');
     // Match the report's TSS–TES plots: boxed axes, round ticks and a quiet SEM band.
     const w=820,h=440,l=80,t=52,pw=712,ph=298,n=p.mean.length,color='#000080',ink='#202b36';
     const maximum=Math.max(0,...p.mean.map((v,i)=>v==null?0:v+(p.sem[i]||0)))||1;
@@ -140,6 +137,8 @@ runButton.addEventListener('click',async()=>{
     for(const [label,content,mime,ext] of [['Download SVG',svg,'image/svg+xml','svg'],['Download data',tsv,'text/tab-separated-values','tsv'],['Download provenance',JSON.stringify({sample:payload.sample,scope:scope.name,assembly:payload.reference,bed_name:file.name,parameters:params,retained_regions:bed.rows.length,renamed_chromosomes:bed.renamed_chromosomes,renamed_rows:bed.renamed_rows,excluded_unknown_contigs:bed.unknown,skipped_nonprimary:bed.skipped,duplicate_intervals_removed:bed.duplicates,eligible_alignments:p.eligible_alignments,normalization:'exact mean base coverage; CPM by scope primary nuclear alignments; equally weighted regions'},null,2),'application/json','json']]){
       const a=document.createElement('a'),url=URL.createObjectURL(new Blob([content],{type:mime}));urls.push(url);a.href=url;a.download=payload.sample+'.'+scope.name+'.custom_regions.'+ext;a.textContent=label;downloads.appendChild(a);
     }
+    if(localResult)localResult.hidden=false;if(currentSource)currentSource.textContent='BED: '+file.name;
+    message.textContent='';
   }catch(e){if(version===selectionVersion)message.textContent=e.message;}
   finally{if(version===selectionVersion)runButton.disabled=false;}
 });

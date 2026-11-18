@@ -2,7 +2,15 @@
 const LibraryStructure = (() => {
   const positions=['before_i5','after_i5','before_insert','after_insert','before_i7','after_i7'];
   const labels=['P5 / i5','i5 / Adapter','Adapter / Insert','Insert / Adapter','Adapter / i7','i7 / P7'];
-  const blocks=[['P5','handle'],['i5','index'],['Adapter','anchor','i5 side'],['Insert','insert'],['Adapter','anchor','i7 side'],['i7','index'],['P7','handle']];
+  const blocks=[
+    ['P5','handle','p5_sequence'],
+    ['i5','index','i5_length'],
+    ['Adapter','anchor','adapter_i5_sequence','i5 side'],
+    ['Insert','insert'],
+    ['Adapter','anchor','adapter_i7_sequence','i7 side'],
+    ['i7','index','i7_length'],
+    ['P7','handle','p7_sequence']
+  ];
   const defaults=()=>({mode:'auto',adapter_family:'auto',p5_sequence:null,p7_sequence:null,i5_length:null,i7_length:null,adapter_i5_sequence:null,adapter_i7_sequence:null,umis:[]});
   function create(catalog,onApply) {
     let state=defaults(),selected=null,dragging=null,nextKey=0;
@@ -14,10 +22,10 @@ const LibraryStructure = (() => {
     const root=node('section',{class:'library-structure','aria-label':'Library structure'});
     const auto=node('button',{type:'button','aria-pressed':'true'},'Auto');
     const custom=node('button',{type:'button','aria-pressed':'false'},'Customize');
-    const description=node('p',{class:'structure-description'});
+    const description=node('p',{class:'structure-description'},'Detect P5/P7 and i5/i7 during analysis.');
     const track=node('div',{class:'structure-track','aria-label':'Library sequence from P5 to P7'});
     const scroller=node('div',{class:'structure-scroll',tabindex:'0','aria-label':'Library structure diagram; scroll horizontally to view all blocks'},track);
-    const hint=node('p',{class:'structure-hint'});
+    const hint=node('p',{class:'structure-hint'},'Click an adapter to edit it. Use + to add a UMI, or drag a UMI to move or swap it.');
     const umiTitle=node('h4',{},'UMIs');
     const list=node('div',{class:'structure-umi-list'});
     const umiPanel=node('div',{class:'structure-umi-panel',hidden:true},node('div',{class:'structure-umi-heading'},umiTitle,node('span',{},'Fixed length · each position used once')),list);
@@ -37,7 +45,8 @@ const LibraryStructure = (() => {
     p5.className=p7.className=adapter5.className=adapter7.className='structure-sequence';
     const fields={adapter_family:family,i5_length:i5,i7_length:i7,p5_sequence:p5,p7_sequence:p7,adapter_i5_sequence:adapter5,adapter_i7_sequence:adapter7};
     advanced.append(node('div',{class:'structure-settings-grid'},control('Adapter preset',family),control('i5 length (bp)',i5),control('i7 length (bp)',i7),node('div',{class:'structure-setting-wide'},control('Adapter · i5 side · 5′ → 3′',adapter5)),node('div',{class:'structure-setting-wide'},control('Adapter · i7 side · 5′ → 3′',adapter7)),node('div',{class:'structure-setting-wide'},control('P5 sequence · 5′ → 3′',p5)),node('div',{class:'structure-setting-wide'},control('P7 sequence · 5′ → 3′',p7))),node('p',{class:'field-note'},'Enter 16–80 A/C/G/T bases per sequence, following the P5 → P7 strand above. Enter the i7-side adapter as it appears on that strand, not the reverse-complement primer. A custom adapter overrides its side of the preset; leave a side blank to use the preset / auto-detect. Blank index length means Auto; 0 means no index.'));
-    root.append(node('div',{class:'structure-heading'},node('h3',{},'Library structure'),node('div',{class:'structure-modes',role:'group','aria-label':'Library structure mode'},auto,custom)),description,scroller,hint,umiPanel,node('div',{class:'structure-footer'},add,apply),advanced,notice,error,live);
+    const heading=node('div',{class:'structure-title'},node('h3',{},'Library structure'),description);
+    root.append(node('div',{class:'structure-heading'},heading,node('div',{class:'structure-modes',role:'group','aria-label':'Library structure mode'},auto,custom)),scroller,hint,umiPanel,node('div',{class:'structure-footer'},add,apply),advanced,notice,error,live);
     function announce(text){live.textContent=text;}
     function setError(text){error.hidden=!text;error.textContent=text;}
     function refreshFields(){for(const [name,input] of Object.entries(fields))input.value=state[name]??'';}
@@ -112,18 +121,20 @@ const LibraryStructure = (() => {
       const before=new Map();if(withMotion)root.querySelectorAll('[data-umi-key]').forEach(el=>before.set(el.classList.contains('umi')?'chip-'+el.dataset.umiKey:'row-'+el.dataset.umiKey,el.getBoundingClientRect()));
       const customizing=state.mode==='custom',ordered=sorted();notice.hidden=true;
       root.classList.toggle('is-custom',customizing);auto.setAttribute('aria-pressed',String(!customizing));custom.setAttribute('aria-pressed',String(customizing));
-      description.textContent=customizing?'Customize adapter sequences or add UMIs with fixed lengths.':'Detect P5, P7 and i5/i7 indexes automatically during analysis.';
-      hint.textContent=customizing?'Click an Adapter to edit its sequence. Click + to add a UMI; drag a UMI to move or swap it.':'Short arrows mark the NGS read starts and directions, not the read lengths.';
+      description.hidden=customizing;
+      hint.hidden=!customizing;
       track.replaceChildren(node('span',{class:'structure-end','aria-hidden':'true'},'5′'));
-      blocks.forEach(([label,kind,side],index)=>{
-        const adapterField=index===2?'adapter_i5_sequence':'adapter_i7_sequence';
-        const editable=customizing&&(['P5','P7','i5','i7'].includes(label)||kind==='anchor');
-        const block=node(editable?'button':'span',{class:'structure-block '+kind,...(editable?{type:'button','aria-label':'Edit '+(kind==='anchor'?side+' Adapter':label)+' settings'}:{})},node('strong',{},label));
-        if(kind==='index')block.append(node('small',{},customizing&&state[label+'_length']!==null?state[label+'_length']+' bp':'Auto'));
-        if(kind==='handle')block.append(node('small',{},customizing&&state[label.toLowerCase()+'_sequence']?'Custom':'Auto'));
-        if(kind==='insert')block.append(node('small',{},'DNA'));
-        if(kind==='anchor'){block.append(node('small',{},side));if(customizing&&state[adapterField])block.append(node('small',{},'Custom'));}
-        if(editable)block.addEventListener('click',()=>{advanced.open=true;fields[kind==='anchor'?adapterField:kind==='index'?label+'_length':label.toLowerCase()+'_sequence'].focus();});
+      blocks.forEach(([label,kind,field,side],index)=>{
+        const editable=customizing&&field;
+        const block=node(editable?'button':'span',{class:'structure-block '+kind},node('strong',{},label));
+        if(side)block.title='Adapter · '+side;
+        if(editable){
+          block.type='button';
+          block.setAttribute('aria-label','Edit '+(side?side+' Adapter':label)+' settings');
+          const value=state[field];
+          if(value!=null)block.append(node('small',{},kind==='index'?value+' bp':'Custom'));
+          block.addEventListener('click',()=>{advanced.open=true;fields[field].focus();});
+        }
         track.append(block);if(index>=positions.length)return;
         const position=positions[index],umi=state.umis.find(u=>u.position===position);
         if(customizing&&umi){

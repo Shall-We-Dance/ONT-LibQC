@@ -66,12 +66,12 @@ function requiredChoice(label, input) {
   const update = () => { field.classList.toggle('needs-choice', !input.value); hint.textContent = input.value ? 'Selected for this file.' : 'Please choose for this file.'; };
   input.addEventListener('change', update); update(); field.append(hint); return field;
 }
-function check(label, description = '') {
+function check(label) {
   const input = node('input', { type: 'checkbox' });
-  return { input, wrapper: node('label', { class: 'check' }, input, node('span', {}, label, description ? node('em', {}, description) : null)) };
+  return { input, wrapper: node('label', { class: 'check' }, input, node('span', {}, label)) };
 }
-function screenCheck(label, description) {
-  const field = check(label, description);
+function screenCheck(label) {
+  const field = check(label);
   field.preferences = { dna: true, rna: true };
   field.assayGroup = 'dna';
   field.input.addEventListener('change', () => { field.preferences[field.assayGroup] = field.input.checked; });
@@ -176,10 +176,10 @@ function addFiles(incoming) {
     const available = catalog.references.filter(r => r.ready || r.rna_ready);
     entry.ref = select([['', 'Choose reference genome…'], ...available.map(r => [r.id, r.label])], '');
     entry.mapper = select([['auto', 'Default · Bowtie2']], 'auto');
-    entry.myco = screenCheck('Mycoplasma screen', 'An opportunistic screen; negative results do not exclude contamination.');
-    entry.spike = screenCheck('Spike-in / foreign-sequence screen', 'Use the host-competitive reference panel available for this assembly.');
-    entry.declared = check('A spike-in was intentionally added');
-    entry.bedCheck = check('Include custom BED regions', 'Optional. Chromatin reports also support BED uploads in the browser.');
+    entry.myco = screenCheck('Mycoplasma screen');
+    entry.spike = screenCheck('Spike-in / foreign-sequence screen');
+    entry.declared = check('Intentional spike-in');
+    entry.bedCheck = check('Include custom BED regions');
     entry.bed = node('input', { type: 'file' }); // Keep .bed folders navigable in Safari.
     entry.bedLabel = node('input', { value: 'Uploaded regions', maxlength: '80', pattern: '[A-Za-z0-9 _().-]{1,80}' });
     entry.bedMode = select([['auto', 'Auto'], ['reference_point', 'Reference point'], ['region', 'Region (scaled)']], 'auto');

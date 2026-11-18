@@ -14,10 +14,6 @@ def resolve_parameters(regions,params=None):
     resolved['mode']=('reference_point' if all(r['end']-r['start']==1 for r in regions) else 'region') if requested=='auto' else requested
     return resolved
 
-def mode_description(params):
-    return 'Reference point (interval midpoint)' if params['mode']=='reference_point' else 'Region (scaled body)'
-
-
 def parse_bed(text,sizes,primary):
     rows=[];seen=set();skipped=duplicates=renamed_rows=0;unknown=[];renamed={}
     for number,line in enumerate(text.splitlines(),1):
@@ -148,9 +144,7 @@ def report_html(out,sample,reference,sizes,primary,scope_records,scopes,sample_c
             f.write('scope\tbin\tmean_cpm\tsem_across_regions\tregions_in_bin\n')
             for scope,p in profiles.items():
                 for i,(mean,sem,n) in enumerate(zip(p['mean'],p['sem'],p['regions_per_bin'])):f.write(f'{scope}\t{i}\t{mean if mean is not None else "NA"}\t{sem if sem is not None else "NA"}\t{n}\n')
-        exclusion=f" · {len(info['excluded_unknown_contigs'])} regions excluded on absent contigs: "+', '.join(sorted({r['chrom'] for r in info['excluded_unknown_contigs']})) if info['excluded_unknown_contigs'] else ''
-        if info['skipped_nonprimary']:exclusion+=f" · {info['skipped_nonprimary']} non-primary regions excluded"
         note=result['region_origin'].get('interpretation','')
         tip=f" <span class='metric-tip info-icon' tabindex='0' data-tip='{html.escape(note,quote=True)}'>?</span>" if note else ''
-        initial=f"<p class='muted'>{html.escape(result['label'])} · {info['retained_regions']:,} regions · {mode_description(params)} · {reference}{html.escape(exclusion)}{tip}</p><img class='custom-static' src='assets/{plot.name}' alt='Configured custom region metaplot'><p><a href='assets/{bedasset.name}'>BED</a> · <a href='../qc/custom_regions/{sample}.profile.tsv'>Profile data</a> · <a href='assets/{plot.with_suffix('.pdf').name}'>PDF</a></p>"
+        initial=f"<p class='muted'>{html.escape(result['label'])}{tip}</p><img class='custom-static' src='assets/{plot.name}' alt='Configured custom region metaplot'><p><a href='assets/{bedasset.name}'>BED</a> · <a href='../qc/custom_regions/{sample}.profile.tsv'>Profile data</a> · <a href='assets/{plot.with_suffix('.pdf').name}'>PDF</a></p>"
     return render_section(payload,initial,requested_mode,bed_name)
