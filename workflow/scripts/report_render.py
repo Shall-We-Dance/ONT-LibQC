@@ -318,8 +318,13 @@ def render_sample_report(sample, cfg, out, report_params, prior_provenance, anno
                                                    gene_profile_assets[scope_id].name if scope_id in gene_profile_assets else None,
                                                    full_library_assets=full_library_assets,
                                                    mitochondrial_html=""))
+    rna_summary = None
+    if metric['assay'] in {'rnaseq', 'clip'}:
+        rna_summary_path = out / "qc/rna" / sample / "summary.json"
+        if rna_summary_path.exists():
+            rna_summary = json.loads(rna_summary_path.read_text())
     from report_profiles import render_profiles_card
-    profiles_html=render_profiles_card(sample, scopes, profile_sections, out/'reports/assets', out/'qc/gene_profile')
+    profiles_html=render_profiles_card(sample, scopes, profile_sections, out/'reports/assets', out/'qc/gene_profile', rna_summary=rna_summary)
     pairtools_html = ""
     if metric["assay"] == "microc":
         from microc_pairtools import report_html as pairtools_report
@@ -371,12 +376,8 @@ def render_sample_report(sample, cfg, out, report_params, prior_provenance, anno
     from custom_regions import report_html as custom_region_report
     custom_html=custom_region_report(out,sample,report_assembly,report_chrom_sizes,report_primary,scope_records,scopes,cfg['samples'][sample],Path(__file__).resolve().parents[2],report_mapq) if metric['assay']=='chromatin' else ""
     rna_html = ""
-    rna_summary = None
     if metric['assay'] in {'rnaseq', 'clip'}:
         from rna_report import render_rna_section
-        rna_summary_path = out / "qc/rna" / sample / "summary.json"
-        if rna_summary_path.exists():
-            rna_summary = json.loads(rna_summary_path.read_text())
         rna_html = render_rna_section(out / "qc/rna" / sample / "summary.json", f"../qc/rna/{sample}",
                                       scope_labels={s['scope_id']: s.get('scope_name', s['scope_id']) for s in scopes})
     screen_html = rna_screening_html(scopes) if rna_html else ""

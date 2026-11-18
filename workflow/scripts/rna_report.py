@@ -230,41 +230,28 @@ def render_motifs(motif):
     return ''.join(parts)
 
 
-def rna_scope_overview(scopes, sublibraries, labels, colors, prefix):
-    """Compare each library using its own unit and matched-base denominators."""
-    parts = ['<div class="rna-comparison"><div>']
-    for heading, field, denom, categories in [
-        ('RNA regions', 'region_bases', 'region_denominator_bases', REGION_LABELS),
-        ('RNA family', 'family_counts', 'units', {name: name for name in FAMILIES}),
-    ]:
-        parts.append('<section class="rna-composition-card"><h3>' + heading + '</h3>')
-        # Keep every column readable in the PDF, even for large multiplexes.
-        for start in range(0, len(sublibraries), 4):
-            group = sublibraries[start:start + 4]
-            parts.append('<div class="rna-comparison-scroll" tabindex="0"><table><thead><tr><th scope="col">Category</th>')
+def rna_family_comparison(scopes, sublibraries, labels, colors):
+    parts = ['<details class="rna-composition-card"><summary>RNA family distribution</summary>']
+    # Keep every column readable in the PDF, even for large multiplexes.
+    for start in range(0, len(sublibraries), 4):
+        group = sublibraries[start:start + 4]
+        parts.append('<div class="rna-comparison-scroll" tabindex="0"><table><thead><tr><th scope="col">Category</th>')
+        for scope in group:
+            parts.append(f'<th scope="col"><i class="rna-key" style="background:{colors[scope]}"></i>{esc(labels[scope])}</th>')
+        parts.append('</tr></thead><tbody>')
+        for name in FAMILIES:
+            parts.append('<tr><th scope="row">' + esc(name) + '</th>')
             for scope in group:
-                parts.append(f'<th scope="col"><i class="rna-key" style="background:{colors[scope]}"></i>{esc(labels[scope])}</th>')
-            parts.append('</tr></thead><tbody>')
-            for category, name in categories.items():
-                parts.append('<tr><th scope="row">' + esc(name) + '</th>')
-                for scope in group:
-                    metrics = scopes[scope]
-                    total = metrics[denom]
-                    count = metrics[field].get(category, 0)
-                    rate = count / total if total else None
-                    bar = '' if rate is None else f'<i style="width:{rate:.6%};background:{colors[scope]}"></i>'
-                    value = '—' if rate is None else percent(rate)
-                    parts.append(f'<td title="{count:,} / {total:,}">{value}<span class="rna-comparison-track">{bar}</span></td>')
-                parts.append('</tr>')
-            parts.append('</tbody></table></div>')
-        parts.append('<p class="muted">' + ('Share of matched bases.' if field == 'region_bases' else 'Share of recovered units.') + '</p></section>')
-    parts.append('</div><section class="rna-transcript-panels"><h3>Transcript metaplots</h3>')
-    for scope in sublibraries:
-        target = esc(prefix + '/' + scopes[scope]['plots']['profiles'])
-        label = esc(labels[scope])
-        parts.append(f'<figure class="plot-card"><figcaption><i class="rna-key" style="background:{colors[scope]}"></i>{label}</figcaption>'
-                     f'<a href="{target}" target="_blank" rel="noopener"><img src="{target}" alt="{label} transcript coverage"></a></figure>')
-    return ''.join(parts) + '</section></div>'
+                metrics = scopes.get(scope, {})
+                total = metrics.get('units')
+                count = metrics.get('family_counts', {}).get(name, 0)
+                rate = count / total if total else None
+                bar = '' if rate is None else f'<i style="width:{rate:.6%};background:{colors[scope]}"></i>'
+                value = '—' if rate is None else percent(rate)
+                parts.append(f'<td title="{number(count)} / {number(total)}">{value}<span class="rna-comparison-track">{bar}</span></td>')
+            parts.append('</tr>')
+        parts.append('</tbody></table></div>')
+    return ''.join(parts) + '<p class="muted">Share of recovered units.</p></details>'
 
 
 def rna_scope_card(scope, label, count, color, content):
@@ -311,9 +298,6 @@ def render_rna_section(summary_path, relative_prefix=None, scope_labels=None):
     colors = {scope: scope_color(scope, i) for i, scope in enumerate(s for s in order if s != 'total')}
     sublibraries = [scope for scope in colors if scope in scopes]
     labels = {scope: scope_labels.get(scope) or scope for scope in sublibraries}
-    if sublibraries:
-        parts.append('<style>' + Path(__file__).with_name('rna_comparison.css').read_text() + '</style>')
-        parts.append(rna_scope_overview(scopes, sublibraries, labels, colors, prefix))
     for scope in [*sublibraries, 'total']:
         metrics = scopes[scope]
         label = labels.get(scope) or scope_label(scope)

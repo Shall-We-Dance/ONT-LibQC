@@ -78,9 +78,7 @@ def replace_ranges(text, replacements):
     return text
 
 
-def refresh_page(root, sample):
-    page = root/'samples'/f'{sample}.html'
-    text = page.read_text()
+def refresh_profile_layout(root, sample, text):
     parsed = Elements(text)
     sections = [n for n in parsed.elements if n['attrs'].get('id') == 'profiles']
     if len(sections) != 1: raise ValueError('Expected one profiles section: '+sample)
@@ -90,6 +88,8 @@ def refresh_page(root, sample):
     ids = [scope.get('scope_id') for scope in scopes]
     if any(not isinstance(sid, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', sid) for sid in ids) or len(set(ids)) != len(ids):
         raise ValueError('Invalid retained scope identifiers')
+    rna_path = root/'data/rna'/sample/'summary.json'
+    rna = json.loads(rna_path.read_text()) if metric.get('assay') in {'rnaseq', 'clip'} and rna_path.is_file() else None
     scope_html = {}
     for node in parsed.elements:
         if 'profile-scope' not in node['attrs'].get('class', '').split() or not parsed.within(node, section): continue
@@ -99,10 +99,17 @@ def refresh_page(root, sample):
             if ancestor['attrs'].get('data-scope'): sid = ancestor['attrs']['data-scope']; break
             if 'pooled-profile' in ancestor['attrs'].get('class', '').split(): sid = 'total'; break
             ancestor = ancestor['parent']
+        if sid is None and node['parent'] is section:
+            # Legacy reports put every scope directly under the profiles heading.
+            images = [img['attrs'].get('src', '') for img in parsed.elements
+                      if img['tag'] == 'img' and parsed.within(img, node)]
+            found = [scope for scope in ids if any(Path(src).name.startswith(f'{sample}.{scope}.') for src in images)]
+            if len(found) == 1:
+                sid = found[0]
         if sid is None or sid in scope_html: raise ValueError('Cannot identify historical profile scope: '+sample)
         scope_html[sid] = parsed.fragment(node)
     if set(scope_html) != {s['scope_id'] for s in scopes}: raise ValueError('Retained profile scopes do not match metrics: '+sample)
-    if len(scopes) == 1:
+    if len(scopes) == 1 and rna is None:
         # Single-library figures are already retained verbatim. Older reports
         # embed them inside Library quality; do not add a second card frame.
         new = parsed.fragment(section)
@@ -114,9 +121,27 @@ def refresh_page(root, sample):
                    + scope_html['total'] + '</div>')
     else:
         new = render_profiles_card(sample, scopes, [scope_html[s['scope_id']] for s in scopes],
-                                   root/'assets', root/'data/gene_profile', '../assets/')
+                                   root/'assets', root/'data/gene_profile', '../assets/',
+                                   rna_summary=rna, rna_prefix='../data/rna/'+sample)
     replacements = [(section, new)]
-    page.write_text(refresh_presentation(replace_ranges(text, replacements)))
+    if rna is not None:
+        parent = section['parent']
+        if parent and parent['attrs'].get('id') == 'library-shape':
+            # Promote the old embedded profiles to their own report section.
+            replacements = [(parent, parsed.fragment(parent).replace(parsed.fragment(section), '', 1) + new)]
+        for node in parsed.elements:
+            parent = node['parent']
+            if parent and parent['attrs'].get('id') == 'rna-qc':
+                if 'rna-comparison' in node['attrs'].get('class', '').split():
+                    replacements.append((node, ''))
+                elif node['tag'] == 'style' and '.rna-comparison{' in parsed.fragment(node):
+                    replacements.append((node, ''))
+    return replace_ranges(text, replacements)
+
+
+def refresh_page(root, sample):
+    page = root/'samples'/f'{sample}.html'
+    page.write_text(refresh_presentation(refresh_profile_layout(root, sample, page.read_text())))
 
 
 def refresh_presentation(text):
