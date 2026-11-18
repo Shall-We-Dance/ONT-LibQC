@@ -272,6 +272,9 @@ def refresh(root, apply=False, expected_manifest_sha256=None):
     if data.get('schema_version') != 1 or not isinstance(samples, list) or not samples or any(not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', s) for s in samples):
         raise ValueError('Unrecognized report manifest')
     validate(root)
+    sample_pages = {p.stem for p in (root/'samples').glob('*.html')}
+    if len(set(samples)) != len(samples) or not set(samples) <= sample_pages:
+        raise ValueError('Manifest samples must identify distinct retained report pages')
     with (root.parent/('.'+root.name+'.refresh.lock')).open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         before = hashes(root)
@@ -281,7 +284,8 @@ def refresh(root, apply=False, expected_manifest_sha256=None):
             for sample in samples: refresh_page(stage, sample)
             remove_retired_cohort(stage)
             audit = validate(stage)
-            if audit['sample_reports'] != len(samples): raise ValueError('Sample count changed')
+            if {p.stem for p in (stage/'samples').glob('*.html')} != sample_pages:
+                raise ValueError('Retained sample pages changed during refresh')
             # Updating presentation cannot modify scientific inputs or provenance.
             for name, digest in before.items():
                 protected = name.startswith('data/') or (name != 'manifest.json' and Path(name).suffix in {'.tsv', '.csv', '.json', '.gz'})

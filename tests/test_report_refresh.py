@@ -49,6 +49,18 @@ class RefreshTests(unittest.TestCase):
             self.assertEqual(updated.count("<small class='metric-note'>Low depth</small>"), 2)
             self.assertIn('>0.05</span>', updated)
 
+    def test_archived_page_outside_the_manifest_keeps_its_original_version(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)/'report'
+            self.fixture(root)
+            archival_page = root/'samples/archived.html'
+            archival_page.write_text('<html><body>Prior report</body></html>')
+            refresh(root, True)
+            self.assertEqual(archival_page.read_text(), '<html><body>Prior report</body></html>')
+            manifest = json.loads((root/'manifest.json').read_text())
+            self.assertEqual(manifest['samples'], ['demo'])
+            self.assertEqual(manifest['validation']['sample_reports'], 2)
+
     def test_preview_publish_archive_and_exact_rollback(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp)/'report';self.fixture(root);before=hashes(root)
