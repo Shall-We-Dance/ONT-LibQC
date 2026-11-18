@@ -87,10 +87,25 @@ with tempfile.TemporaryDirectory() as directory:
                             assert report.locator('.scope-name').first.inner_text() == 'Control ' + engine
                             assert 'Control ' + engine in report.locator('.table-scroll th').first.inner_text()
                             viewer = context.new_page()
+                            # A bookmarked report must work even if the browser blocks the tab handoff.
+                            viewer.add_init_script("Object.defineProperty(window, 'sessionStorage', {get() { throw new Error('Unavailable'); }});")
                             viewer.goto(report.url)
                             assert viewer.locator('.scope-name').first.inner_text() == 'Control ' + engine
                             viewer.get_by_role('link', name='Edit names').click()
-                            viewer.get_by_text('To edit names, open this report from your private analysis page.').wait_for()
+                            link_input = viewer.get_by_role('textbox', name='Private analysis link')
+                            assert viewer.get_by_role('button', name='Save names').is_hidden()
+                            link_input.fill(report.url)
+                            viewer.get_by_role('button', name='Unlock editing').click()
+                            viewer.get_by_text('Use the private link from Copy link on your analysis page.').wait_for()
+                            link_input.fill(page.url)
+                            viewer.get_by_role('button', name='Unlock editing').click()
+                            restored = viewer.get_by_role('textbox', name='Name for lib01')
+                            assert restored.input_value() == 'Control ' + engine
+                            restored.fill('Repeat ' + engine)
+                            viewer.get_by_role('button', name='Save names').click()
+                            viewer.wait_for_url('**/r/*')
+                            viewer.reload()
+                            assert viewer.locator('.scope-name').first.inner_text() == 'Repeat ' + engine
                             viewer.close()
                         else:
                             wait_js(report,"Array.from(document.images).every(img => img.complete && img.naturalWidth > 0)")

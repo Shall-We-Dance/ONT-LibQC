@@ -10,6 +10,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from ont_portal.app import create_app
 from ont_portal.settings import Settings
+from ont_portal.short_links import link_key
 from ont_portal.store import token_for
 from ont_portal.worker import publish_report
 
@@ -101,6 +102,28 @@ class NameTests(unittest.TestCase):
             self.assertIn('sample\tlib01\tControl\t', mapping)
             self.assertNotIn('Treatment', z.read('report/samples/sample.html').decode())
             self.assertNotIn('Control', z.read('report/samples/02.other.html').decode())
+
+    def test_unlock_from_job_batch_selection_and_legacy_analysis_links(self):
+        other = '2' * 32
+        with self.store.connect() as db:
+            db.execute('UPDATE jobs SET batch_id=? WHERE id IN (?,?)', ('test-batch', self.jid, other))
+        entries = [{'id': jid, 'token': token_for(self.cfg.secret, jid)} for jid in (self.jid, other)]
+        compact = self.client.post('/api/links/compact', json={'jobs': entries}).json()
+        legacy = [entry['id'] + ':' + entry['token'] for entry in entries]
+        links = [compact['jobs'][0]['private_link'], compact['private_link'],
+                 '/b/#' + link_key(self.cfg.secret, 'batch', 'test-batch'),
+                 '/jobs/' + self.jid + '#' + entries[0]['token'], '/#jobs=' + ','.join(reversed(legacy))]
+        snapshot = self.client.get(self.api, headers=self.auth).json()
+        for link in links:
+            with self.subTest(path=link.split('#')[0]):
+                result = self.client.post(self.api + '/unlock', json={'link': link})
+                self.assertEqual(result.status_code, 200)
+                self.assertEqual(result.json(), snapshot | {'name_edit_token': self.job['name_edit_token']})
+        for link in (compact['jobs'][1]['private_link'], '/#jobs=' + legacy[1], self.job['report_url'],
+                     '/j/#' + self.job['report_url'].split('/')[-1], '/b/', None):
+            self.assertEqual(self.client.post(self.api + '/unlock', json={'link': link}).status_code, 403)
+        self.store.update(self.jid, expires=0)
+        self.assertEqual(self.client.post(self.api + '/unlock', json={'link': links[0]}).status_code, 404)
 
     def test_permissions_validation_and_retention(self):
         self.assertEqual(self.save({'lib01':'A'}, headers={}).status_code, 403)

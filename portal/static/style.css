@@ -3282,6 +3282,8 @@ button.structure-block:hover {
 }
 .names-editor h1 { margin: 20px 0 4px }
 .names-editor [role=status] { overflow-wrap: anywhere }
+.names-unlock-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px }
+.names-unlock-controls input { flex: 1 1 18rem; min-width: 0 }
 .names-scroll {
   margin: 16px 0;
   overflow-x: auto;

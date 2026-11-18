@@ -11,6 +11,13 @@
   <a id="back" href="/">← Back to report</a>
   <h1>Sublibrary names</h1>
   <p id="editor-status" role="status">Loading…</p>
+  <form id="unlock-form" hidden>
+    <label for="analysis-link">Private analysis link</label>
+    <div class="names-unlock-controls">
+      <input id="analysis-link" type="text" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+      <button type="submit" class="primary">Unlock editing</button>
+    </div>
+  </form>
   <form id="names-form" hidden>
     <div class="names-scroll"><table><thead><tr><th scope="col">Library</th><th scope="col">Name</th><th scope="col">i5</th><th scope="col">i7</th></tr></thead><tbody></tbody></table></div>
     <button type="submit" class="primary">Save names</button>
