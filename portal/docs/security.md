@@ -30,7 +30,7 @@ FASTQ and gzip validation runs inside the isolated container, checks four-line r
 
 New tasks and batches use a 128-bit capability encoded as a 22-character URL fragment. The browser exchanges it through a protected POST body for the existing task authorization; only a SHA-256 lookup hash is stored in the database. The capability never enters HTTP paths, query strings or referrers. Old task and batch links keep their original format and authorization behavior. Task authorization is sent in an Authorization header. The application does not set or accept authentication cookies and does not use localStorage or sessionStorage.
 
-An authenticated task response provides read-only report and download links lasting at most one hour. Authorized report HTML renews these grants on its local figure and download links. Grants are scoped to one job and cannot access task metadata, cancel jobs or delete reports; deletion and retention are checked on every request. Missing or expired report grants direct document navigations to instructions for reopening the complete private task link.
+An authenticated task response provides report and download links bounded by report expiry. A sample report link also permits editing its sublibrary display names. Authorized report HTML renews these grants on its local figure and download links. Grants are scoped to one job and cannot access task metadata, cancel jobs or delete reports; deletion and retention are checked on every request. Missing or expired report grants direct document navigations to instructions for reopening the complete private task link.
 
 These grants appear in report asset URLs; access logs are disabled and any added proxy must omit query strings from its logs. No-referrer and no-store headers also apply. Downloaded ZIP files retain ordinary portable relative links.
 
@@ -110,6 +110,8 @@ docker compose -f /srv/ont-qc/runtime/compose.yaml up -d --force-recreate web ed
 systemctl --user restart ont-qc-portal-worker.service
 ```
 
+On a four-vCPU host, set `shared_cpus: [1, 2, 3]` and `max_concurrent_jobs: 3` to reserve CPU 0 for the service. Each workflow can use all three CPUs. Each running job has one dedicated CPU. The dispatcher shares the remaining CPUs with active containers and reclaims them as new jobs start. The worker queues jobs beyond the pool size and checks memory and disk before admission. With an empty pool, `cores` sets the quota per job.
+
 CPU, memory, process count and per-file size are hard container limits. Aggregate work-directory size is checked periodically; use filesystem/project quotas as well if your deployment requires a strict aggregate disk limit.
 
 Rate limits are not a substitute for institution-wide traffic filtering or DDoS protection. A submission code can restrict expensive analyses to invited users. Keep one Uvicorn process and one dispatcher per runtime; the in-memory HTTP concurrency and request-rate limits are per process. IPv6 application quotas use a /64 network to reduce address-rotation bypass. The edge also enforces global request and connection bounds before forwarding to the application. The hardened web container limits open file descriptors to 1,024 to bound connection overhead.
@@ -128,7 +130,7 @@ Security design references: [OWASP denial of service](https://cheatsheetseries.o
 
 The public portal must not receive human patient data (including de-identified patient data) or other sensitive or identifiable personal data. This applies to FASTQ files, custom BED files, filenames, and sample names. Users must actively check the separate data acknowledgment for each submission. Both `POST /api/jobs` and every file entry in `POST /api/batches` require the JSON boolean `data_policy_acknowledged: true`, in addition to `consent: true`. Missing, false, or non-boolean acknowledgments are rejected before job creation. Older clients must be updated. The acknowledgment is a user declaration; it does not inspect or certify the uploaded data.
 
-The public example-input manifest includes download checksums. Publication checks cover file types, sizes, index sets, report links and paths. HMAC authenticates private task and read-only report links and pseudonymizes rate-limit identifiers.
+The public example-input manifest includes download checksums. Publication checks cover file types, sizes, index sets, report links and paths. HMAC authenticates private task and report links and pseudonymizes rate-limit identifiers.
 
 ## Public service statistics
 

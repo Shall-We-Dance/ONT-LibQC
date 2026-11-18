@@ -66,7 +66,7 @@ def access_services(s, store):
         return '/r/'+key
 
 
-    def safe_report(root,file,links=None,download_name=None):
+    def safe_report(root,file,links=None,download_name=None,page_transform=None):
         if '\\' in file or any(part in {'.','..'} or part.startswith('.') for part in file.split('/')):
             raise HTTPException(404,'File not found')
         root=root.resolve(); path=root/file
@@ -91,7 +91,7 @@ def access_services(s, store):
                 target=urlunsplit(('', '', links(file_path), urlencode(query), parts.fragment))
                 return attr+'='+quote+html.escape(target,quote=True)+quote
             body=re.sub(r"\b(href|src)\s*=\s*(['\"])(.*?)\2",local_link,online_report_links(path.read_text(),file),flags=re.I)
-            return HTMLResponse(body)
+            return HTMLResponse(page_transform(body) if page_transform else body)
         return FileResponse(path,media_type=media)
 
 

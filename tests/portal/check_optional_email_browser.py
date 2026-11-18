@@ -80,7 +80,6 @@ with tempfile.TemporaryDirectory() as directory:
                         page.get_by_role('button',name='Start analysis').click()
                         wait_js(page,f'tasks.length === {amount} && !submitting')
                         assert page.evaluate("tasks.every(t => t.job.status === 'queued' && t.job.mail_status === 'disabled' && !t.failure)")
-                        assert 'No email will be sent.' in page.locator('#tasks-description').inner_text()
                         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
                         job_ids=page.evaluate('tasks.map(t => t.id)');return_link=page.url
                         # Stub clipboard deterministically on both browser engines.
@@ -110,11 +109,10 @@ with tempfile.TemporaryDirectory() as directory:
                         context.on('response',lambda response:bad.append(response.status) if response.status>=400 else None)
                         page=context.new_page();page.goto(return_link)
                         wait_js(page,f"tasks.length === {amount} && tasks.every(t => t.job?.status === 'succeeded')")
-                        assert 'No email will be sent.' in page.locator('#tasks-description').inner_text()
                         images={}
                         for sample in ['HL120']+(['HL240'] if amount==2 else []):
                             with page.expect_popup() as opened:page.get_by_role('link',name='Open '+sample+' report').click()
-                            report=opened.value;report.wait_for_load_state('load')
+                            report=opened.value;report.wait_for_url('**/r/*');report.wait_for_load_state('load')
                             wait_js(report,'Array.from(document.images).every(img => img.complete && img.naturalWidth > 0)')
                             images[sample]=report.locator('img').count();report.close()
                         with page.expect_download() as pending:page.get_by_role('link',name='Download report ZIP').first.click()

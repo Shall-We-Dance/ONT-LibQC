@@ -16,7 +16,7 @@ from spikein_auto import scoped_summary as auto_spikein_summary
 from library_structure import normalize_structure, umi_lengths, handles, extract_umis, adapter_families, POSITIONS as UMI_POSITIONS
 from report_mitochondrial import coverage_html as mitochondrial_coverage_html, integrate_karyotype
 from report_provenance import capture_analysis
-from library_sequences import rc, P5, TRU_R1, FAMILIES, open_text, fastq_records, edit_distance
+from library_sequences import microc_leg_span, rc, P5, TRU_R1, FAMILIES, open_text, fastq_records, edit_distance
 
 def approximate_matches(seq, pattern, error_fraction=0.20):
     """Return non-overlapping local matches using seed votes plus edit-distance correction."""
@@ -599,8 +599,8 @@ def cmd_prepare(args):
             assignment = assignment_by_unit[unit["unit_id"]]
             if not unit["is_adapter_dimer"]:
                 insert_out.write(f"@{unit['unit_id']}\n{unit['insert_seq']}\n+\n{unit['insert_qual']}\n")
-            if args.assay == "microc" and not unit["is_adapter_dimer"] and unit["insert_length"] >= 50:
-                leg_len = min(args.leg_length, unit["insert_length"] // 2)
+            leg_len = microc_leg_span(unit["insert_length"], args.leg_length) if args.assay == "microc" else 0
+            if leg_len and not unit["is_adapter_dimer"]:
                 left_seq, left_q = unit["insert_seq"][:leg_len], unit["insert_qual"][:leg_len]
                 right_seq, right_q = rc(unit["insert_seq"][-leg_len:]), unit["insert_qual"][-leg_len:][::-1]
                 leg_out.write(f"@{unit['unit_id']}/1\n{left_seq}\n+\n{left_q}\n@{unit['unit_id']}/2\n{right_seq}\n+\n{right_q}\n")

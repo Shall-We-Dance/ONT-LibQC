@@ -2,7 +2,7 @@ import datetime
 from pathlib import Path
 import sys,tempfile,unittest
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'workflow/scripts'))
-from report_provenance import capture_analysis, analysis_record, analysis_label
+from report_provenance import RELEASE_VERSION, capture_analysis, analysis_record, analysis_label
 
 class AnalysisProvenanceTests(unittest.TestCase):
     def test_build_is_reproducible_across_locations_but_changes_with_code(self):
@@ -14,10 +14,17 @@ class AnalysisProvenanceTests(unittest.TestCase):
             first=capture_analysis(a,stamp);second=capture_analysis(b,stamp)
             self.assertEqual(first,second)
             (Path(b)/'workflow/a.py').write_text('x=2\n')
-            self.assertEqual(first['pipeline_version'],'v1.1.1')
-            self.assertEqual(capture_analysis(b,stamp)['pipeline_version'],'v1.1.1')
+            self.assertEqual(first['pipeline_version'],RELEASE_VERSION)
+            self.assertEqual(capture_analysis(b,stamp)['pipeline_version'],RELEASE_VERSION)
             self.assertNotEqual(first['pipeline_sha256'],capture_analysis(b,stamp)['pipeline_sha256'])
             self.assertNotIn(a,str(first))
+
+    def test_portal_footers_show_current_release(self):
+        static = Path(__file__).resolve().parents[1] / 'portal/static'
+        for name in ('index.html', 'help.html', 'license.html'):
+            with self.subTest(page=name):
+                footer = (static / name).read_text().split('<footer>', 1)[1].split('</footer>', 1)[0]
+                self.assertIn(f'<span class="footer-version">{RELEASE_VERSION}</span>', footer)
 
     def test_saved_analysis_survives_later_report_generation(self):
         old={'pipeline_version':'v1.0.0','analysis_completed_utc':'2026-01-01T23:00:00-05:00'}

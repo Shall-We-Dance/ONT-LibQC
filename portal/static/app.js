@@ -66,12 +66,12 @@ function requiredChoice(label, input) {
   const update = () => { field.classList.toggle('needs-choice', !input.value); hint.textContent = input.value ? 'Selected for this file.' : 'Please choose for this file.'; };
   input.addEventListener('change', update); update(); field.append(hint); return field;
 }
-function check(label, description = '') {
+function check(label) {
   const input = node('input', { type: 'checkbox' });
-  return { input, wrapper: node('label', { class: 'check' }, input, node('span', {}, label, description ? node('em', {}, description) : null)) };
+  return { input, wrapper: node('label', { class: 'check' }, input, node('span', {}, label)) };
 }
-function screenCheck(label, description) {
-  const field = check(label, description);
+function screenCheck(label) {
+  const field = check(label);
   field.preferences = { dna: true, rna: true };
   field.assayGroup = 'dna';
   field.input.addEventListener('change', () => { field.preferences[field.assayGroup] = field.input.checked; });
@@ -104,9 +104,8 @@ function updateAssay(entry) {
     return;
   }
   const assay = entry.assay.value, rna = isRnaAssay(assay);
-  const betaNote = 'Beta version — still being tested.';
-  entry.availabilityNote.textContent = rna ? betaNote : reference?.availability_note || '';
-  entry.availabilityNote.hidden = !rna && (assay !== 'microc' || !reference?.availability_note);
+  entry.availabilityNote.textContent = assay === 'microc' ? reference?.availability_note || '' : '';
+  entry.availabilityNote.hidden = !entry.availabilityNote.textContent;
   entry.mapper.disabled = !assay || !entry.ref.value;
   const defaultMapper = rna ? 'STARlong' : assay === 'microc' ? (r.microc_mapper || 'bwa-mem2').toUpperCase() : 'Bowtie2';
   entry.mapper.replaceChildren(node('option', { value: 'auto' }, !assay ? 'Choose a library assay first' : `Default · ${defaultMapper}`),
@@ -177,10 +176,10 @@ function addFiles(incoming) {
     const available = catalog.references.filter(r => r.ready || r.rna_ready);
     entry.ref = select([['', 'Choose reference genome…'], ...available.map(r => [r.id, r.label])], '');
     entry.mapper = select([['auto', 'Default · Bowtie2']], 'auto');
-    entry.myco = screenCheck('Mycoplasma screen', 'An opportunistic screen; negative results do not exclude contamination.');
-    entry.spike = screenCheck('Spike-in / foreign-sequence screen', 'Use the host-competitive reference panel available for this assembly.');
-    entry.declared = check('A spike-in was intentionally added');
-    entry.bedCheck = check('Include custom BED regions', 'Optional. Chromatin reports also support BED uploads in the browser.');
+    entry.myco = screenCheck('Mycoplasma screen');
+    entry.spike = screenCheck('Spike-in / foreign-sequence screen');
+    entry.declared = check('Intentional spike-in');
+    entry.bedCheck = check('Include custom BED regions');
     entry.bed = node('input', { type: 'file' }); // Keep .bed folders navigable in Safari.
     entry.bedLabel = node('input', { value: 'Uploaded regions', maxlength: '80', pattern: '[A-Za-z0-9 _().-]{1,80}' });
     entry.bedMode = select([['auto', 'Auto'], ['reference_point', 'Reference point'], ['region', 'Region (scaled)']], 'auto');
@@ -378,7 +377,8 @@ async function binaryUpload(task, file, endpoint, onprogress) {
 const labels = { created: 'Waiting for upload', uploading: 'Uploading', uploaded: 'Upload complete', queued: 'Queued', running: 'Analyzing', succeeded: 'Report ready', failed: 'Analysis failed', cancelling: 'Cancelling', cancelled: 'Cancelled', expired: 'Expired', deleted: 'Deleted', deleting: 'Deleting', waiting: 'Waiting to upload', loading: 'Loading' };
 async function followReportLink(event, task, field) {
   if (event.type === 'auxclick' && event.button !== 1) return;
-  if (task.job?.report_access_expires > Date.now() / 1000 + 30) return;
+  const fresh = task.job?.report_access_expires > Date.now() / 1000 + 30;
+  if (fresh) return;
   event.preventDefault();
   // A suspended tab may have outlived its read-only links. Renew using the private
   // task credential, reserving a report tab during the click to avoid popup blocks.
@@ -387,36 +387,25 @@ async function followReportLink(event, task, field) {
   if (popup) popup.opener = null;
   try {
     if (newTab && !popup) throw new Error('Allow this site to open a report tab, then try again.');
-    task.job = await api('/api/jobs/' + task.id, 'GET', undefined, task.token);
+    if (!fresh) task.job = await api('/api/jobs/' + task.id, 'GET', undefined, task.token);
     task.lastChecked = Date.now(); task.fetchError = null;
     const target = task.job[field];
     if (!target) throw new Error('This report is no longer available. Check the task status below.');
-    (popup || window).location.assign(target);
+    (popup || window).location.replace(target);
   } catch (error) {
     if (popup) popup.close();
     task.fetchError = error.message;
   }
   renderTasks();
 }
-const { taskState, syncChildren, updateTaskView } = window.ONTTaskViews({
+const { syncChildren, updateTaskView } = window.ONTTaskViews({
   node, assayLabel, labels, getCatalog: () => catalog, followReportLink,
   privateLink, saveText, api, refreshTask, renderTasks
 });
 function renderTasks() {
   $('new-nav').removeAttribute('aria-current');
   const single = tasks.length === 1;
-  const unavailable = tasks.length > 0 && tasks.every(t => t.job?.status === 'expired');
   $('tasks-title').textContent = single ? 'Analysis' : 'Analyses';
-  const counts = new Map();
-  tasks.forEach(task => { const state = taskState(task); counts.set(state, (counts.get(state) || 0) + 1); });
-  const summaryLabels = { succeeded: 'ready', running: 'analyzing', queued: 'queued', uploading: 'uploading', waiting: 'waiting to upload', created: 'waiting to upload', uploaded: 'uploaded', failed: 'failed', cancelling: 'cancelling', cancelled: 'cancelled', expired: 'expired', deleted: 'deleted', deleting: 'deleting', loading: 'loading' };
-  const summary = [...counts].map(([state, count]) => count + ' ' + (summaryLabels[state] || state)).join(' · ');
-  if ($('tasks-summary').textContent !== summary) $('tasks-summary').textContent = summary;
-  $('tasks-summary').hidden = tasks.length < 2;
-  $('tasks-description').textContent = unavailable
-    ? 'Reports cannot be restored after deletion. The removal reason is shown below.'
-    : (tasks.length && tasks.every(t => t.job?.mail_status === 'disabled') ? 'No email will be sent. ' : '')
-      + (single ? 'Copy your private link to return to this analysis.' : 'Copy one private link to return to these analyses.');
   $('save-links').textContent = Date.now() < privateLinkCopiedUntil ? 'Link copied' : 'Copy link';
   $('page-loading').hidden = true; $('submission-view').hidden = true; $('tasks-view').hidden = false;
   syncChildren($('task-list'), tasks.map(updateTaskView));

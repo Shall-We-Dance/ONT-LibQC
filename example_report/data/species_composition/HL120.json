@@ -1,0 +1,73 @@
+{
+  "method": "competitive-microc-ends-v1",
+  "reference": "dm6",
+  "panel": [
+    "ARS_UCD2",
+    "hg38",
+    "mm39",
+    "dm6",
+    "ecoli",
+    "ce11",
+    "GRCz12ab",
+    "TAIR10",
+    "sacCer3"
+  ],
+  "rows": [
+    {
+      "scope": "Total inserts",
+      "n": 4749,
+      "counts": {
+        "dm6": 4713,
+        "GRCz12ab": 1,
+        "Ambiguous species": 20,
+        "No confident match": 15
+      },
+      "windows": {
+        "dm6": 3905
+      }
+    },
+    {
+      "scope": "Unassigned index",
+      "n": 71,
+      "counts": {
+        "dm6": 70,
+        "No confident match": 1
+      },
+      "windows": {
+        "dm6": 75
+      }
+    },
+    {
+      "scope": "lib01",
+      "n": 4678,
+      "counts": {
+        "dm6": 4643,
+        "GRCz12ab": 1,
+        "Ambiguous species": 20,
+        "No confident match": 14
+      },
+      "windows": {
+        "dm6": 3860
+      }
+    },
+    {
+      "scope": "Reads without a reconstructed insert",
+      "n": 266,
+      "counts": {
+        "No confident match": 258,
+        "dm6": 8
+      },
+      "windows": {
+        "dm6": 7
+      }
+    }
+  ],
+  "maximum_end_bp": 100,
+  "end_evidence": {
+    "one_end": 831,
+    "concordant": 3883,
+    "ambiguous": 18,
+    "neither": 15,
+    "discordant": 2
+  }
+}

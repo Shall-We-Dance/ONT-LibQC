@@ -8,9 +8,9 @@ import zipfile
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'workflow/scripts'))
 from report_refresh import refresh, rollback, build_archive, hashes
 from report_profiles import render_profiles_card
-from report_metrics import REPORT_CSS
+from report_metrics import COLLISION_ROWS, REPORT_CSS, scoped_table_html
 from report_export import add_pdf_export
-from report_refresh import refresh_presentation, Elements
+from report_refresh import refresh_collision_rows, refresh_presentation, Elements
 
 
 class RefreshTests(unittest.TestCase):
@@ -27,6 +27,39 @@ class RefreshTests(unittest.TestCase):
         card=render_profiles_card('demo',scopes,sections,root/'assets',root/'data/gene_profile','../assets/')
         (root/'samples/demo.html').write_text('<html><head><style>'+REPORT_CSS+'</style></head><body>'+card+'</body></html>')
         build_archive(root)
+
+    def test_collision_counts_and_low_depth_in_retained_report(self):
+        scopes = [dict(scope_name='Total library', collision_observed_pairs=5, collision_oe=10,
+                       collision_null_expected_pairs=0.5),
+                  dict(scope_id='lib01', collision_observed_pairs=4, collision_oe=80,
+                       collision_null_expected_pairs=0.05),
+                  dict(scope_id='lib02', collision_observed_pairs=0, collision_null_expected_pairs=0),
+                  dict(scope_id='lib03')]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root/'data/metrics').mkdir(parents=True)
+            (root/'data/metrics/demo.json').write_text(json.dumps(dict(scopes[0], sub_libraries=scopes[1:])))
+            old = scoped_table_html(scopes, ['collision_oe'], {})
+            updated = refresh_collision_rows(root, 'demo', old)
+            self.assertEqual(updated, scoped_table_html(scopes, COLLISION_ROWS, {}))
+            self.assertEqual(updated, refresh_collision_rows(root, 'demo', updated))
+            self.assertIn(">80</span></div><small class='metric-note'>Low depth</small>", updated)
+            self.assertIn(">Not estimable</span></div><small class='metric-note'>Low depth</small>", updated)
+            self.assertNotIn(">10</span></div><small class='metric-note'>", updated)
+            self.assertEqual(updated.count("<small class='metric-note'>Low depth</small>"), 2)
+            self.assertIn('>0.05</span>', updated)
+
+    def test_archived_page_outside_the_manifest_keeps_its_original_version(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)/'report'
+            self.fixture(root)
+            archival_page = root/'samples/archived.html'
+            archival_page.write_text('<html><body>Prior report</body></html>')
+            refresh(root, True)
+            self.assertEqual(archival_page.read_text(), '<html><body>Prior report</body></html>')
+            manifest = json.loads((root/'manifest.json').read_text())
+            self.assertEqual(manifest['samples'], ['demo'])
+            self.assertEqual(manifest['validation']['sample_reports'], 2)
 
     def test_preview_publish_archive_and_exact_rollback(self):
         with tempfile.TemporaryDirectory() as tmp:

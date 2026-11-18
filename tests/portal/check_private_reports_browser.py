@@ -19,6 +19,7 @@ from ont_portal.app import create_app
 from ont_portal.settings import Settings
 from ont_portal.store import token_for
 from ont_portal.worker import publish_report
+from test_sublibrary_names import write_report
 
 ROOT = Path(__file__).resolve().parents[2]
 OUTPUT = Path(sys.argv[1]) if len(sys.argv)>1 else Path('test-results/private-reports')
@@ -42,12 +43,14 @@ with tempfile.TemporaryDirectory() as directory:
         secret='local-browser-test-'*4,submission_key='',public_catalog={'references':[]},
         min_free_bytes=0,require_https=False,mail_enabled=False)
     app=create_app(config);now=time.time();jobs={}
-    for index,sample in enumerate(['HL120','HL240']):
+    synthetic = root/'multiplex'
+    write_report(synthetic)
+    for index,sample in enumerate(['HL120','HL240','sample']):
         job_id=str(index+1)*32;token=token_for(config.secret,job_id)
         with app.state.store.connect() as db:
             db.execute('INSERT INTO jobs (id,created,updated,status,email,filename,expected_bytes,options,client,expires) VALUES (?,?,?,?,?,?,?,?,?,?)',
                 (job_id,now,now,'succeeded','',sample+'.fastq',10,json.dumps({'sample':sample}),'test',now+7*86400))
-        publish_report(ROOT/'example_report',config.state/'reports'/job_id)
+        publish_report(synthetic if sample == 'sample' else ROOT/'example_report',config.state/'reports'/job_id)
         jobs[sample]=(job_id,token)
     server=uvicorn.Server(uvicorn.Config(app,log_level='error',access_log=False,limit_concurrency=256))
     thread=threading.Thread(target=server.run,kwargs={'sockets':[sock]},daemon=True);thread.start()
@@ -72,9 +75,39 @@ with tempfile.TemporaryDirectory() as directory:
                         assert '/r/' in report_link.get_attribute('href') and '?view=' not in report_link.get_attribute('href')
                         with page.expect_popup() as opened:report_link.click()
                         report=opened.value;report.wait_for_load_state('load')
-                        wait_js(report,"Array.from(document.images).every(img => img.complete && img.naturalWidth > 0)")
-                        images[sample]=report.locator('img').count()
-                        assert images[sample]>0
+                        report.wait_for_url('**/r/*')
+                        if sample == 'sample':
+                            report.set_viewport_size({'width': 390 if engine == 'webkit' else 1280, 'height': 850})
+                            edit = report.get_by_role('link', name='Edit names')
+                            assert edit.evaluate("a => getComputedStyle(a).backgroundColor") == 'rgb(42, 108, 189)'
+                            edit.click()
+                            name = report.get_by_role('textbox', name='Name for lib01')
+                            name.wait_for()
+                            assert report.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+                            name.fill('Control ' + engine)
+                            report.get_by_role('button', name='Save names').click()
+                            report.wait_for_url('**/r/*')
+                            report.reload()
+                            assert report.locator('.scope-name').first.inner_text() == 'Control ' + engine
+                            assert 'Control ' + engine in report.locator('.table-scroll th').first.inner_text()
+                            viewer = context.new_page()
+                            # A bookmarked report must work without browser storage.
+                            viewer.add_init_script("Object.defineProperty(window, 'sessionStorage', {get() { throw new Error('Unavailable'); }});")
+                            viewer.goto(report.url)
+                            assert viewer.locator('.scope-name').first.inner_text() == 'Control ' + engine
+                            viewer.get_by_role('link', name='Edit names').click()
+                            restored = viewer.get_by_role('textbox', name='Name for lib01')
+                            assert restored.input_value() == 'Control ' + engine
+                            restored.fill('Repeat ' + engine)
+                            viewer.get_by_role('button', name='Save names').click()
+                            viewer.wait_for_url('**/r/*')
+                            viewer.reload()
+                            assert viewer.locator('.scope-name').first.inner_text() == 'Repeat ' + engine
+                            viewer.close()
+                        else:
+                            wait_js(report,"Array.from(document.images).every(img => img.complete && img.naturalWidth > 0)")
+                            images[sample]=report.locator('img').count()
+                            assert images[sample]>0
                         assert token not in report.url
                         assert report.evaluate('window.opener === null')
                         report.close()

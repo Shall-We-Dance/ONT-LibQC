@@ -14,6 +14,8 @@ def call_color(call):
     return "#C23B3B"
 
 
+COLLISION_ROWS = ("collision_oe", "collision_observed_pairs", "collision_null_expected_pairs")
+
 METRIC_META = {
     "collision_contributing_molecules": ("Contributing ONT molecules", "Distinct original ONT molecules contributing eligible chromatin fragments; units from one molecule are dependent."),
     "biological_qc_call": ("Cis-ratio evidence", "Confidence-aware endpoint cis screen only; cannot establish complete Micro-C library success."),
@@ -77,7 +79,7 @@ METRIC_META = {
     "usable_fragment_rate": ("Usable fragment rate", "Usable chromatin fragments divided by mappable library units."),
     "mitochondrial_fraction": ("Mitochondrial fraction", "Mitochondrial / (configured primary nuclear + mitochondrial) MAPQ-pass alignments; excludes other contigs."),
     "collision_bin_size": ("Collision bin size", "Genomic bin size used for the primary collision statistic."),
-    "collision_oe": ("Collision O/E (depth normalized)", "Observed same-bin pairs / expected pairs under uniform sampling of configured nuclear bases. Expected value is depth independent; 1 is random background. Low-depth estimates remain noisy; reference, bin size and mappability still matter. Not target-specific enrichment."),
+    "collision_oe": ("Collision O/E (depth normalized)", "Observed same-bin pairs / expected pairs under uniform sampling of configured nuclear bases. The ratio has a baseline of 1. With fewer than 5 observed pairs, the ratio is sensitive to individual collisions."),
     "collision_fragments": ("Collision observations", "MAPQ-pass nuclear chromatin fragments used for concentration."),
     "collision_observed_pairs": ("Observed same-bin pairs", "Sum over bins of n_j choose 2. Rare/zero collision counts at shallow depth may be inconclusive."),
     "collision_null_expected_pairs": ("Expected same-bin pairs", "N choose 2 times the uniform-base pair probability, corrected for chromosome terminal-bin widths."),
@@ -403,16 +405,17 @@ def traffic_html(scope, ranges=None, assay=None):
     return f"<section class='scope-card'><h3>{html.escape(label)}</h3>"+''.join(f"<div class='traffic' title='{html.escape(tip,quote=True)}'><span class='light {call_class(v)}'></span><b>{html.escape(k)}</b><em>{html.escape(display_value(k, v, ranges).replace('_',' ').capitalize())}</em></div>" for k,v,tip in items)+"</section>"
 
 
-def metric_reading_html(rendered, light, state):
+def metric_reading_html(rendered, light, state, note=None):
     unavailable = rendered in {"Not attributable", "Sample-level"}
     classes = " metric-unavailable" if unavailable else ""
     marker = "" if light == "gray" else f"<span class='light {light}' aria-hidden='true'></span>"
     value = "—" if unavailable else rendered.replace("NOT_CONFIGURED", "Not configured")
     if "_" in value and value.isupper():
         value = value.replace("_", " ").capitalize()
+    annotation = f"<small class='metric-note'>{html.escape(note)}</small>" if note else ""
     return (f"<div class='metric-cell'><div class='metric-reading metric-tip metric-status{classes}' tabindex='0' data-tip='{html.escape(state, quote=True)}'"
             f" aria-label='{html.escape(rendered + ': ' + state, quote=True)}'>"
-            f"{marker}<span>{html.escape(value)}</span></div></div>")
+            f"{marker}<span>{html.escape(value)}</span></div>{annotation}</div>")
 
 
 def scoped_value_html(key, value, ranges, descriptive=False):
@@ -470,9 +473,15 @@ def scope_metric_cell(scope, key, ranges):
         tip='Wilson 95% interval assumes independent contacts; count sufficiency does not establish biological success.'
         if evidence.startswith('insufficient'):tip='Insufficient evidence: too few valid contacts. '+tip
         return f"<td>{metric_reading_html(text,'amber' if evidence.startswith('insufficient') else 'gray',tip)}</td>"
-    if key == "collision_oe" and value is not None:
-        tip=f"{scope.get('collision_bin_size',10000)/1000:g} kb bins; {scope.get('collision_observed_pairs',0):,} observed pairs; {scope.get('collision_null_expected_pairs',0):.4g} expected under uniform-base sampling. Concentration is not target-specific enrichment."
-        return f"<td>{metric_reading_html(display_value(key,value,ranges),'gray',tip)}</td>"
+    if key == "collision_oe":
+        observed = scope.get("collision_observed_pairs")
+        if observed is not None and observed < 5:
+            ratio = display_value(key, value, ranges) if value is not None else "Not estimable"
+            return f"<td>{metric_reading_html(ratio, 'amber', 'Fewer than 5 observed same-bin pairs.', 'Low depth')}</td>"
+        if value is not None:
+            bin_size = scope.get("collision_bin_size")
+            tip = f"{bin_size:,} bp bins" if bin_size else "Observed / expected same-bin pairs"
+            return f"<td>{metric_reading_html(display_value(key, value, ranges), 'gray', tip)}</td>"
     if key.startswith("mycoplasma_") and value is not None and scope.get("mycoplasma_screened_reads") == 0:
         return f"<td>{metric_reading_html(display_value(key,value,ranges), 'red', 'No inserts screened; mycoplasma cannot be assessed.')}</td>"
     if key == "mycoplasma_status" and scope.get("mycoplasma_screened_reads", 0) and scope.get("mycoplasma_qualifying_fraction") == 0:
@@ -487,8 +496,7 @@ def scope_metric_cell(scope, key, ranges):
                    or (key == 'adapter_dimer_rate' and str(scope.get('adapter_dimer_call', '')).startswith('inconclusive')))
     return f"<td>{scoped_value_html(key, value, ranges, descriptive)}</td>"
 
-def scoped_table_html(scopes, keys, ranges):
-    heads=''.join(f"<th>{html.escape(x.get('scope_name',x.get('scope_id','Total')))}</th>" for x in scopes)
+def scoped_metric_rows(scopes, keys, ranges):
     rows=[]
     for key in keys:
         label,desc=METRIC_META.get(key,(key,f"Pipeline QC metric: {key}."))
@@ -505,6 +513,11 @@ def scoped_table_html(scopes, keys, ranges):
         interval=f"<span class='metric-tip reference-context' tabindex='0' data-tip='{html.escape(basis+': '+detail,quote=True)}'>{interval}</span>"
         cells=''.join(scope_metric_cell(x, key, ranges) for x in scopes)
         rows.append(f"<tr><td><span class='metric-tip' tabindex='0' data-tip='{html.escape(desc,quote=True)}'>{html.escape(label)} <b>ⓘ</b></span></td>{cells}<td class='reference-interval'>{interval}</td></tr>")
-    return f"<div class='table-scroll' tabindex='0' aria-label='QC metrics; scroll horizontally for additional columns'><table class='qc-metrics'><tr><th>Metric</th>{heads}<th>Reference</th></tr>{''.join(rows)}</table></div>"
+    return ''.join(rows)
+
+
+def scoped_table_html(scopes, keys, ranges):
+    heads=''.join(f"<th>{html.escape(x.get('scope_name',x.get('scope_id','Total')))}</th>" for x in scopes)
+    return f"<div class='table-scroll' tabindex='0' aria-label='QC metrics; scroll horizontally for additional columns'><table class='qc-metrics'><tr><th>Metric</th>{heads}<th>Reference</th></tr>{scoped_metric_rows(scopes, keys, ranges)}</table></div>"
 
 

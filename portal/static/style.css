@@ -347,12 +347,6 @@ main {
   display: grid;
 }
 
-.check em {
-  display: block;
-  font-style: normal;
-  color: var(--muted);
-}
-
 .consent {
   margin: 24px 0;
 }
@@ -626,6 +620,11 @@ footer>span:first-child {
   color: var(--ink);
 }
 
+.footer-version {
+  color: var(--muted);
+  font-weight: 400;
+}
+
 footer>span:last-child {
   margin-left: auto;
 }
@@ -863,15 +862,19 @@ input[type=file]::file-selector-button {
   margin: 2px 0 0;
 }
 
-.check em {
-  font-size: 13px;
-  line-height: 1.5;
-  margin-top: 3px;
+.check-list {
+  gap: 3px;
+  margin: 12px 0;
 }
 
-.check-list {
-  gap: 16px;
-  margin: 24px 0;
+.check-list .check {
+  min-height: 24px;
+  align-items: center;
+  line-height: 1.35;
+}
+
+.check-list input[type=checkbox] {
+  margin: 0;
 }
 
 .check:has(input:disabled) {
@@ -1740,8 +1743,8 @@ nav a,.text-link,.required-marker {
 /* A physical library diagram with persistent UMI controls. */
 .library-structure {
   min-width: 0;
-  margin-top: var(--section-gap);
-  padding: var(--group-gap);
+  margin-top: var(--group-gap);
+  padding: 12px var(--group-gap);
   border: 1px solid var(--line);
   border-radius: var(--radius-panel);
   background: #f9fbfc;
@@ -1753,6 +1756,13 @@ nav a,.text-link,.required-marker {
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.structure-title {
+  display: flex;
+  flex: 1 1 8rem;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .structure-heading h3 {
@@ -1789,16 +1799,16 @@ nav a,.text-link,.required-marker {
 }
 
 .structure-description {
-  margin: 12px 0 16px;
+  margin: 0;
   color: var(--muted);
   font-size: 12px;
-  line-height: 1.6;
+  line-height: 1.35;
 }
 
 .structure-scroll {
   overflow-x: auto;
   overscroll-behavior-x: contain;
-  padding: 4px 1px 10px;
+  padding: 6px 2px 3px;
   scrollbar-width: thin;
   scrollbar-color: #b7cbd1 transparent;
 }
@@ -1809,7 +1819,7 @@ nav a,.text-link,.required-marker {
   align-items: center;
   justify-content: center;
   min-width: min-content;
-  gap: 10px 4px;
+  gap: 6px 4px;
 }
 
 .structure-track>:not(.structure-directions) {
@@ -1891,15 +1901,20 @@ nav a,.text-link,.required-marker {
   justify-content: center;
   align-items: center;
   gap: 2px;
+  align-self: stretch;
   min-width: 44px;
-  min-height: 48px;
-  padding: 8px 6px;
+  min-height: 36px;
+  padding: 5px 6px;
   border: 1px solid #c7dde0;
   border-radius: var(--radius-control);
   background: #e9f3f3;
   color: #21656b;
   text-align: center;
   line-height: 1.3;
+}
+
+.is-custom .structure-block {
+  min-height: 44px;
 }
 
 .structure-block strong {
@@ -1923,19 +1938,9 @@ nav a,.text-link,.required-marker {
 
 .structure-block.anchor {
   min-width: 52px;
-  min-height: 48px;
   background: #f0f3f5;
   border-color: #dce4e8;
   color: #647984;
-}
-
-.structure-block.anchor strong {
-  font-size: 10px;
-  font-weight: 600;
-}
-
-.structure-block.anchor small {
-  font-size: 9px;
 }
 
 .structure-block.insert {
@@ -2286,11 +2291,27 @@ nav a,.text-link,.required-marker {
   }
 
   .structure-heading {
-    gap: 8px;
+    display: grid;
+    grid-template-columns: minmax(0,1fr) auto;
+    gap: 4px 6px;
+  }
+
+  .structure-title {
+    display: contents;
+  }
+
+  .structure-description {
+    grid-column: 1/-1;
+    grid-row: 2;
+  }
+
+  .structure-modes {
+    grid-column: 2;
+    grid-row: 1;
   }
 
   .structure-modes button {
-    padding: 5px 10px;
+    padding: 5px 6px;
   }
 
   .structure-track {
@@ -2678,21 +2699,7 @@ button.structure-block:hover {
   line-height: 1.3;
 }
 
-.tasks-summary {
-  grid-column: 1/-1;
-  margin: 2px 0 0;
-  font-size: 13px;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
 
-#tasks-description {
-  grid-column: 1/-1;
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.65;
-  color: var(--muted);
-}
 
 #tasks-view .tasks-heading button {
   min-height: 38px;
@@ -2881,11 +2888,6 @@ button.structure-block:hover {
   margin-top: 14px;
 }
 
-.tasks-privacy {
-  margin-top: 20px;
-  font-size: 12px;
-  line-height: 1.7;
-}
 
 @media (max-width:600px) {
   .tasks-heading {
@@ -3292,4 +3294,23 @@ button.structure-block:hover {
     transition: none;
   }
 
+}
+
+.names-topbar { display: flex; flex-direction: row; justify-content: space-between; gap: 12px }
+.names-topbar #back { color: var(--blue); font-weight: 600; font-size: 14px }
+.names-editor { max-width: 850px; margin: clamp(18px, 4vw, 48px) auto; padding: 0 16px }
+.names-editor .panel { padding: clamp(16px, 3vw, 32px) }
+.names-editor h1 { font-size: clamp(24px, 3vw, 32px); line-height: 1.2 }
+.names-editor [role=status] { color: var(--muted); margin-top: 6px; overflow-wrap: anywhere }
+.names-scroll { margin: 20px 0; overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius-panel) }
+.names-scroll table { width: 100%; border-collapse: collapse; font-size: 14px }
+.names-scroll th, .names-scroll td { padding: 8px 12px; text-align: left }
+.names-scroll thead { background: var(--wash); color: var(--muted) }
+.names-scroll tbody tr { border-top: 1px solid var(--line) }
+.names-scroll tbody th, .names-scroll td:nth-last-child(-n+2) { font-family: var(--font-mono); white-space: nowrap }
+.names-scroll td:nth-child(2) { width: 46%; min-width: 9em }
+.names-editor form > button { display: block; margin-left: auto }
+@media (max-width: 600px) {
+  .names-scroll th, .names-scroll td { padding: 7px 6px }
+  .names-scroll td:nth-child(2) { min-width: 7.5em }
 }

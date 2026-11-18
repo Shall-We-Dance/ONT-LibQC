@@ -46,25 +46,28 @@
   // Split wide QC tables across groups of at most five scopes. Each group
   // repeats the metric label and reference, keeping every number readable.
   function printTables() {
-    document.querySelectorAll('table.qc-metrics').forEach(table => {
+    document.querySelectorAll('table.qc-metrics, table.species-counts').forEach(table => {
       if (table.closest('.report-print-omit')) return;
       const columns = table.rows[0]?.cells.length || 0;
-      if (columns <= 7) return;
+      const metrics = table.classList.contains('qc-metrics');
+      const end = metrics ? columns - 1 : columns;
+      const perPage = 4;
+      if (end - 1 <= perPage) return;
       const wrapper = document.createElement('div');
       wrapper.className = 'report-print-tables';
       wrapper.dataset.exportTemporary = 'true';
-      for (let start = 1; start < columns - 1; start += 5) {
-        const indices = [0];
-        for (let i = start; i < Math.min(start + 5, columns - 1); i++) indices.push(i);
-        indices.push(columns - 1);
+      for (let start = 1; start < end; start += perPage) {
         const copy = table.cloneNode(true);
         copy.removeAttribute('id');
         copy.querySelectorAll('[id]').forEach(node => node.removeAttribute('id'));
-        Array.from(copy.rows).forEach(row => {
-          Array.from(row.cells).forEach((cell, index) => { if (!indices.includes(index)) cell.remove(); });
-        });
+        for (const row of copy.rows) {
+          Array.from(row.cells).forEach((cell, index) => {
+            if (index > 0 && index < end && (index < start || index >= start + perPage)) cell.remove();
+          });
+        }
         const caption = copy.createCaption();
-        caption.textContent = indices.slice(1, -1).map(index => table.rows[0].cells[index].textContent.trim()).join(' · ');
+        const name = table.caption?.textContent || 'QC metrics';
+        caption.textContent = name + ' · ' + (1 + (start - 1) / perPage) + '/' + Math.ceil((end - 1) / perPage);
         wrapper.append(copy);
       }
       table.after(wrapper);

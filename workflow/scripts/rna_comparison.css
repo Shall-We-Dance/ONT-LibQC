@@ -1,0 +1,11 @@
+.rna-composition-card h3{margin:6px 8px 12px;font-size:1rem}
+.rna-composition-card>p{margin:10px 8px 4px;font-size:12px}
+.rna-comparison-scroll{overflow-x:auto}
+.rna-comparison-scroll table{width:100%;min-width:0;border-collapse:collapse;font-size:13px}
+.rna-comparison-scroll th,.rna-comparison-scroll td{padding:6px 8px;text-align:right;vertical-align:middle;font-variant-numeric:tabular-nums}
+.rna-comparison-scroll th:first-child{text-align:left;overflow-wrap:anywhere}
+.rna-comparison-scroll th:not(:first-child){overflow-wrap:anywhere}
+.rna-comparison-track{display:block;min-width:35px;height:5px;margin:3px 0 0;border-radius:2px;overflow:hidden;background:#eef2f6}
+.rna-comparison-track i{display:block;height:100%}
+.rna-key{display:inline-block;width:.7em;height:.7em;border-radius:2px;margin-right:.35em}
+@media print{.rna-comparison-track,.rna-key{print-color-adjust:exact;-webkit-print-color-adjust:exact}.rna-comparison-scroll{overflow:visible}.rna-composition-card tr{break-inside:avoid}}

@@ -24,7 +24,8 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'workflow/scripts'))
 from report_refresh import refresh
 from report_spike_matrix import spike_matrix_html
-from report_metrics import REPORT_CSS
+from report_metrics import REPORT_CSS, scoped_table_html
+from species_composition import classify, render as render_species
 from report_export import add_pdf_export
 
 
@@ -261,6 +262,9 @@ def check_refreshed_layout(browser, original, refreshed, sample):
             for page in pages:
                 page.set_viewport_size({'width':width,'height':1000})
                 page.emulate_media(media=media)
+                if media == 'print':
+                    # The print media change event may run after Playwright reads the layout.
+                    page.evaluate('window.ONTReportExport.prepare()')
                 snapshots.append(page.evaluate("""({selectors,properties}) => selectors.map(selector =>
                     [...document.querySelectorAll(selector)].map(node => {
                         const style=getComputedStyle(node), rect=node.getBoundingClientRect();
@@ -283,6 +287,46 @@ def check_refreshed_layout(browser, original, refreshed, sample):
                     assert controls['x'] > hero['x']+hero['width']/2
     finally:
         for page in pages: page.close()
+
+
+def check_composition_tables(browser):
+    ids = [f'lib{i:02}' for i in range(1, 7)]
+    hit = ('dm6', 60, True, ('chr1', 0))
+    data = classify(ids, [[hit]] * len(ids), ['hg38', 'dm6'], 'dm6')
+    scopes = [dict(scope_id=sid, collision_observed_pairs=i, collision_oe=2.5,
+                   mycoplasma_status='NOT_DETECTED', mycoplasma_screened_reads=1)
+              for i, sid in enumerate(['total', *ids])]
+    metrics = scoped_table_html(scopes, ['collision_oe', 'mycoplasma_status'], {})
+    document = add_pdf_export("<html><head><style>" + REPORT_CSS + "</style></head><body>"
+                              "<header class='report-hero'><h1>Sample</h1></header>"
+                              + render_species(data) + metrics + "</body></html>")
+    page = browser.new_page(viewport={'width': 1250, 'height': 900})
+    try:
+        page.set_content(document)
+        page.locator('details').evaluate('(node) => node.open = true')
+        assert page.locator('.species-counts').first.evaluate('(t) => t.clientWidth <= t.parentNode.clientWidth + 1')
+        assert page.locator('.metric-note').first.inner_text() == 'Low depth'
+        assert page.locator('.metric-reading').filter(has_text='Not detected').first.evaluate("""node => {
+            const label = node.lastElementChild, range = document.createRange();
+            range.selectNodeContents(label);
+            return range.getClientRects().length === 1 &&
+                label.getBoundingClientRect().left - node.firstElementChild.getBoundingClientRect().right < 10;
+        }""")
+        page.select_option('#report-export-content', 'full')
+        page.evaluate('window.ONTReportExport.prepare()')
+        page.emulate_media(media='print')
+        page.set_viewport_size({'width': 703, 'height': 1000})
+        for kind, count in [('species-counts', 2), ('qc-metrics', 2)]:
+            copies = page.locator('.report-print-tables .' + kind)
+            assert copies.count() == count
+            assert copies.evaluate_all('(tables) => tables.every(t => t.scrollWidth <= t.parentNode.clientWidth + 2)')
+        assert page.locator('.report-print-tables .species-counts thead th').all_text_contents() == [
+            'Species', *ids[:4], 'Species', *ids[4:]]
+        assert page.locator('.report-print-tables .metric-note').count() == 5
+        page.evaluate('window.ONTReportExport.restore()')
+        assert page.locator('.report-print-tables').count() == 0
+    finally:
+        page.close()
 
 
 def check_spike_matrix_print(browser, engine):
@@ -350,6 +394,7 @@ with tempfile.TemporaryDirectory() as directory:
                 options = {'executable_path': os.environ['ONT_WEBKIT_EXECUTABLE']} if engine == 'webkit' and os.environ.get('ONT_WEBKIT_EXECUTABLE') else {}
                 browser = getattr(playwright, engine).launch(**options)
                 try:
+                    check_composition_tables(browser)
                     check_spike_matrix_print(browser, engine)
                     for sample in ('HL120', 'HL240'):
                         check_refreshed_layout(browser, ROOT/'example_report', examples, sample)

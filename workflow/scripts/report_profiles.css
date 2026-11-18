@@ -36,3 +36,11 @@
 #profiles{scroll-margin-top:80px}#profiles>.profile-scope{border:0;margin-top:0;padding-top:0}
 @media(max-width:700px){.profile-comparison-grid{grid-template-columns:minmax(0,1fr)}.profile-comparison-grid .plot-card>a{height:auto}.profile-comparison-grid .comparison-gel>a{flex:none;height:320px}.profile-detail>summary small{display:block;margin:5px 0 0 20px}}
 @media print{.profile-comparison-grid{display:block}.profile-comparison .plot-card{max-width:100%;break-inside:avoid}.profile-detail{border:0}.profile-detail>summary{padding:2mm 0}.profile-detail>.profile-scope{padding:0}}
+
+.profile-comparison .rna-profile-panels{margin-top:12px}
+.rna-profile-panels h3{margin:6px 8px 12px;font-size:1rem}
+.rna-profile-panels>div{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr));gap:10px}
+.rna-profile-panels figure{margin:0;min-width:0}
+.rna-profile-panels figcaption{font-size:13px;font-weight:600}
+.rna-profile-panels figcaption i{display:inline-block;width:9px;height:9px;margin-right:6px;border-radius:2px}
+@media print{.profile-comparison .rna-profile-panels,.profile-comparison .rna-composition-card{break-inside:auto}.rna-profile-panels figure{break-inside:avoid}}

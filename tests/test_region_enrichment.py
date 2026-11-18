@@ -26,6 +26,19 @@ class RegionEnrichmentTests(unittest.TestCase):
         svg=svg_region_bars(missing,'Test <sample>');ET.fromstring(svg)
         self.assertNotIn('TE overlap', [node.text for node in ET.fromstring(svg).iter('{http://www.w3.org/2000/svg}text')]);self.assertNotIn('nan',svg)
 
+    def test_single_scope_draws_sample_and_background_on_one_scale(self):
+        metric = dict(promoter_proximal_rate=.25, promoter_proximal_background_rate=.5,
+                      promoter_proximal_enrichment=.5, promoter_proximal_reads=12)
+        root = ET.fromstring(svg_region_bars(metric, 'Sample'))
+        promoter = root.find("{*}g[@data-region='promoter_proximal']")
+        track, bar = promoter.findall('{*}rect')
+        self.assertEqual(float(bar.get('width')), float(track.get('width')) / 4)
+        tick = promoter.find('{*}line')
+        self.assertEqual(float(tick.get('x1')), float(track.get('x')) + float(track.get('width')) / 2)
+        self.assertIn('25.0% (12)', ''.join(promoter.itertext()))
+        self.assertIn('0.50×', ''.join(promoter.itertext()))
+        self.assertIsNone(root.find("{*}g[@data-region='gene_body']/{*}line"))
+
     def test_fixed_background_is_independent_of_library_reads(self):
         groups=[{}, {'r':dict(chrom='a',start=0,end=5,mapq=60)},
                 {'r':dict(chrom='b',start=0,end=900,mapq=60)},

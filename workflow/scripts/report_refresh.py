@@ -8,6 +8,7 @@ import argparse
 import datetime
 import fcntl
 import hashlib
+import html
 from html.parser import HTMLParser
 import json
 import os
@@ -20,8 +21,10 @@ import zipfile
 
 from report_bundle import validate
 from report_export import add_pdf_export
-from report_metrics import REPORT_CSS, REPORT_TOOLTIP_SCRIPT
+from report_metrics import COLLISION_ROWS, METRIC_META, REPORT_CSS, REPORT_TOOLTIP_SCRIPT, scoped_metric_rows
 from report_profiles import render_profiles_card
+from report_provenance import RELEASE_VERSION
+from species_composition import render as render_species
 
 VOID = {'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'}
 
@@ -78,9 +81,7 @@ def replace_ranges(text, replacements):
     return text
 
 
-def refresh_page(root, sample):
-    page = root/'samples'/f'{sample}.html'
-    text = page.read_text()
+def refresh_profile_layout(root, sample, text):
     parsed = Elements(text)
     sections = [n for n in parsed.elements if n['attrs'].get('id') == 'profiles']
     if len(sections) != 1: raise ValueError('Expected one profiles section: '+sample)
@@ -90,6 +91,8 @@ def refresh_page(root, sample):
     ids = [scope.get('scope_id') for scope in scopes]
     if any(not isinstance(sid, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', sid) for sid in ids) or len(set(ids)) != len(ids):
         raise ValueError('Invalid retained scope identifiers')
+    rna_path = root/'data/rna'/sample/'summary.json'
+    rna = json.loads(rna_path.read_text()) if metric.get('assay') in {'rnaseq', 'clip'} and rna_path.is_file() else None
     scope_html = {}
     for node in parsed.elements:
         if 'profile-scope' not in node['attrs'].get('class', '').split() or not parsed.within(node, section): continue
@@ -99,10 +102,17 @@ def refresh_page(root, sample):
             if ancestor['attrs'].get('data-scope'): sid = ancestor['attrs']['data-scope']; break
             if 'pooled-profile' in ancestor['attrs'].get('class', '').split(): sid = 'total'; break
             ancestor = ancestor['parent']
+        if sid is None and node['parent'] is section:
+            # Legacy reports put every scope directly under the profiles heading.
+            images = [img['attrs'].get('src', '') for img in parsed.elements
+                      if img['tag'] == 'img' and parsed.within(img, node)]
+            found = [scope for scope in ids if any(Path(src).name.startswith(f'{sample}.{scope}.') for src in images)]
+            if len(found) == 1:
+                sid = found[0]
         if sid is None or sid in scope_html: raise ValueError('Cannot identify historical profile scope: '+sample)
         scope_html[sid] = parsed.fragment(node)
     if set(scope_html) != {s['scope_id'] for s in scopes}: raise ValueError('Retained profile scopes do not match metrics: '+sample)
-    if len(scopes) == 1:
+    if len(scopes) == 1 and rna is None:
         # Single-library figures are already retained verbatim. Older reports
         # embed them inside Library quality; do not add a second card frame.
         new = parsed.fragment(section)
@@ -114,9 +124,79 @@ def refresh_page(root, sample):
                    + scope_html['total'] + '</div>')
     else:
         new = render_profiles_card(sample, scopes, [scope_html[s['scope_id']] for s in scopes],
-                                   root/'assets', root/'data/gene_profile', '../assets/')
+                                   root/'assets', root/'data/gene_profile', '../assets/',
+                                   rna_summary=rna, rna_prefix='../data/rna/'+sample)
     replacements = [(section, new)]
-    page.write_text(refresh_presentation(replace_ranges(text, replacements)))
+    if rna is not None:
+        parent = section['parent']
+        if parent and parent['attrs'].get('id') == 'library-shape':
+            # Promote the old embedded profiles to their own report section.
+            replacements = [(parent, parsed.fragment(parent).replace(parsed.fragment(section), '', 1) + new)]
+        for node in parsed.elements:
+            parent = node['parent']
+            if parent and parent['attrs'].get('id') == 'rna-qc':
+                if 'rna-comparison' in node['attrs'].get('class', '').split():
+                    replacements.append((node, ''))
+                elif node['tag'] == 'style' and '.rna-comparison{' in parsed.fragment(node):
+                    replacements.append((node, ''))
+    return replace_ranges(text, replacements)
+
+
+def refresh_collision_rows(root, sample, text):
+    """Update only the collision rows using the retained per-scope counts."""
+    label = METRIC_META["collision_oe"][0]
+    if label not in text:
+        return text
+    metric = json.loads((root/'data/metrics'/f'{sample}.json').read_text())
+    scopes = [dict(metric, scope_name='Total library'), *metric.get('sub_libraries', [])]
+    parsed = Elements(text)
+    labels = [METRIC_META[k][0] for k in COLLISION_ROWS]
+    rows = [n for n in parsed.elements if n['tag'] == 'tr' and
+            any('>' + name + ' <b>' in parsed.fragment(n) for name in labels)]
+    if not rows:
+        return text
+    parent = rows[0]['parent']
+    headers = [html.unescape(parsed.fragment(n)[4:-5]) for n in parsed.elements
+               if n['tag'] == 'th' and n['parent']['parent'] is parent]
+    if (headers[1:-1] != [s.get('scope_name', s.get('scope_id')) for s in scopes]
+            or any(n['parent'] is not parent for n in rows)
+            or '>' + label + ' <b>' not in parsed.fragment(rows[0])):
+        raise ValueError('Collision table columns do not match the retained metrics')
+    rendered = scoped_metric_rows(scopes, COLLISION_ROWS, {})
+    return replace_ranges(text, [(rows[0], rendered)] + [(n, '') for n in rows[1:]])
+
+
+def refresh_species_layout(root, sample, text):
+    data = root / 'data/species_composition' / f'{sample}.json'
+    if not data.is_file():
+        return text
+    parsed = Elements(text)
+    sections = {n['attrs'].get('id'): n for n in parsed.elements if n['tag'] == 'section'}
+    links = {n['attrs'].get('href'): n for n in parsed.elements
+             if n['tag'] == 'a' and n['parent'] and n['parent']['tag'] == 'nav'}
+    section = render_species(json.loads(data.read_text()))
+    mixture = sections.get('sublibrary-composition')
+    anchor = mixture or sections['sequencing']
+    original = parsed.fragment(anchor)
+    nav_anchor = links['#sequencing']
+    changes = [(anchor, original + section if mixture else section + original),
+               (nav_anchor, "<a href='#species-composition'>Species</a>" + parsed.fragment(nav_anchor))]
+    for previous in (sections.get('species-composition'), links.get('#species-composition')):
+        if previous:
+            changes.append((previous, ''))
+    return replace_ranges(text, changes)
+
+
+def refresh_tables(root, sample, text):
+    text = refresh_collision_rows(root, sample, text)
+    text = refresh_species_layout(root, sample, text)
+    return refresh_presentation(text)
+
+
+def refresh_page(root, sample):
+    page = root/'samples'/f'{sample}.html'
+    text = refresh_profile_layout(root, sample, page.read_text())
+    page.write_text(refresh_tables(root, sample, text))
 
 
 def refresh_presentation(text):
@@ -142,6 +222,13 @@ def refresh_presentation(text):
     replacements = [(base[0], '<style id="report-base-style">'+REPORT_CSS+'</style>')]
     replacements.extend((node, '') for node in base[1:])
     for node in parsed.elements:
+        parent = node['parent']
+        if (node['tag'] == 'span' and parent and 'hero-meta' in parent['attrs'].get('class', '').split()):
+            content = parsed.fragment(node).split('>', 1)[1].rsplit('</span>', 1)[0]
+            match = re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+( · [^<>]+)', content)
+            if match:
+                replacements.append((node, '<span class="report-version" title="Report release and original analysis date">'
+                                      + RELEASE_VERSION + match[1] + '</span>'))
         if node['tag'] == 'script' and "tip.id = 'metric-tooltip'" in parsed.fragment(node):
             replacements.append((node, REPORT_TOOLTIP_SCRIPT))
     return add_pdf_export(replace_ranges(text, replacements), refresh=True)
@@ -185,6 +272,9 @@ def refresh(root, apply=False, expected_manifest_sha256=None):
     if data.get('schema_version') != 1 or not isinstance(samples, list) or not samples or any(not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', s) for s in samples):
         raise ValueError('Unrecognized report manifest')
     validate(root)
+    sample_pages = {p.stem for p in (root/'samples').glob('*.html')}
+    if len(set(samples)) != len(samples) or not set(samples) <= sample_pages:
+        raise ValueError('Manifest samples must identify distinct retained report pages')
     with (root.parent/('.'+root.name+'.refresh.lock')).open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         before = hashes(root)
@@ -194,12 +284,14 @@ def refresh(root, apply=False, expected_manifest_sha256=None):
             for sample in samples: refresh_page(stage, sample)
             remove_retired_cohort(stage)
             audit = validate(stage)
-            if audit['sample_reports'] != len(samples): raise ValueError('Sample count changed')
+            if {p.stem for p in (stage/'samples').glob('*.html')} != sample_pages:
+                raise ValueError('Retained sample pages changed during refresh')
             # Updating presentation cannot modify scientific inputs or provenance.
             for name, digest in before.items():
                 protected = name.startswith('data/') or (name != 'manifest.json' and Path(name).suffix in {'.tsv', '.csv', '.json', '.gz'})
                 if protected and hashlib.sha256((stage/name).read_bytes()).hexdigest() != digest:
                     raise ValueError('Scientific record changed: '+name)
+            data['report_version'] = RELEASE_VERSION
             data['validation'] = audit
             data['presentation_refresh'] = {'schema_version': 1, 'created_utc': datetime.datetime.now(datetime.timezone.utc).isoformat()}
             (stage/'manifest.json').write_text(json.dumps(data, indent=2)+'\n')

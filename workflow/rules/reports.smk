@@ -1,3 +1,5 @@
+SPECIES_RESULTS = expand(f"{OUT}/qc/species_composition/{{sample}}.json", sample=SAMPLES) if config.get("species_composition", {}).get("indexes") else []
+
 rule resolved_report_config:
     output:
         temp(f"{OUT}/qc/resolved_config.json")
@@ -10,12 +12,16 @@ rule resolved_report_config:
 
 rule reports:
     input:
+        species=SPECIES_RESULTS,
         presentation_assets=[
+            "workflow/scripts/species_composition.py",
             "workflow/scripts/report_render.py",
             "workflow/scripts/report_metrics.py",
             "workflow/scripts/report_base.css",
             "workflow/scripts/report_tooltips.js",
             "workflow/scripts/report_profiles.py",
+            "workflow/scripts/report_svg.py",
+            "workflow/scripts/rna_comparison.css",
             "workflow/scripts/report_profiles.css",
             "workflow/scripts/report_profiles.js",
             "workflow/scripts/report_profile_band.py",
@@ -106,6 +112,7 @@ rule reports:
 
 rule report_bundle:
     input:
+        species=SPECIES_RESULTS,
         rna=expand(f"{OUT}/qc/rna/{{sample}}", sample=RNA),
         rna_preparation=expand(f"{OUT}/qc/rna_preparation/{{sample}}.json", sample=RNA),
         rna_preparation_units=expand(f"{OUT}/qc/rna_preparation/{{sample}}.units.tsv.gz", sample=RNA),

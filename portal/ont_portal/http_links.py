@@ -2,7 +2,7 @@
 import hmac, json, re
 from fastapi import Request, HTTPException
 from .store import token_for
-from .short_links import KEY, link_key, key_hash, job_link
+from .short_links import KEY, link_key, key_hash, job_link, resolve_jobs
 from .http_access import JOB_ID
 
 def register(api, s, store, access, example_inputs):
@@ -14,18 +14,8 @@ def register(api, s, store, access, example_inputs):
         key = data.get('key') if isinstance(data, dict) else None
         if not isinstance(key, str) or not KEY.fullmatch(key):
             raise HTTPException(404, 'Private link not found')
-        digest = key_hash(key)
         with store.connect() as c:
-            rows = c.execute('SELECT * FROM jobs WHERE short_link_hash=?', (digest,)).fetchall()
-            if not rows:
-                batch = c.execute('SELECT batch_id FROM batch_links WHERE key_hash=?', (digest,)).fetchone()
-                if batch:
-                    rows = c.execute('SELECT * FROM jobs WHERE batch_id=? ORDER BY created LIMIT 64', (batch[0],)).fetchall()
-                else:
-                    saved = c.execute('SELECT job_ids FROM saved_links WHERE key_hash=?', (digest,)).fetchone()
-                    if saved:
-                        rows = [c.execute('SELECT * FROM jobs WHERE id=?', (jid,)).fetchone() for jid in json.loads(saved[0])]
-                        if not all(rows): rows = []
+            rows = resolve_jobs(c, key)
         if not rows: raise HTTPException(404, 'Private link not found')
         return {'jobs': [{'id': row['id'], 'token': token_for(s.secret,row['id']),
                           'private_link': job_link(s.secret,dict(row))} for row in rows]}

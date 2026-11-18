@@ -65,6 +65,14 @@ class Store:
             c.execute("""CREATE TRIGGER IF NOT EXISTS report_links_cleanup AFTER UPDATE OF status,expires ON jobs
                 WHEN NEW.status='expired' OR NEW.expires<=strftime('%s','now')
                 BEGIN DELETE FROM report_links WHERE job_id=NEW.id; END""")
+            c.execute("""CREATE TABLE IF NOT EXISTS sublibrary_names (
+                       job_id TEXT NOT NULL, sample TEXT NOT NULL, revision INTEGER NOT NULL,
+                       names TEXT NOT NULL, PRIMARY KEY (job_id, sample))""")
+            c.execute("""CREATE TRIGGER IF NOT EXISTS sublibrary_names_expiry AFTER UPDATE OF expires,status ON jobs
+                       WHEN NEW.status='expired' OR NEW.expires<=strftime('%s','now')
+                       BEGIN DELETE FROM sublibrary_names WHERE job_id=NEW.id; END""")
+            c.execute("""CREATE TRIGGER IF NOT EXISTS sublibrary_names_delete AFTER DELETE ON jobs
+                       BEGIN DELETE FROM sublibrary_names WHERE job_id=OLD.id; END""")
             c.execute("UPDATE jobs SET outcome=status WHERE outcome IS NULL AND status IN ('succeeded','failed','cancelled')")
             # Preserve anonymous outcome counts when retention erases task metadata.
             c.execute("""CREATE TRIGGER IF NOT EXISTS jobs_outcome_update AFTER UPDATE OF status ON jobs

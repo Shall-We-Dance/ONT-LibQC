@@ -4,7 +4,8 @@ import collections
 import gzip
 import html
 import json
-from pathlib import Path
+from report_sublibrary import COLORS
+from report_svg import svg_start, text
 
 
 def merge(intervals):
@@ -95,27 +96,48 @@ def prepare_background(promoters,genes,primary,sizes,te=None):
     return result
 
 
-def svg_region_bars(metric,title):
-    rows=[('Promoter','promoter_proximal'),('Gene body','gene_body'),('Distal','intergenic')]
-    w,h,bx,bw=820,280,145,265;ink='#34495e';muted='#65758c'
-    svg=[f"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 {w} {h}' role='img' aria-label='{html.escape(title,quote=True)}' style='font-family:Arial,Helvetica,sans-serif'>",
-        f'<title>{html.escape(title)}</title>',"<metadata id='genomic-region-metrics'>"+html.escape(json.dumps(metric,sort_keys=True))+'</metadata>',
-        "<rect width='100%' height='100%' fill='white'/>",f"<text x='22' y='28' font-size='17' fill='#203040'>{html.escape(title)}</text>"]
-    for x,label in [(540,'Sample'),(665,'Background'),(798,'Enrichment')]:svg.append(f"<text x='{x}' y='61' text-anchor='end' font-size='12' fill='{muted}'>{label}</text>")
-    percent=lambda x:('—' if x is None else f'{x:.1%}' if x==0 or x>=.001 else f'{100*x:.3g}%')
-    for i,(label,key) in enumerate(rows):
-        y=80+i*47;rate=metric.get(key+'_rate');bg=metric.get(key+'_background_rate');fold=metric.get(key+'_enrichment');count=metric.get(key+'_reads')
-        tooltip=f'{label}: sample {percent(rate)}, background {percent(bg)}.'
-        svg.append(f"<g><title>{html.escape(tooltip)}</title><text x='22' y='{y+15}' font-size='14' fill='{ink}'>{label}</text>")
-        for j,(value,color) in enumerate([(rate,'#3276b5'),(bg,'#aebccc')]):
-            yy=y+j*12;svg.append(f"<rect x='{bx}' y='{yy}' width='{bw}' height='9' rx='2' fill='#eef2f6'/>")
-            if value is not None:svg.append(f"<rect x='{bx}' y='{yy}' width='{bw*value:.3f}' height='9' rx='2' fill='{color}'/>")
-        label_value=percent(rate)+(f' ({count:,})' if count is not None and rate is not None else '')
-        for x,value in [(540,label_value),(665,percent(bg)),(798,f'{fold:,.2f}×' if fold is not None else '—')]:svg.append(f"<text x='{x}' y='{y+15}' text-anchor='end' font-size='13' fill='{ink}'>{value}</text>")
+REGION_ROWS = (('Promoter', 'promoter_proximal'), ('Gene body', 'gene_body'), ('Distal', 'intergenic'))
+REGION_LEGEND = 'Bar: sample proportion · Tick: genome background'
+
+
+def region_percent(value):
+    if value is None:
+        return '—'
+    return f'{value:.1%}' if value == 0 or value >= .001 else f'{100 * value:.3g}%'
+
+
+def region_track(rate, background, color, x, y, width):
+    parts = [f"<rect x='{x}' y='{y-7}' width='{width}' height='11' rx='2' fill='#eef2f6'/>"]
+    if rate is not None:
+        parts.append(f"<rect data-value='{rate}' x='{x}' y='{y-7}' width='{width*rate:.3f}' height='11' rx='2' fill='{color}'/>")
+    if background is not None:
+        tick = x + width * background
+        parts.append(f"<line x1='{tick:.3f}' x2='{tick:.3f}' y1='{y-10}' y2='{y+7}' stroke='#536475' stroke-width='1.3'/>")
+    return ''.join(parts)
+
+
+def svg_region_bars(metric, title, color=COLORS[0]):
+    svg = svg_start(820, 235, title)
+    svg.append("<metadata id='genomic-region-metrics'>" + html.escape(json.dumps(metric, sort_keys=True)) + '</metadata>')
+    for x, label in [(535, 'Sample'), (658, 'Background'), (796, 'Enrichment')]:
+        svg.append(text(x, 60, label, 'end', 13))
+    for index, (label, key) in enumerate(REGION_ROWS):
+        y = 87 + index * 36
+        rate = metric.get(key + '_rate')
+        background = metric.get(key + '_background_rate')
+        fold = metric.get(key + '_enrichment')
+        count = metric.get(key + '_reads')
+        value = region_percent(rate)
+        if count is not None and rate is not None:
+            value += f' ({count:,})'
+        svg.append(f"<g data-region='{key}'>")
+        svg.append(text(24, y + 4, label, 'start', 15, '#203040'))
+        svg.append(region_track(rate, background, color, 125, y, 272))
+        for x, label_value in [(535, value), (658, region_percent(background)), (796, '—' if fold is None else f'{fold:,.2f}×')]:
+            svg.append(text(x, y + 4, label_value, 'end', 14, '#34495e'))
         svg.append('</g>')
-    total=metric.get('annotation_mapped_reads',0);window=metric.get('promoter_window_bp',2000)
-    footer=f'n={total:,} MAPQ-pass alignments · Promoter: TSS ±{window/1000:g} kb'
-    svg.append(f"<text x='22' y='234' font-size='11' fill='{muted}'>{html.escape(footer)}</text>")
-    note='Background: fraction of primary genome bases.'
-    svg.append(f"<text x='22' y='255' font-size='11' fill='{muted}'>{note}</text></svg>")
-    return ''.join(svg)
+    svg.append(text(24, 198, REGION_LEGEND, 'start', 12))
+    total = metric.get('annotation_mapped_reads', 0)
+    window = metric.get('promoter_window_bp', 2000)
+    svg.append(text(24, 220, f'n={total:,} MAPQ-pass alignments · Promoter: TSS ±{window/1000:g} kb', 'start', 12))
+    return ''.join(svg) + '</svg>'

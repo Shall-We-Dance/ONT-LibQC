@@ -5,9 +5,12 @@ import xml.etree.ElementTree as ET
 import html
 import math
 from pathlib import Path
+from urllib.parse import quote
 import re
 
 from report_sublibrary import COLORS
+from report_svg import svg_start, text
+from report_regions import REGION_ROWS, REGION_LEGEND, region_track, region_percent
 from report_profile_band import read_profile_band
 from profile_data import read_gene_profile, read_numeric_profile, read_data
 
@@ -35,16 +38,6 @@ def legend_item(scope, label, color):
     esc = html.escape
     return (f"<li><button type='button' data-scope='{esc(scope,quote=True)}' aria-label='Highlight {esc(label,quote=True)}' aria-pressed='false' style='--legend-tint:{color}0f;--legend-active:{color}24;--legend-border:{color}30'>"
             f"<i style='background:{color}' aria-hidden='true'></i>{esc(label)}</button></li>")
-
-
-def svg_start(width, height, title):
-    return [f"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 {width} {height}' role='img' aria-label='{html.escape(title, quote=True)}' style='font-family:Arial,Helvetica,sans-serif'>",
-            f'<title>{html.escape(title)}</title>', "<rect width='100%' height='100%' fill='white'/>",
-            f"<text x='64' y='27' font-size='17' fill='#293f53' font-weight='600'>{html.escape(title)}</text>"]
-
-
-def text(x, y, label, anchor='middle', size=12, color='#526579'):
-    return f"<text x='{x:.3f}' y='{y:.3f}' text-anchor='{anchor}' font-size='{size}' fill='{color}'>{html.escape(str(label))}</text>"
 
 
 def polyline(xs, ys, color, label):
@@ -98,7 +91,7 @@ def size_comparison(series):
 
 
 def virtual_lanes(series):
-    width = 100 + 44*len(series);top, bottom = 64, 314
+    width = max(190, 100 + 44*len(series));top, bottom = 64, 314
     maximum = max(row['sizes'][0][-1] for row in series);upper = math.log1p(maximum/50)
     y = lambda bp: bottom - math.log1p(bp/50)/upper*(bottom-top)
     svg = svg_start(width, 390, 'Virtual lanes')
@@ -208,53 +201,89 @@ def read_region_metrics(path):
 def region_comparison(series):
     if not any(row.get('regions') is not None for row in series):
         return None
-    rows = [('Promoter', 'promoter_proximal'), ('Gene body', 'gene_body'), ('Distal', 'intergenic')]
     height = 98 + 3 * (32 + 25 * len(series))
     svg = svg_start(820, height, 'Sublibrary genomic regions')
     svg.append("<metadata id='sublibrary-region-metrics'>" + html.escape(json.dumps([
         dict(scope_id=row['id'], color=row['color'], metrics=row.get('regions')) for row in series])) + '</metadata>')
     for x, label in [(535, 'Sample'), (658, 'Background'), (796, 'Enrichment')]:
         svg.append(text(x, 60, label, 'end', 13))
-    percent = lambda value: '—' if value is None else f'{value:.1%}' if value == 0 or value >= .001 else f'{100*value:.3g}%'
-    for group_index, (label, key) in enumerate(rows):
+    for group_index, (label, key) in enumerate(REGION_ROWS):
         top = 84 + group_index * (32 + 25 * len(series))
         svg.append(text(24, top, label, 'start', 16, '#203040'))
         for i, row in enumerate(series):
             y = top + 23 + i * 25
             metric = row.get('regions') or {}
             rate, bg, fold = (metric.get(key + suffix) for suffix in ('_rate', '_background_rate', '_enrichment'))
-            tip = f"{row['label']} · {label}: {percent(rate)}, background {percent(bg)}"
+            tip = f"{row['label']} · {label}: {region_percent(rate)}, background {region_percent(bg)}"
             svg.append(f"<g data-scope='{html.escape(row['id'],quote=True)}' data-region='{key}'><title>{html.escape(tip)}</title>")
             svg.append(text(28, y + 4, row['id'], 'start', 13, row['color']))
-            svg.append(f"<rect x='108' y='{y-7}' width='322' height='11' rx='2' fill='#eef2f6'/>")
-            if rate is not None:
-                svg.append(f"<rect data-value='{rate}' x='108' y='{y-7}' width='{322*rate:.3f}' height='11' rx='2' fill='{row['color']}'/>")
-            if bg is not None:
-                x=108+322*bg
-                svg.append(f"<line x1='{x:.3f}' x2='{x:.3f}' y1='{y-10}' y2='{y+7}' stroke='#536475' stroke-width='1.3'/>")
-            for x, value in [(535,percent(rate)),(658,percent(bg)),(796,'—' if fold is None else f'{fold:,.2f}×')]:
+            svg.append(region_track(rate, bg, row['color'], 108, y, 322))
+            for x, value in [(535,region_percent(rate)),(658,region_percent(bg)),(796,'—' if fold is None else f'{fold:,.2f}×')]:
                 svg.append(text(x,y+4,value,'end',14,'#34495e'))
             svg.append('</g>')
-    svg.append(text(24,height-13,'Bar: sample proportion · Tick: genome background','start',12))
+    svg.append(text(24,height-13,REGION_LEGEND,'start',12))
     svg.append('</svg>')
     return ''.join(svg)
 
-def render_profiles_card(sample, scopes, scope_html, asset_dir, gene_dir, asset_prefix='assets/'):
+def rna_region_comparison(series, metrics):
+    from rna_report import REGION_LABELS
+    group_height = 30 + 24 * len(series)
+    height = 92 + len(REGION_LABELS) * group_height
+    svg = svg_start(760, height, 'RNA region distribution')
+    svg.extend([text(590, 55, 'Matched bases', 'end', 13), text(737, 55, 'Fraction', 'end', 13)])
+    for i, (key, label) in enumerate(REGION_LABELS.items()):
+        top = 80 + i * group_height
+        svg.append(text(24, top, label, 'start', 15, '#203040'))
+        for j, row in enumerate(series):
+            y = top + 20 + 24 * j
+            scope = metrics.get(row['id'], {})
+            counts = scope.get('region_bases')
+            total = scope.get('region_denominator_bases')
+            count = counts.get(key, 0) if counts is not None else None
+            fraction = count / total if total and count is not None else None
+            svg.append(text(28, y + 4, row['id'], 'start', 13, row['color']))
+            svg.append(region_track(fraction, None, row['color'], 110, y, 290))
+            svg.append(text(590, y + 4, '—' if count is None else f'{count:,}', 'end', 14))
+            svg.append(text(737, y + 4, region_percent(fraction), 'end', 14))
+    svg.append(text(24, height - 12, 'Fraction of matched bases within each library', 'start', 12))
+    return ''.join(svg) + '</svg>'
+
+
+def transcript_panels(series, metrics, prefix):
+    panels = ['<section class="rna-profile-panels plot-card"><h3>Transcript metaplots</h3><div>']
+    for row in series:
+        label = html.escape(row['label'])
+        plot = metrics.get(row['id'], {}).get('plots', {}).get('profiles')
+        panels.append(f'<figure><figcaption><i style="background:{row["color"]}"></i>{label}</figcaption>')
+        if plot:
+            url = html.escape(prefix + '/' + quote(plot, safe=''), quote=True)
+            panels.append(f'<a href="{url}" target="_blank" rel="noopener"><img src="{url}" alt="{label} transcript coverage"></a>')
+        else:
+            panels.append('<p class="muted">Transcript profile unavailable</p>')
+        panels.append('</figure>')
+    return ''.join(panels) + '</div></section>'
+
+
+def render_profiles_card(sample, scopes, scope_html, asset_dir, gene_dir, asset_prefix='assets/', *, rna_summary=None, rna_prefix=None):
     """Works during report creation and on a retained, report-only bundle."""
     asset_dir, gene_dir = Path(asset_dir), Path(gene_dir)
     esc = html.escape
     def figure(name, caption, cls=''):
         url=esc(asset_prefix+name,quote=True)
         return f"<figure class='plot-card {cls}'><a href='{url}' target='_blank' rel='noopener'><img src='{url}' alt='{esc(caption,quote=True)}'></a><figcaption class='figure-link'><a href='{url}' target='_blank' rel='noopener'>Open figure ↗</a></figcaption></figure>"
-    parts=["<section class='report-section' id='profiles'><style>"+CSS+"</style><h2>Size and genomic profiles</h2>"]
+    title = "Size and RNA profiles" if rna_summary is not None else "Size and genomic profiles"
+    parts=["<section class='report-section' id='profiles'><style>"+CSS+"</style><h2>"+title+"</h2>"]
     sub=scopes[1:]
-    if not sub: return ''.join(parts)+scope_html[0]+'</section>'
+    if not sub and rna_summary is None: return ''.join(parts)+scope_html[0]+'</section>'
     series=[]
-    for i, scope in enumerate(sub):
+    for i, scope in enumerate(sub or scopes[:1]):
         sid=scope['scope_id'];label=scope.get('scope_name',sid)
         series.append(dict(id=sid,label=label,color=COLORS[i%len(COLORS)],
                            sizes=read_size_profile(asset_dir/f'{sample}.{sid}.full_library_profiles.tsv'),
-                           gene=read_gene_profile(gene_dir/f'{sample}.{sid}.profile.tsv')))
+                           gene=None))
+        if rna_summary is not None:
+            continue
+        series[-1]['gene'] = read_gene_profile(gene_dir/f'{sample}.{sid}.profile.tsv')
         series[-1]['regions'] = read_region_metrics(asset_dir/f'{sample}.{sid}.regions.svg')
         numeric = gene_dir/f'{sample}.{sid}.profile.json'
         if numeric.is_file():
@@ -272,6 +301,18 @@ def render_profiles_card(sample, scopes, scope_html, asset_dir, gene_dir, asset_
     parts.append("<div class='profile-comparison-grid'>"+size_figure((asset_dir/size_name).read_text(),asset_prefix+size_name,''.join(legend))+figure(gel_name,'Sublibrary virtual lanes','comparison-gel')+'</div>')
     parts.append("<p class='comparison-note'>ONT-derived full-library sizes, length-weighted; each trace and lane is scaled to its own peak of 100.</p>")
     parts.append(INTERACTION_SCRIPT)
+    if rna_summary is not None:
+        from rna_report import rna_family_comparison
+        metrics = rna_summary['scopes']
+        family = rna_family_comparison(metrics, [row['id'] for row in series],
+                                       {row['id']: row['label'] for row in series},
+                                       {row['id']: row['color'] for row in series})
+        parts.append('<style>' + Path(__file__).with_name('rna_comparison.css').read_text() + '</style>')
+        name = f'{sample}.rna_region_distribution.svg'
+        (asset_dir/name).write_text(rna_region_comparison(series, metrics))
+        prefix = rna_prefix or '../qc/rna/' + quote(sample, safe='')
+        parts.extend(["<div class='profile-genomic-grid rna-distributions'>", figure(name, 'RNA region distribution', 'comparison-regions'),
+                      family, '</div>', transcript_panels(series, metrics, prefix)])
     meta=gene_comparison(series)
     regions=region_comparison(series)
     if regions:
@@ -290,5 +331,6 @@ def render_profiles_card(sample, scopes, scope_html, asset_dir, gene_dir, asset_
         content=re.sub(r'<h3>.*?</h3>','',scope_html[i+1],count=1,flags=re.S)
         count=int(scope.get('library_units',0))
         parts.append(f"<details class='profile-detail' data-scope='{esc(scope['scope_id'],quote=True)}' style='--scope-tint:{color}0f;--scope-border:{color}38'><summary><i style='background:{color}'></i>{esc(label)}<small>{count:,} units</small></summary>{content}</details>")
-    parts.append("<details class='profile-detail pooled-profile'><summary>Total library · pooled profiles</summary>"+scope_html[0]+'</details>')
+    total_label = 'Total library · pooled profiles' if sub else 'Total library details'
+    parts.append("<details class='profile-detail pooled-profile'><summary>"+total_label+'</summary>'+scope_html[0]+'</details>')
     return ''.join(parts)+'</section>'

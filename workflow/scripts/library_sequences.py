@@ -1,6 +1,11 @@
 """Shared adapter sequences and sequence primitives; no pipeline or report imports."""
 import gzip
 
+def microc_leg_span(insert_length, maximum):
+    """Length of each non-overlapping endpoint used in the Micro-C contact workflow."""
+    return min(maximum, insert_length // 2) if insert_length >= 50 else 0
+
+
 def rc(seq):
     return seq.translate(str.maketrans("ACGTNacgtn", "TGCANtgcan"))[::-1]
 

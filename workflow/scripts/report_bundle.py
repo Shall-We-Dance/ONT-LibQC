@@ -13,6 +13,7 @@ import uuid
 from urllib.parse import unquote, urlsplit
 
 from report_brand import copy_mark, downloads_page
+from report_provenance import RELEASE_VERSION
 
 MARKER = '.ont-qc-work.json'
 WORK_FOLDERS = {'bam', 'prepared', 'pairs', 'fragments', 'tracks', 'reference',
@@ -175,6 +176,8 @@ def build(work, report, config_path):
                       work / 'qc/adapters' / f'{sample}.summary.json',
                       work / 'qc/mycoplasma' / f'{sample}.json',
                       work / 'qc/spike_in' / f'{sample}.json']
+            if config.get("species_composition", {}).get("indexes"):
+                queue.append(work / "qc/species_composition" / f"{sample}.json")
             for category, pattern in [('gene_profile', f'{sample}*.profile.tsv'),
                                       ('gene_profile', f'{sample}*.profile.json'),
                                       ('rna_alignment', f'{sample}.json'),
@@ -235,7 +238,7 @@ def build(work, report, config_path):
         audit = validate(stage)
         if audit['sample_reports'] != len(samples): raise ValueError('Sample report count mismatch')
         marker = work / MARKER
-        manifest = {'schema_version': 1, 'samples': samples, 'validation': audit,
+        manifest = {'schema_version': 1, 'report_version': RELEASE_VERSION, 'samples': samples, 'validation': audit,
                     'source_run_id': json.loads(marker.read_text())['run_id'] if marker.is_file() else None}
         write_json(stage / 'manifest.json', manifest)
         validate(stage)

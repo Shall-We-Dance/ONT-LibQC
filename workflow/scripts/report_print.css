@@ -36,7 +36,7 @@
   .count-based-details,.library-structure-body,.library-sublibraries,.library-sequence-details,
   .library-sequence-group{break-inside:auto;page-break-inside:auto;overflow:visible;max-height:none}
   .report-section{margin:5mm 0 0;padding:0;border:0;border-radius:0}
-  #library-shape,#profiles,#rna-qc,#assay-qc{break-before:page;margin-top:0}
+  #profiles.report-section{break-before:page;margin-top:0}
   #custom-regions>p.muted,#custom-regions>details{display:none!important}
   .report-footer{margin-top:4mm;padding:2mm 0 0;font-size:9pt}
   .profile-scope{margin:3mm 0 5mm;padding-top:2mm}.profile-scope>p{break-after:avoid}
@@ -50,15 +50,25 @@
   .chromosome-detail{break-inside:avoid}.report-explanation p{margin:2mm 0}.report-explanation li{margin:1mm 0}
   .table-scroll,.pair-table-scroll,.library-sequence-table-scroll{width:100%;max-width:100%;overflow:visible;border-radius:0}
   table,.table-scroll table,.pair-table,.library-sequence-group table{width:100%;min-width:0;max-width:100%;table-layout:fixed;border-collapse:collapse;font-size:9pt}
-  thead{display:table-header-group}tfoot{display:table-footer-group}
+  thead{display:table-header-group;break-after:avoid}tfoot{display:table-footer-group}
   tr{break-inside:avoid;page-break-inside:avoid}tr:first-child:has(>th){break-after:avoid}
   th,td,.table-scroll th,.table-scroll td,.pair-table th,.pair-table td,.library-sequence-group th,.library-sequence-group td{
     min-width:0;max-width:none;padding:2mm 1.5mm;font-size:9pt;line-height:1.4;white-space:normal;overflow-wrap:anywhere;word-break:normal;vertical-align:middle}
   .table-scroll th:first-child,.table-scroll td:first-child{min-width:0;max-width:none;width:auto}
-  .qc-metrics th:first-child,.qc-metrics td:first-child{width:28%}
-  .qc-metrics th:last-child,.qc-metrics td:last-child{width:19%;min-width:0;max-width:none}
   .metric-cell,.qc-metrics .metric-cell,.reference-interval,.qc-metrics .reference-interval{min-width:0;max-width:none;font-size:9pt;white-space:normal;overflow-wrap:anywhere}
-  .metric-reading{gap:1.3mm;align-items:center;font-weight:500}.metric-reading>span:last-child{min-width:0}
+  .metric-reading{width:auto;max-width:100%}
+  .metric-reading>span:last-child{min-width:0}
+  .qc-metrics .metric-reading{gap:1mm;line-height:1.25;font-weight:500;overflow-wrap:normal}
+  .qc-metrics .metric-note{margin-top:.3mm;font-size:7.5pt}
+  .qc-metrics th:first-child,.qc-metrics td:first-child{width:26%}
+  .qc-metrics th:last-child,.qc-metrics td:last-child{width:16%}
+  .species-counts{break-inside:avoid}
+  .table-scroll .species-counts th:first-child{width:26%;text-align:left}
+  .table-scroll .species-counts td,.table-scroll .species-counts th{padding:1mm 1.5mm}
+  .table-scroll .species-counts td{white-space:nowrap}
+  .species-counts caption{font-size:10pt;break-after:avoid}
+  .species-counts small{font-size:7.5pt}
+  .species-screened{border-bottom:1pt solid #cad5e0}
   .light{flex:0 0 1.6mm;width:1.6mm;height:1.6mm}.unavailable-reason{max-width:none;font-size:9pt}
   .report-print-tables table{margin:0 0 4mm}.report-print-tables caption{text-align:left;padding:2mm 0;color:#617288;font-size:9pt;font-weight:600;break-after:avoid}
   .traffic-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:2mm;margin:3mm 0}
@@ -122,7 +132,6 @@
  .report-print-overview .traffic-grid .scope-card:first-child{display:grid;grid-template-columns:1fr 1fr 1fr;align-items:center;gap:5mm}
  .report-print-overview .scope-card h3{margin:0}.report-print-overview .scope-card .traffic{border:0}
  .report-print-overview .library-diagram-note,.report-print-overview .library-block.index .library-unresolved{display:none}
- .report-print-overview .report-print-tables table{break-inside:avoid}
  .report-print-definitions dl{column-count:2;column-gap:7mm}
 }
 @media print{
