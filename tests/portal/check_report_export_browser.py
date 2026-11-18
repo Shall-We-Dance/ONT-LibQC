@@ -261,6 +261,9 @@ def check_refreshed_layout(browser, original, refreshed, sample):
             for page in pages:
                 page.set_viewport_size({'width':width,'height':1000})
                 page.emulate_media(media=media)
+                if media == 'print':
+                    # The print media change event may run after Playwright reads the layout.
+                    page.evaluate('window.ONTReportExport.prepare()')
                 snapshots.append(page.evaluate("""({selectors,properties}) => selectors.map(selector =>
                     [...document.querySelectorAll(selector)].map(node => {
                         const style=getComputedStyle(node), rect=node.getBoundingClientRect();
