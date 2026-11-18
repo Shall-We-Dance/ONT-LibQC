@@ -120,7 +120,7 @@ class NameTests(unittest.TestCase):
     def test_older_page_and_single_library(self):
         from ont_portal.sublibrary_names import annotate_page, scope_catalog
         root = self.cfg.state/'reports'/self.jid
-        old = (root/'samples/other.html').read_text()
+        old = (root/'samples/other.html').read_text().replace('Physical indexes', 'Physical index pairs')
         self.assertIn('Alias A', annotate_page(old, scope_catalog(root, 'other'), {'lib01': 'Alias A'}))
         (root/'data/metrics/sample.json').write_text('{"sub_libraries":[]}')
         self.assertNotIn('Edit names', self.client.get(self.job['report_url']).text)

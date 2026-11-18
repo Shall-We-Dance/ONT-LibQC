@@ -112,7 +112,7 @@ with tempfile.TemporaryDirectory() as directory:
                         images={}
                         for sample in ['HL120']+(['HL240'] if amount==2 else []):
                             with page.expect_popup() as opened:page.get_by_role('link',name='Open '+sample+' report').click()
-                            report=opened.value;report.wait_for_load_state('load')
+                            report=opened.value;report.wait_for_url('**/r/*');report.wait_for_load_state('load')
                             wait_js(report,'Array.from(document.images).every(img => img.complete && img.naturalWidth > 0)')
                             images[sample]=report.locator('img').count();report.close()
                         with page.expect_download() as pending:page.get_by_role('link',name='Download report ZIP').first.click()

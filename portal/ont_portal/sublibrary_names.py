@@ -10,7 +10,7 @@ from .schema import SAFE_NAME
 SCOPE = re.compile(r'lib[0-9]{2,6}')
 MAX_NAME = 48
 MAP_FILE = 'data/sublibrary_names.tsv'
-TABLE = re.compile(r"(<h3>Physical indexes</h3>)(<div class=['\"]pair-table-scroll['\"][^>]*><table class=['\"]pair-table['\"]>)(.*?)</table>", re.S)
+TABLE = re.compile(r"(<h3>Physical (?:indexes|index pairs)</h3>)(<div class=['\"]pair-table-scroll['\"][^>]*><table class=['\"]pair-table['\"]>)(.*?)</table>", re.S)
 LIBRARY_CELL = re.compile(r'<tr(?: data-sublibrary="(lib[0-9]{2,6})")?><td><strong>([^<]*)</strong></td>')
 
 
@@ -35,6 +35,15 @@ def scope_catalog(root, sample):
         return catalog
     except (ValueError, KeyError, TypeError, AttributeError):
         return {}
+
+
+def has_sublibraries(root, primary):
+    # A retained bundle can contain more than the task's primary sample.
+    if scope_catalog(root, primary):
+        return True
+    folder = root/'data'/'metrics'
+    return (folder.is_dir() and folder.resolve() == root.resolve()/'data'/'metrics'
+            and any(scope_catalog(root, p.stem) for p in folder.glob('*.json') if p.stem != primary))
 
 
 def validate_names(values, catalog):
