@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from report_palette import NPG, bar_ink
 from library_sequences import fastq_records, microc_leg_span, rc
 
 NAMES = {"ARS_UCD2": "Cattle", "hg38": "Human", "mm39": "Mouse", "dm6": "Fruit fly",
@@ -19,6 +20,13 @@ RAW = "Reads without a reconstructed insert"
 AMBIG = "Ambiguous species"
 NONE = "No confident match"
 TOTAL = "Total inserts"
+
+# Key by reference so a subset or a different expected species keeps its colors.
+SPECIES_COLORS = {
+    "ARS_UCD2": NPG[3], "hg38": NPG[0], "mm39": NPG[2], "dm6": NPG[1],
+    "ecoli": NPG[8], "ce11": NPG[4], "GRCz12ab": NPG[5], "TAIR10": NPG[6],
+    "sacCer3": NPG[9], AMBIG: "#a7aab8", NONE: "#e2e7ec",
+}
 
 
 def queries(raw, table, output, expected_reads, leg_length=None):
@@ -175,8 +183,7 @@ def counts_table(title, scopes, species_keys, labels):
 
 def render(data):
     columns = [*data["panel"], AMBIG, NONE]
-    colors = {k: color for k, color in zip(data["panel"], ["#296ab5", "#18857e", "#8862a9", "#bf6b2d", "#587b49", "#985679", "#417a92", "#715a49", "#595ca2"])}
-    colors.update({AMBIG: "#a7aab8", NONE: "#e2e7ec"})
+    colors = {k: SPECIES_COLORS.get(k, '#536b80') for k in columns}
     labels = {k: html.escape(NAMES.get(k, k) + (" (expected)" if k == data["reference"] else ""))
               for k in columns}
 
@@ -201,15 +208,15 @@ def render(data):
             description = f"{labels[key]} {percent(n, scope['n'])}"
             descriptions.append(description)
             width = 100 * n / scope["n"]
-            ink = "#223447" if key in (AMBIG, NONE) else "#fff"
+            ink = bar_ink(colors[key])
             segments.append(f"<span class='species-segment' title='{description}' style='width:{width:.8f}%;"
-                            f"background:{colors.get(key, '#536b80')};color:{ink}'><b>{percent(n, scope['n'])}</b></span>")
+                            f"background:{colors[key]};color:{ink}'><b>{percent(n, scope['n'])}</b></span>")
         label = html.escape(scope["scope"])
         description_list = ", ".join(descriptions)
         bars.append(f"<div class='species-row'><span class='mixture-label'>{label}</span>"
                     f"<div class='species-bar' role='img' aria-label='{label}, {description_list}'>"
                     + "".join(segments) + "</div></div>")
-    legend = "".join(f"<li><i aria-hidden='true' style='background:{colors.get(k, '#536b80')}'></i>{labels[k]}</li>"
+    legend = "".join(f"<li><i aria-hidden='true' style='background:{colors[k]}'></i>{labels[k]}</li>"
                      for k in columns if k in visible)
     chart = ("".join(bars) + f"<ul class='species-legend'>{legend}</ul>" if bars
              else "<p class='muted'>No inserts assigned to a sublibrary.</p>")
