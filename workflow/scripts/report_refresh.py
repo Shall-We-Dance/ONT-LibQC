@@ -19,10 +19,13 @@ import tempfile
 import uuid
 import zipfile
 
+from custom_regions_ui import upgrade_html as refresh_custom_controls
 from report_bundle import validate
 from report_export import add_pdf_export
 from report_metrics import COLLISION_ROWS, METRIC_META, REPORT_CSS, REPORT_TOOLTIP_SCRIPT, scoped_metric_rows
+from report_palette import scope_color
 from report_profiles import render_profiles_card
+from report_sublibrary import render_sublibrary_composition
 from report_provenance import RELEASE_VERSION
 from species_composition import render as render_species
 
@@ -81,6 +84,36 @@ def replace_ranges(text, replacements):
     return text
 
 
+# Old retained SVGs have no raw reads or named series layers. Only replace
+# these historical series paints in the named per-library figures.
+LEGACY_PAINT = re.compile(
+    r"""(\b(?:fill|stroke)(?:=["']|:\s*))(?:#2a6cbd|#23877f|#8364b2|#b66b35|"""
+    r"""#427c9b|#a4547c|#68863b|#675ea4|#008577|#176cad|#000080)\b""",
+    re.IGNORECASE,
+)
+
+
+def recolor_series(svg, sid):
+    color = scope_color(sid)
+    return LEGACY_PAINT.sub(lambda m: m[1] + color, svg)
+
+
+def refresh_series_paints(root, sample, sid, rna_plot):
+    """Update only the paint in retained single-series figures, preserving geometry."""
+    assets = root / 'assets'
+    paths = [assets / f'{sample}.{sid}.{name}.svg' for name in
+             ('raw_lengths', 'insert_lengths', 'full_library_length_weighted',
+              'full_library_count_based', 'regions', 'TSS_TES')]
+    if re.fullmatch(r'scope_[0-9a-f]{12}\.profiles\.svg', rna_plot):
+        paths.append(root / 'data/rna' / sample / rna_plot)
+    for path in paths:
+        if path.is_file():
+            original = path.read_text()
+            updated = recolor_series(original, sid)
+            if updated != original:
+                path.write_text(updated)
+
+
 def refresh_profile_layout(root, sample, text):
     parsed = Elements(text)
     sections = [n for n in parsed.elements if n['attrs'].get('id') == 'profiles']
@@ -93,6 +126,9 @@ def refresh_profile_layout(root, sample, text):
         raise ValueError('Invalid retained scope identifiers')
     rna_path = root/'data/rna'/sample/'summary.json'
     rna = json.loads(rna_path.read_text()) if metric.get('assay') in {'rnaseq', 'clip'} and rna_path.is_file() else None
+    for sid in ids[1:]:
+        plots = rna['scopes'].get(sid, {}).get('plots', {}) if rna else {}
+        refresh_series_paints(root, sample, sid, plots.get('profiles', ''))
     scope_html = {}
     for node in parsed.elements:
         if 'profile-scope' not in node['attrs'].get('class', '').split() or not parsed.within(node, section): continue
@@ -139,6 +175,16 @@ def refresh_profile_layout(root, sample, text):
                     replacements.append((node, ''))
                 elif node['tag'] == 'style' and '.rna-comparison{' in parsed.fragment(node):
                     replacements.append((node, ''))
+    for node in parsed.elements:
+        attrs = node['attrs']
+        if attrs.get('id') == 'sublibrary-composition':
+            replacements.append((node, render_sublibrary_composition(metric)))
+        elif node['tag'] == 'details' and attrs.get('id', '').startswith('rna-scope-') and attrs.get('data-scope') in ids[1:]:
+            # Tint only the library header. The body includes unrelated assay colors.
+            heading, separator, body = parsed.fragment(node).partition('</i>')
+            old = re.search(r'--scope-tint:(#[0-9a-fA-F]{6})0f', heading)
+            if old and separator:
+                replacements.append((node, heading.replace(old[1], scope_color(attrs['data-scope'])) + separator + body))
     return replace_ranges(text, replacements)
 
 
@@ -196,7 +242,7 @@ def refresh_tables(root, sample, text):
 def refresh_page(root, sample):
     page = root/'samples'/f'{sample}.html'
     text = refresh_profile_layout(root, sample, page.read_text())
-    page.write_text(refresh_tables(root, sample, text))
+    page.write_text(refresh_custom_controls(refresh_tables(root, sample, text)))
 
 
 def refresh_presentation(text):
@@ -290,6 +336,19 @@ def refresh(root, apply=False, expected_manifest_sha256=None):
             for name, digest in before.items():
                 protected = name.startswith('data/') or (name != 'manifest.json' and Path(name).suffix in {'.tsv', '.csv', '.json', '.gz'})
                 if protected and hashlib.sha256((stage/name).read_bytes()).hexdigest() != digest:
+                    # The RNA bundle stores its presentation SVG beside the data.
+                    # Allow a paint-only change in a retained transcript profile.
+                    relative = Path(name)
+                    if (len(relative.parts) == 4 and relative.parts[:2] == ('data', 'rna')
+                            and relative.parts[2] in samples
+                            and re.fullmatch(r'scope_[0-9a-f]{12}\.profiles\.svg', relative.name)):
+                        summary = json.loads((root / relative.parent / 'summary.json').read_text())
+                        owners = [sid for sid, scope in summary['scopes'].items() if sid != 'total'
+                                  and scope.get('plots', {}).get('profiles') == relative.name]
+                        if len(owners) == 1:
+                            expected = recolor_series((root/name).read_text(), owners[0])
+                            if expected == (stage/name).read_text():
+                                continue
                     raise ValueError('Scientific record changed: '+name)
             data['report_version'] = RELEASE_VERSION
             data['validation'] = audit
