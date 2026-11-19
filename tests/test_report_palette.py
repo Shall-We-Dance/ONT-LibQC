@@ -28,6 +28,14 @@ class PaletteTests(unittest.TestCase):
         self.assertIn("value='lib03' data-color='#00a087'>Control</option>", custom)
         self.assertEqual(upgrade_html(custom), custom)
 
+    def test_sublibrary_stacks_use_both_label_colors_across_the_npg_palette(self):
+        metric = dict(library_units=100, sub_libraries=[
+            dict(scope_id=f'lib{i:02d}', library_units=10) for i in range(1, 11)])
+        doc = render_sublibrary_composition(metric)
+        for i, fill in enumerate(NPG, 1):
+            ink = '#ffffff' if i in (4, 8, 9) else '#000000'
+            self.assertIn(f'background:{fill};color:{ink}" title="lib{i:02d}: 10.0%', doc)
+
     def test_species_legend_and_stacks_use_reference_ids(self):
         for panel, expected in [(['mm39', 'hg38'], 'hg38'), (['hg38', 'mm39'], 'mm39'), (['hg38'], 'hg38')]:
             keys = panel + [AMBIG, NONE]
@@ -50,6 +58,11 @@ class PaletteTests(unittest.TestCase):
             ink = {'#000000': 0, '#ffffff': 1}[bar_ink(fill)]
             ratio = (max(ink, luminance) + 0.05) / (min(ink, luminance) + 0.05)
             self.assertGreaterEqual(ratio, 4.5, fill)
+
+    def test_white_is_preferred_when_both_colors_are_readable(self):
+        self.assertEqual(bar_ink(SPECIES_COLORS['sacCer3']), '#ffffff')
+        self.assertEqual(bar_ink('#767676'), '#ffffff')
+        self.assertEqual(bar_ink('#777777'), '#000000')
 
     def test_retained_scoped_figures_change_only_series_paint(self):
         with tempfile.TemporaryDirectory() as tmp:

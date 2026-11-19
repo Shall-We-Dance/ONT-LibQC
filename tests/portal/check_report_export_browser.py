@@ -24,6 +24,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'workflow/scripts'))
 from report_refresh import refresh
 from report_spike_matrix import spike_matrix_html
+from report_sublibrary import render_sublibrary_composition
 from report_metrics import REPORT_CSS, scoped_table_html
 from species_composition import classify, render as render_species
 from report_export import add_pdf_export
@@ -291,7 +292,7 @@ def check_refreshed_layout(browser, original, refreshed, sample):
 
 def check_composition_tables(browser):
     ids = [f'lib{i:02}' for i in range(1, 7)]
-    panel = ['hg38', 'dm6']
+    panel = ['hg38', 'dm6', 'sacCer3']
     hits = [[(species, 60, True, ('chr1', 0))] for species in panel]
     data = classify([sid for sid in ids for _ in panel], hits * len(ids), panel, 'dm6')
     scopes = [dict(scope_id=sid, collision_observed_pairs=i, collision_oe=2.5,
@@ -304,12 +305,13 @@ def check_composition_tables(browser):
     page = browser.new_page(viewport={'width': 1250, 'height': 900})
     def check_bar_labels():
         segments = page.locator('.species-bar').first.locator('.species-segment')
-        assert segments.locator('b').all_inner_texts() == ['50.0%', '50.0%']
+        assert segments.locator('b').all_inner_texts() == ['33.3%'] * len(panel)
         assert all(label.is_visible() for label in segments.locator('b').all())
         assert segments.evaluate_all('''bars => bars.map(bar => [
             getComputedStyle(bar).backgroundColor, getComputedStyle(bar.querySelector("b")).color
         ])''') == [['rgb(205, 32, 44)', 'rgb(255, 255, 255)'],
-                  ['rgb(0, 178, 169)', 'rgb(0, 0, 0)']]
+                  ['rgb(0, 178, 169)', 'rgb(0, 0, 0)'],
+                  ['rgb(116, 118, 120)', 'rgb(255, 255, 255)']]
 
     try:
         page.set_content(document)
@@ -337,6 +339,37 @@ def check_composition_tables(browser):
         assert page.locator('.report-print-tables .metric-note').count() == 5
         page.evaluate('window.ONTReportExport.restore()')
         assert page.locator('.report-print-tables').count() == 0
+    finally:
+        page.close()
+
+
+def check_sublibrary_percentages(browser, engine):
+    scopes = [dict(scope_id=sid, library_units=count)
+              for sid, count in [('lib02', 500), ('lib04', 440), ('lib08', 60)]]
+    section = render_sublibrary_composition(dict(library_units=1000, sub_libraries=scopes))
+    doc = add_pdf_export(f"<html><head><style>{REPORT_CSS}</style></head><body>"
+                         f"<header class='report-hero'><h1>Sample</h1></header>{section}</body></html>")
+    page = browser.new_page()
+    try:
+        page.set_content(doc)
+        labels = page.locator('.mixture-segment-text')
+        assert labels.all_text_contents() == ['50.0%', '44.0%', '6.0%']
+        for media, width, visible in [('screen', 1250, [True, True, True]),
+                                      ('screen', 375, [True, True, False]),
+                                      ('print', 703, [True, True, False])]:
+            page.set_viewport_size({'width': width, 'height': 900})
+            if media == 'print':
+                page.evaluate('window.ONTReportExport.prepare()')
+            page.emulate_media(media=media)
+            assert [label.is_visible() for label in labels.all()] == visible
+            assert labels.evaluate_all("""nodes => nodes.map(label => [
+                getComputedStyle(label.parentElement).backgroundColor, getComputedStyle(label).color
+            ])""") == [['rgb(77, 187, 213)', 'rgb(0, 0, 0)'],
+                       ['rgb(60, 84, 136)', 'rgb(255, 255, 255)'],
+                       ['rgb(220, 0, 0)', 'rgb(255, 255, 255)']]
+            assert page.locator('.mixture-legend strong').all_inner_texts() == ['50.0%', '44.0%', '6.0%']
+        if engine == 'chromium':
+            page.pdf(path=str(OUTPUT/'sublibrary-composition.pdf'), format='A4', print_background=True)
     finally:
         page.close()
 
@@ -407,6 +440,7 @@ with tempfile.TemporaryDirectory() as directory:
                 browser = getattr(playwright, engine).launch(**options)
                 try:
                     check_composition_tables(browser)
+                    check_sublibrary_percentages(browser, engine)
                     check_spike_matrix_print(browser, engine)
                     for sample in ('HL120', 'HL240'):
                         check_refreshed_layout(browser, ROOT/'example_report', examples, sample)
