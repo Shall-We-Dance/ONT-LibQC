@@ -22,8 +22,10 @@ class PaletteTests(unittest.TestCase):
         self.assertEqual(rows[:2], [('Control', 10, '#00a087'), ('Treatment', 6, '#e64b35')])
         self.assertEqual(scope_color('lib10'), '#b09c85')
         self.assertEqual(scope_color('lib11'), scope_color('lib01'))
-        for _, _, color in rows:
-            self.assertIn(f'background:{color};color:{bar_ink(color)}', render_sublibrary_composition(metric))
+        doc = render_sublibrary_composition(metric)
+        for label, _, color in rows[:2]:
+            self.assertIn(f'background:{color};color:#ffffff" title="{label}:', doc)
+        self.assertIn('background:#8794a7;color:#000000" title="Unassigned / ambiguous:', doc)
         custom = render_section(dict(reference='hg38', scopes={'lib03': {'name': 'Control'}}))
         self.assertIn("value='lib03' data-color='#00a087'>Control</option>", custom)
         self.assertEqual(upgrade_html(custom), custom)
@@ -33,7 +35,7 @@ class PaletteTests(unittest.TestCase):
             dict(scope_id=f'lib{i:02d}', library_units=10) for i in range(1, 11)])
         doc = render_sublibrary_composition(metric)
         for i, fill in enumerate(NPG, 1):
-            ink = '#ffffff' if i in (4, 8, 9) else '#000000'
+            ink = '#ffffff' if i in (1, 2, 3, 4, 8, 9) else '#000000'
             self.assertIn(f'background:{fill};color:{ink}" title="lib{i:02d}: 10.0%', doc)
 
     def test_species_legend_and_stacks_use_reference_ids(self):
@@ -50,7 +52,7 @@ class PaletteTests(unittest.TestCase):
                '#69be28', '#00b2a9', '#cd202c', '#747678'}
         self.assertEqual({SPECIES_COLORS[k] for k in NAMES}, bmj)
 
-    def test_percentages_have_normal_text_contrast_on_all_fills(self):
+    def test_automatic_label_colors_have_normal_text_contrast_on_all_fills(self):
         for fill in (*NPG, *SPECIES_COLORS.values(), '#717d92', '#aab5c4', '#8794a7'):
             rgb = [int(fill[j:j + 2], 16) / 255 for j in (1, 3, 5)]
             rgb = [v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4 for v in rgb]

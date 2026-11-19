@@ -1,7 +1,7 @@
 """Shared, alignment-independent mixture proportions for every assay report."""
 import html
 
-from report_palette import bar_ink, scope_color
+from report_palette import NPG, bar_ink, scope_color
 
 
 CSS = '''
@@ -14,6 +14,7 @@ CSS = '''
 .mixture-swatch{width:10px;height:10px;border-radius:2px;print-color-adjust:exact;-webkit-print-color-adjust:exact}
 .mixture-label{overflow-wrap:anywhere}.mixture-label strong{font-weight:600}.mixture-count{display:block;font-size:12px;color:var(--muted,#5b6d82)}
 .mixture-segment-text{display:none;white-space:nowrap;font-variant-numeric:tabular-nums}
+.mixture-segment-text.outlined{-webkit-text-stroke:1px rgb(0 0 0 / 42%);paint-order:stroke fill}
 @container mixture-segment (min-width:6.5ch){.mixture-segment-text{display:inline}}
 '''
 
@@ -63,7 +64,13 @@ def render_sublibrary_composition(metric):
         width = 100 * n / total
         percentage = percent(n, total)
         title = esc(f'{label}: {percentage} ({n:,} units)', quote=True)
-        parts.append(f'<span class="mixture-segment" style="width:{width:.10f}%;background:{color};color:{bar_ink(color)}" title="{title}" aria-hidden="true"><span class="mixture-segment-text">{esc(percentage)}</span></span>')
+        ink = bar_ink(color)
+        label_class = 'mixture-segment-text'
+        # The first four library colors always have white percentages.
+        if color in NPG[:4] and ink != '#ffffff':
+            ink = '#ffffff'
+            label_class += ' outlined'
+        parts.append(f'<span class="mixture-segment" style="width:{width:.10f}%;background:{color};color:{ink}" title="{title}" aria-hidden="true"><span class="{label_class}">{esc(percentage)}</span></span>')
     parts.append('</div><div class="mixture-axis" aria-hidden="true"><span>0%</span><span>100%</span></div><ul class="mixture-legend">')
     for label, n, color in rows:
         parts.append(f'<li><span class="mixture-swatch" style="background:{color}" aria-hidden="true"></span><span class="mixture-label">{esc(label)} <strong>{esc(percent(n, total))}</strong><span class="mixture-count">{n:,} units</span></span></li>')

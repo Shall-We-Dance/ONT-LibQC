@@ -345,18 +345,20 @@ def check_composition_tables(browser):
 
 def check_sublibrary_percentages(browser, engine):
     scopes = [dict(scope_id=sid, library_units=count)
-              for sid, count in [('lib02', 500), ('lib04', 440), ('lib08', 60)]]
-    section = render_sublibrary_composition(dict(library_units=1000, sub_libraries=scopes))
+              for sid, count in [('lib01', 400), ('lib02', 240), ('lib03', 180), ('lib04', 120)]]
+    section = render_sublibrary_composition(dict(library_units=1000, sub_libraries=scopes,
+                                                 index_pairing=dict(ambiguous_units=0, unassigned_units=60)))
     doc = add_pdf_export(f"<html><head><style>{REPORT_CSS}</style></head><body>"
                          f"<header class='report-hero'><h1>Sample</h1></header>{section}</body></html>")
     page = browser.new_page()
     try:
         page.set_content(doc)
         labels = page.locator('.mixture-segment-text')
-        assert labels.all_text_contents() == ['50.0%', '44.0%', '6.0%']
-        for media, width, visible in [('screen', 1250, [True, True, True]),
-                                      ('screen', 375, [True, True, False]),
-                                      ('print', 703, [True, True, False])]:
+        percentages = ['40.0%', '24.0%', '18.0%', '12.0%', '6.0%']
+        assert labels.all_text_contents() == percentages
+        for media, width, visible in [('screen', 1250, [True, True, True, True, True]),
+                                      ('screen', 375, [True, True, True, False, False]),
+                                      ('print', 703, [True, True, True, True, False])]:
             page.set_viewport_size({'width': width, 'height': 900})
             if media == 'print':
                 page.evaluate('window.ONTReportExport.prepare()')
@@ -364,10 +366,12 @@ def check_sublibrary_percentages(browser, engine):
             assert [label.is_visible() for label in labels.all()] == visible
             assert labels.evaluate_all("""nodes => nodes.map(label => [
                 getComputedStyle(label.parentElement).backgroundColor, getComputedStyle(label).color
-            ])""") == [['rgb(77, 187, 213)', 'rgb(0, 0, 0)'],
+            ])""") == [['rgb(230, 75, 53)', 'rgb(255, 255, 255)'],
+                       ['rgb(77, 187, 213)', 'rgb(255, 255, 255)'],
+                       ['rgb(0, 160, 135)', 'rgb(255, 255, 255)'],
                        ['rgb(60, 84, 136)', 'rgb(255, 255, 255)'],
-                       ['rgb(220, 0, 0)', 'rgb(255, 255, 255)']]
-            assert page.locator('.mixture-legend strong').all_inner_texts() == ['50.0%', '44.0%', '6.0%']
+                       ['rgb(170, 181, 196)', 'rgb(0, 0, 0)']]
+            assert page.locator('.mixture-legend strong').all_inner_texts() == percentages
         if engine == 'chromium':
             page.pdf(path=str(OUTPUT/'sublibrary-composition.pdf'), format='A4', print_background=True)
     finally:
