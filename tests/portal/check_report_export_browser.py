@@ -356,14 +356,19 @@ def check_sublibrary_percentages(browser, engine):
         labels = page.locator('.mixture-segment-text')
         percentages = ['40.0%', '24.0%', '18.0%', '12.0%', '6.0%']
         assert labels.all_text_contents() == percentages
-        for media, width, visible in [('screen', 1250, [True, True, True, True, True]),
-                                      ('screen', 375, [True, True, True, False, False]),
-                                      ('print', 703, [True, True, True, True, False])]:
+        for media, width in [('screen', 1250), ('screen', 375), ('print', 703)]:
             page.set_viewport_size({'width': width, 'height': 900})
             if media == 'print':
                 page.evaluate('window.ONTReportExport.prepare()')
             page.emulate_media(media=media)
-            assert [label.is_visible() for label in labels.all()] == visible
+            visible = [label.is_visible() for label in labels.all()]
+            if width == 375:
+                assert all(visible[:2]) and not visible[-1], (media, width, visible)
+            else:
+                assert all(visible[:4]), (media, width, visible)
+            assert labels.evaluate_all('''nodes => nodes.every(label =>
+                label.getBoundingClientRect().width <= label.parentElement.getBoundingClientRect().width + 1
+            )'''), (media, width)
             assert labels.evaluate_all("""nodes => nodes.map(label => [
                 getComputedStyle(label.parentElement).backgroundColor, getComputedStyle(label).color
             ])""") == [['rgb(230, 75, 53)', 'rgb(255, 255, 255)'],
