@@ -38,8 +38,9 @@ class PaletteTests(unittest.TestCase):
                 color = SPECIES_COLORS[key]
                 self.assertIn(f"background:{color}'></i>{label}</li>", doc)
                 self.assertIn(f"background:{color};color:{bar_ink(color)}'", doc)
-            self.assertEqual(SPECIES_COLORS['hg38'], '#e64b35')
-        self.assertEqual(len(set(SPECIES_COLORS[k] for k in NAMES)), len(NAMES))
+        bmj = {'#2a6ebb', '#f0ab00', '#c50084', '#7d5cc6', '#e37222',
+               '#69be28', '#00b2a9', '#cd202c', '#747678'}
+        self.assertEqual({SPECIES_COLORS[k] for k in NAMES}, bmj)
 
     def test_percentages_have_normal_text_contrast_on_all_fills(self):
         for fill in (*NPG, *SPECIES_COLORS.values(), '#717d92', '#aab5c4', '#8794a7'):

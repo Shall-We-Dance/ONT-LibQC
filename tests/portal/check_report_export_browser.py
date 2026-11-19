@@ -291,8 +291,9 @@ def check_refreshed_layout(browser, original, refreshed, sample):
 
 def check_composition_tables(browser):
     ids = [f'lib{i:02}' for i in range(1, 7)]
-    hit = ('dm6', 60, True, ('chr1', 0))
-    data = classify(ids, [[hit]] * len(ids), ['hg38', 'dm6'], 'dm6')
+    panel = ['hg38', 'dm6']
+    hits = [[(species, 60, True, ('chr1', 0))] for species in panel]
+    data = classify([sid for sid in ids for _ in panel], hits * len(ids), panel, 'dm6')
     scopes = [dict(scope_id=sid, collision_observed_pairs=i, collision_oe=2.5,
                    mycoplasma_status='NOT_DETECTED', mycoplasma_screened_reads=1)
               for i, sid in enumerate(['total', *ids])]
@@ -301,8 +302,18 @@ def check_composition_tables(browser):
                               "<header class='report-hero'><h1>Sample</h1></header>"
                               + render_species(data) + metrics + "</body></html>")
     page = browser.new_page(viewport={'width': 1250, 'height': 900})
+    def check_bar_labels():
+        segments = page.locator('.species-bar').first.locator('.species-segment')
+        assert segments.locator('b').all_inner_texts() == ['50.0%', '50.0%']
+        assert all(label.is_visible() for label in segments.locator('b').all())
+        assert segments.evaluate_all('''bars => bars.map(bar => [
+            getComputedStyle(bar).backgroundColor, getComputedStyle(bar.querySelector("b")).color
+        ])''') == [['rgb(205, 32, 44)', 'rgb(255, 255, 255)'],
+                  ['rgb(0, 178, 169)', 'rgb(0, 0, 0)']]
+
     try:
         page.set_content(document)
+        check_bar_labels()
         page.locator('details').evaluate('(node) => node.open = true')
         assert page.locator('.species-counts').first.evaluate('(t) => t.clientWidth <= t.parentNode.clientWidth + 1')
         assert page.locator('.metric-note').first.inner_text() == 'Low depth'
@@ -316,6 +327,7 @@ def check_composition_tables(browser):
         page.evaluate('window.ONTReportExport.prepare()')
         page.emulate_media(media='print')
         page.set_viewport_size({'width': 703, 'height': 1000})
+        check_bar_labels()
         for kind, count in [('species-counts', 2), ('qc-metrics', 2)]:
             copies = page.locator('.report-print-tables .' + kind)
             assert copies.count() == count

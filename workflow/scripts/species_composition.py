@@ -10,8 +10,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from report_palette import NPG, bar_ink
 from library_sequences import fastq_records, microc_leg_span, rc
+from report_palette import bar_ink
 
 NAMES = {"ARS_UCD2": "Cattle", "hg38": "Human", "mm39": "Mouse", "dm6": "Fruit fly",
          "ecoli": "E. coli", "ce11": "C. elegans", "sacCer3": "Budding yeast",
@@ -21,11 +21,12 @@ AMBIG = "Ambiguous species"
 NONE = "No confident match"
 TOTAL = "Total inserts"
 
-# Key by reference so a subset or a different expected species keeps its colors.
+# ggsci pal_bmj("default"), keyed by reference so subsets and reorderings keep their colors.
+# https://nanx.me/ggsci/reference/pal_bmj.html
 SPECIES_COLORS = {
-    "ARS_UCD2": NPG[3], "hg38": NPG[0], "mm39": NPG[2], "dm6": NPG[1],
-    "ecoli": NPG[8], "ce11": NPG[4], "GRCz12ab": NPG[5], "TAIR10": NPG[6],
-    "sacCer3": NPG[9], AMBIG: "#a7aab8", NONE: "#e2e7ec",
+    "ARS_UCD2": "#2a6ebb", "hg38": "#cd202c", "mm39": "#f0ab00", "dm6": "#00b2a9",
+    "ecoli": "#e37222", "ce11": "#c50084", "GRCz12ab": "#7d5cc6", "TAIR10": "#69be28",
+    "sacCer3": "#747678", AMBIG: "#a7aab8", NONE: "#e2e7ec",
 }
 
 
