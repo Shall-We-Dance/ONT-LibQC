@@ -42,7 +42,7 @@ CSRF/origin checks, size limits, queue limits and per-address/per-client daily q
 
 ## Resource limits
 
-Both services load operator settings from one private `runtime/limits.yaml`. New deployments include the 24 common upload, queue, storage and compute settings. Omitted HTTP, temporary-filesystem and logging settings use the shared defaults in [limits.py](../ont_portal/limits.py); they can still be added to `limits.yaml` to override those defaults. Existing full configuration files remain supported. The following are repository defaults; operators may override them. The public server can have different limits.
+Both services load operator settings from one private `runtime/limits.yaml`. New deployments include the 24 common upload, queue, storage and compute settings. Omitted HTTP, temporary-filesystem and logging settings use the shared defaults in [limits.py](../ont_portal/limits.py); they can still be added to `limits.yaml` to override those defaults. Existing full configuration files remain supported. The following are defaults for new deployments; operators may override them. The public server can have different limits.
 
 | Setting | Default |
 | --- | --- |
@@ -51,7 +51,7 @@ Both services load operator settings from one private `runtime/limits.yaml`. New
 | Expanded FASTQ | 250 MB / 250,000 reads |
 | BED upload | 4 MiB / 100,000 regions |
 | Concurrent compute jobs | 2 across local and remote submissions; rules remain serial within each job |
-| Ordinary job resources | 2 CPUs / 8 GiB RAM / 128 processes |
+| Ordinary job resources | 2 CPUs / 12 GiB RAM / 128 processes |
 | Large BWA-MEM2 / Minimap2 indexes | Index-aware memory budget, capped at 20 GiB |
 | Web service | 0.5 CPU / 256 MiB RAM |
 | Public edge | 0.25 CPU / 64 MiB RAM; at least 1,024 connections including upstream connections |
@@ -81,7 +81,9 @@ The batch endpoint accepts the entire batch or rejects it without creating any j
 
 The dispatcher holds an exclusive supervisor lock and launches at most two isolated job processes. A transactional claim checks the global task count and reserves the combined memory, work disk and report capacity before starting another task. It waits for memory, disk and report-storage headroom before claiming the next task. Per-job containers enforce CPU, RAM, swap and process caps.
 
-BWA-MEM2 and Minimap2 jobs estimate their memory budget from the selected reference index: small genomes use the 8 GiB default, while larger genomes can require up to 20 GiB. Default chromatin jobs use Bowtie2 with the smaller budget. The service does not change the chosen aligner to save memory.
+The worker uses `memory` as the ordinary job's Docker memory limit and reserves that amount before starting the job. New deployments use 12 GiB to give Bowtie2 room during species screening. Index-based estimates can raise a job's allocation up to `max_memory`. On a host with 31 GiB of RAM and 4 GiB reserved for the system, two 12 GiB jobs can run together when memory is available. A third waits for capacity.
+
+To upgrade an existing worker, set `memory: 12g` in its limits file and restart the dispatcher after running jobs finish. Existing configurations that omit `memory` retain the 8 GiB fallback.
 
 For files above the online limits, the UI links to [ONT-LibQC on GitHub](https://github.com/Shall-We-Dance/ONT-LibQC). `pipeline_url` in the same limits file controls this link.
 
@@ -99,7 +101,7 @@ max_concurrent_jobs: 2
 max_concurrent_uploads: 10
 max_uploads_per_client: 1
 cores: 2
-memory: 8g
+memory: 12g
 max_memory: 20g
 ```
 

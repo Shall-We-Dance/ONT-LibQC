@@ -8,6 +8,7 @@ import unittest
 from unittest.mock import patch
 
 from ont_portal import worker
+from ont_portal.limits import RUNTIME_DEFAULTS
 
 GIB=1024**3
 
@@ -69,16 +70,29 @@ class AdmissionTests(unittest.TestCase):
         self.total_patch=patch.object(worker,'total_memory',return_value=31*GIB)
         self.total_patch.start();self.addCleanup(self.total_patch.stop)
 
-    def job(self,number,status='queued',budget=8):
+    def job(self,number,status='queued',budget=8,options=None):
         jid=f'{number:032x}'
         with self.worker.store.connect() as conn:
             conn.execute('INSERT INTO jobs (id,created,updated,status,email,filename,expected_bytes,options,client,expires) VALUES (?,?,?,?,?,?,?,?,?,?)',
-                (jid,number,number,status,'','fixture.fastq',100,json.dumps({'budget':budget}),'fixture',9999999999))
+                (jid,number,number,status,'','fixture.fastq',100,json.dumps(options if options is not None else {'budget':budget}),'fixture',9999999999))
         return jid
 
     def claim(self,available,allocated=0):
         with patch.object(worker,'available_memory',return_value=available*GIB),patch.object(worker,'allocated_job_memory',return_value=allocated*GIB):
             return self.worker.claim()
+
+    def test_new_installation_reserves_two_bowtie2_jobs_and_queues_the_third(self):
+        self.worker.memory = RUNTIME_DEFAULTS['memory']
+        self.worker.catalog = {'references': {'ARS_UCD2': {}}}
+        del self.worker.memory_for  # Exercise the real index and container budget calculation.
+        options = {'reference': 'ARS_UCD2', 'assay': 'chromatin', 'mapper': 'auto'}
+        budget = self.worker.memory_for(SimpleNamespace(**options))
+        self.assertEqual(budget, 12 * GIB)
+        ids = [self.job(i, options=options) for i in range(1, 4)]
+        self.assertEqual([self.claim(30)['id'] for _ in range(2)], ids[:2])
+        self.assertIsNone(self.claim(30))
+        self.worker.store.update(ids[0], status='succeeded')
+        self.assertEqual(self.claim(30)['id'], ids[2])
 
     def test_three_light_jobs_can_start_before_containers_allocate(self):
         ids=[self.job(i) for i in range(1,5)]

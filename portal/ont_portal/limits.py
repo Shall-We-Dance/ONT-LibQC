@@ -61,6 +61,9 @@ RUNTIME_DEFAULTS = {name: DEFAULTS[name] for name in (
     'cores', 'memory', 'max_memory', 'min_free_memory_bytes', 'timeout_seconds',
     'max_work_bytes', 'max_file_bytes',
 )}
+# New installations reserve room for Bowtie2 species screens. Older configs
+# that omit memory keep their existing admission and container limits.
+RUNTIME_DEFAULTS['memory'] = '12g'
 
 
 def load_limits(config):
