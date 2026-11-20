@@ -8,6 +8,7 @@ RULE_LABELS = {
     'rna_prepare': 'Preparing RNA inserts and removing technical sequences',
     'align': 'Mapping inserts to the reference genome',
     'mycoplasma_screen': 'Checking for Mycoplasma sequences',
+    'species_composition': 'Screening reads against the species panel',
     'spikein_screen': 'Checking spike-in and other reference sequences',
     'rna_sources': 'Identifying RNA families and source genomes',
     'rna_qc': 'Calculating RNA regions, strand bias and splice evidence',
