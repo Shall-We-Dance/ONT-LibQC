@@ -38,6 +38,7 @@ DEFAULTS = {
     'cores': 2,
     'shared_cpus': [],
     'memory': '8g',
+    'light_memory': None,
     'max_memory': '20g',
     'min_free_memory_bytes': 2 * 1024**3,
     'timeout_seconds': 7200,
@@ -63,7 +64,7 @@ RUNTIME_DEFAULTS = {name: DEFAULTS[name] for name in (
 )}
 # New installations reserve room for Bowtie2 species screens. Older configs
 # that omit memory keep their existing admission and container limits.
-RUNTIME_DEFAULTS['memory'] = '12g'
+RUNTIME_DEFAULTS.update(memory='12g', light_memory='8g')
 
 
 def load_limits(config):

@@ -8,6 +8,7 @@ from pathlib import Path
 import yaml
 from .limits import DEFAULTS, load_limits
 from .worker_cpu import cpu_limits
+from .worker_phases import PhasePool
 from .schema import Options
 from .report_files import REPORT_FILE_SUFFIXES
 from .store import Store, ACTIVE, TERMINAL, token_for
@@ -130,6 +131,18 @@ def allocated_job_memory(jid):
     return 0
 
 
+def memory_fits(reservations, budget, headroom):
+    reserved = sum(reservations.values())
+    if reserved + budget + headroom > total_memory():
+        return False
+    allocated = sum(min(cap, allocated_job_memory(jid)) for jid, cap in reservations.items() if cap)
+    return available_memory() >= reserved - allocated + budget + headroom
+
+
+class JobCancelled(Exception):
+    pass
+
+
 class Worker:
     def __init__(self,config):
         # Older deployments may have a flat memory limit above the new default cap.
@@ -144,6 +157,9 @@ class Worker:
         self.image=config.get('runner_image','ont-qc-runner:1')
         self.cores, self.max_jobs, self.cpu_pool = cpu_limits(config)
         self.memory = config['memory']
+        self.light_memory = memory_bytes(config['light_memory']) if config['light_memory'] is not None else None
+        if self.light_memory and self.light_memory > memory_bytes(self.memory):
+            raise ValueError('light_memory is larger than memory')
         if memory_bytes(config['max_memory'])<memory_bytes(self.memory):raise ValueError('max_memory is smaller than memory')
         self.timeout=int(config['timeout_seconds']);self.uid=os.getuid();self.gid=os.getgid()
         self.secret=json.loads(Path(config['secrets_file']).read_text())['signing_key']
@@ -172,29 +188,28 @@ class Worker:
             raise ValueError('This reference index exceeds the online memory budget; run the pipeline locally')
         return required
 
-    def claim(self):
+    def claim(self, reservations=None):
         with self.store.connect(immediate=True) as c:
             active=c.execute("SELECT id,options FROM jobs WHERE status IN ('running','cancelling')").fetchall()
             if len(active)>=self.max_jobs:return None
-            reserved=allocated=0
+            budgets = dict(reservations or {})
             for running in active:
-                try:reservation=self.memory_for(Options.model_validate_json(running['options']).check_catalog(self.public))
-                except (ValueError,KeyError,OSError):reservation=memory_bytes(self.cfg['max_memory'])
-                reserved+=reservation
-                allocated+=min(reservation,allocated_job_memory(running['id']))
+                if running['id'] not in budgets:
+                    try: cap = self.memory_for(Options.model_validate_json(running['options']).check_catalog(self.public))
+                    except (ValueError, KeyError, OSError): cap = memory_bytes(self.cfg['max_memory'])
+                    budgets[running['id']] = cap
             row=c.execute("SELECT * FROM jobs WHERE status='queued' ORDER BY created,rowid LIMIT 1").fetchone()
             if row and not valid_id(row['id']):
                 c.execute('DELETE FROM jobs WHERE id=?',(row['id'],));row=None
             if row:
                 try: budget=self.memory_for(Options.model_validate_json(row['options']).check_catalog(self.public))
                 except (ValueError,KeyError,OSError): budget=memory_bytes(self.memory)
-                headroom=self.cfg['min_free_memory_bytes']
-                if reserved+budget+headroom>total_memory():return None
-                if available_memory()<reserved-allocated+budget+headroom:return None
+                initial = self.light_memory or budget
+                if not memory_fits(budgets, initial, self.cfg['min_free_memory_bytes']):return None
                 if shutil.disk_usage(self.state).free<self.cfg['min_free_bytes']+(len(active)+1)*self.cfg['max_work_bytes']:return None
                 if tree_size(self.state/'reports')+2*(len(active)+1)*self.cfg['max_report_bytes']>self.cfg['max_report_total_bytes']:return None
                 c.execute("UPDATE jobs SET status='running',updated=?,progress=5 WHERE id=?",(time.time(),row['id']))
-        return dict(row) if row else None
+        return dict(row, initial_memory=initial) if row else None
 
     def cleanup(self,jid):
         if not valid_id(jid):raise ValueError('Invalid task ID')
@@ -231,13 +246,56 @@ class Worker:
             self.docker_stop(row['id']);self.cleanup(row['id'])
             self.store.update(row['id'],status='failed',error='The service restarted while processing this task. Please submit the file again.')
 
-    def process(self,row,cpu=None):
-        jid=row['id']; work=self.state/'work'/jid; start=time.monotonic();proc=None
+    def check_job(self, jid, start):
+        if STOP or self.store.get(jid)['status'] == 'cancelling':
+            raise JobCancelled()
+        if time.monotonic()-start > self.timeout:
+            raise TimeoutError('The analysis exceeded the runtime limit. Use a smaller ONT file.')
+
+    def run_container(self, jid, start, work, phase, launch, log, offset):
+        lower, upper = {'full':(0,100), 'prepare':(5,18), 'align':(18,65), 'report':(65,95)}[phase]
+        with subprocess.Popen(launch, stdout=log, stderr=subprocess.STDOUT,
+                              preexec_fn=lambda:limit_log_output(self.cfg['max_log_bytes'])) as proc:
+            try:
+                while proc.poll() is None:
+                    self.store.heartbeat()
+                    self.check_job(jid, start)
+                    size = os.fstat(log.fileno()).st_size
+                    if (tree_size(work) > self.cfg['max_work_bytes'] or size > self.cfg['max_log_bytes']
+                            or shutil.disk_usage(self.state).free < self.cfg['min_free_bytes']):
+                        raise TimeoutError('The analysis exceeded the storage limit. Use a smaller ONT file.')
+                    with open(log.name, 'rb') as reader:
+                        reader.seek(max(offset, size-32768))
+                        tail = reader.read().decode('utf8','replace')
+                    matches = re.findall(r'\d+ of \d+ steps \((\d+)%\)', tail)
+                    fields = {'stage':analysis_stage(work, tail)}
+                    if matches:
+                        progress = lower + (upper-lower)*int(matches[-1])//100
+                        fields['progress'] = max(5, min(95, progress))
+                    self.store.update(jid, **fields)
+                    time.sleep(3)
+                return proc.returncode
+            finally:
+                if proc.poll() is None:
+                    self.docker_stop(jid)
+                    try: proc.wait(timeout=30)
+                    except subprocess.TimeoutExpired: proc.kill()
+
+    def process(self,row,cpu=None,channel=None):
+        jid=row['id']; work=self.state/'work'/jid; start=time.monotonic()
         try:
             self.store.update(jid,stage='Validating input reads')
             options=Options.model_validate_json(row['options']).check_catalog(self.public)
             if not valid_id(jid) or not 0<row['expected_bytes']<=self.cfg['max_upload_bytes']:raise ValueError('Invalid task envelope')
-            budget=self.memory_for(options)
+            peak = self.memory_for(options)
+            initial = row.get('initial_memory', self.light_memory if channel is not None else peak)
+            phases = [('full', initial)]
+            if channel is None and peak > initial:
+                raise ValueError('The reference memory requirement changed after admission')
+            if channel is not None:
+                if peak + self.cfg['min_free_memory_bytes'] > total_memory():
+                    raise ValueError('The reference requires more memory than this worker can allocate')
+                phases = [('prepare', initial), ('align', peak), ('report', self.light_memory)]
             work.mkdir(mode=0o700,exist_ok=False)
             copy_uploads(self.state/'uploads'/jid,work/'incoming',row['expected_bytes'],options.custom_regions)
             cfg,mounts=job_config(options,self.catalog,work,self.cores)
@@ -248,43 +306,41 @@ class Worker:
             (work/'request.json').write_text(json.dumps({'compressed':row['filename'].lower().endswith('.gz'),
                 'max_expanded_bytes':self.cfg['max_expanded_bytes'],'max_reads':self.cfg['max_reads'],
                 'custom_regions':options.custom_regions,'cores':self.cores,'options':options.model_dump()}))
-            cpu_args = ['--cpus', str(self.cores)] if cpu is None else ['--cpuset-cpus', str(cpu)]
             args=['docker','run','--rm','--name','ont-qc-job-'+jid,'--network','none','--read-only',
                 '--user',f'{self.uid}:{self.gid}','--cap-drop','ALL','--security-opt','no-new-privileges',
-                *cpu_args,'--memory',str(budget),'--memory-swap',str(budget),'--pids-limit',str(self.cfg['pids_limit']),
+                '--pids-limit',str(self.cfg['pids_limit']),
                 '--ulimit','nofile=1024:1024','--ulimit',f"fsize={self.cfg['max_file_bytes']}:{self.cfg['max_file_bytes']}",
                 '--log-driver','none','--tmpfs',f"/tmp:rw,nosuid,nodev,size={self.cfg['tmp_bytes']}",
                 '--env','USER=ont-qc','--env','LOGNAME=ont-qc','--env','OMP_NUM_THREADS=1','--env','OPENBLAS_NUM_THREADS=1','--env','MKL_NUM_THREADS=1',
                 '--mount',f'type=bind,src={self.pipeline},dst=/app,readonly',
-                '--mount',f'type=bind,src={work / "incoming"},dst=/input,readonly',
-                '--mount',f'type=bind,src={work},dst=/job',*mounts.arguments(),self.image]
+                '--mount',f'type=bind,src={work},dst=/job',*mounts.arguments()]
             logfile=self.state/'logs'/(jid+'.log')
             with logfile.open('wb') as log:
-                proc=subprocess.Popen(args,stdout=log,stderr=subprocess.STDOUT,preexec_fn=lambda:limit_log_output(self.cfg['max_log_bytes']))
-                while proc.poll() is None:
-                    self.store.heartbeat();latest=self.store.get(jid)
-                    if STOP or latest['status']=='cancelling':
-                        self.docker_stop(jid);proc.wait(timeout=30)
-                        self.store.update(jid,status='cancelled' if not STOP else 'failed',error=None if not STOP else 'The service stopped during analysis. Please submit again.')
-                        return
-                    if time.monotonic()-start>self.timeout:
-                        raise TimeoutError('The analysis exceeded the runtime limit. Use a smaller ONT file.')
-                    if tree_size(work)>self.cfg['max_work_bytes'] or logfile.stat().st_size>self.cfg['max_log_bytes'] or shutil.disk_usage(self.state).free<self.cfg['min_free_bytes']:
-                        raise TimeoutError('The analysis exceeded the storage limit. Use a smaller ONT file.')
-                    # Progress represents completed workflow steps when Snakemake reports them.
-                    with logfile.open('rb') as progress_log:
-                        progress_log.seek(max(0,logfile.stat().st_size-32768));tail=progress_log.read().decode('utf8','replace')
-                    matches=re.findall(r'(\d+) of (\d+) steps \((\d+)%\)',tail)
-                    fields={'stage':analysis_stage(work,tail)}
-                    if matches:fields['progress']=min(95,max(5,int(matches[-1][2])))
-                    self.store.update(jid,**fields)
-                    time.sleep(3)
-            result_file=work/'result.json'
-            if result_file.is_symlink() or not result_file.is_file() or result_file.stat().st_size>16384:raise ValueError('Missing bounded job result')
-            result=json.loads(result_file.read_text())
-            if proc.returncode or not result.get('ok'):
-                error=result.get('error','The analysis failed. Contact the service operator.')
-                self.store.update(jid,status='failed',error=str(error)[:400]);return
+                for index, (phase, budget) in enumerate(phases):
+                    if index:
+                        stage = 'alignment and screening' if phase == 'align' else 'reporting'
+                        self.store.update(jid, stage='Waiting for memory for '+stage)
+                        channel.send(budget)
+                        while not channel.poll(2):
+                            self.check_job(jid, start)
+                        cpu = channel.recv()
+                    self.check_job(jid, start)
+                    cpu_args = ['--cpus', str(self.cores)] if cpu is None else ['--cpuset-cpus', str(cpu)]
+                    phase_args = ['--env', 'ONT_LIBQC_PHASE='+phase] if channel is not None else []
+                    # Bind the upload only before any container has written to /job.
+                    if index == 0:
+                        phase_args += ['--mount',f'type=bind,src={work / "incoming"},dst=/input,readonly']
+                    launch = args + cpu_args + ['--memory',str(budget),'--memory-swap',str(budget),
+                                                *phase_args,self.image]
+                    log.write(f'Portal phase {phase}: container memory {budget} bytes\n'.encode());log.flush()
+                    offset = log.tell()
+                    returncode = self.run_container(jid, start, work, phase, launch, log, offset)
+                    result_file=work/'result.json'
+                    if result_file.is_symlink() or not result_file.is_file() or result_file.stat().st_size>16384:raise ValueError('Missing bounded job result')
+                    result=json.loads(result_file.read_text())
+                    if returncode or not result.get('ok') or (channel is not None and result.get('phase')!=phase):
+                        error=result.get('error','The analysis failed. Contact the service operator.')
+                        self.store.update(jid,status='failed',error=str(error)[:400]);return
             latest=self.store.get(jid)
             if latest['status']=='cancelling':self.store.update(jid,status='cancelled');return
             if tree_size(self.state/'reports')+2*tree_size(work/'report')>self.cfg['max_report_total_bytes']:
@@ -292,16 +348,16 @@ class Worker:
             self.store.update(jid,stage='Publishing the report',progress=98)
             publish_report(work/'report',self.state/'reports'/jid,self.cfg['max_report_bytes'],self.cfg['max_html_bytes'])
             self.store.update(jid,status='succeeded',progress=100,error=None,expires=time.time()+self.cfg.get('retention_days',DEFAULTS['retention_days'])*86400)
+        except JobCancelled:
+            self.docker_stop(jid)
+            self.store.update(jid,status='failed' if STOP else 'cancelled',
+                              error='The service stopped during analysis. Please submit again.' if STOP else None)
         except (TimeoutError,ValueError) as exc:
             self.docker_stop(jid);self.store.update(jid,status='failed',error=str(exc))
         except Exception:
             LOG.exception('Job %s failed',jid)
             self.docker_stop(jid);self.store.update(jid,status='failed',error='The service could not complete this analysis. Please contact the operator with your task ID.')
         finally:
-            if proc and proc.poll() is None:
-                self.docker_stop(jid)
-                try:proc.wait(timeout=30)
-                except subprocess.TimeoutExpired:proc.kill();proc.wait()
             self.cleanup(jid)
 
     def notify(self):
@@ -309,6 +365,9 @@ class Worker:
         notify(self.cfg,limit=1)
 
     def run(self):
+        pool = PhasePool(self.cpu_pool)
+        # Children must use the same effective limits as the supervisor that admitted them.
+        child_config = dict(self.cfg, limits_file=None)
         self.recover();children={};context=multiprocessing.get_context('spawn');maintained=0
         try:
             while not STOP:
@@ -316,29 +375,35 @@ class Worker:
                 for jid,proc in list(children.items()):
                     if proc.is_alive():continue
                     proc.join();del children[jid]
-                    if self.cpu_pool: self.cpu_pool.release(jid)
+                    pool.release(jid)
                     row=self.store.get(jid)
                     if row and row['status'] in {'running','cancelling'}:
                         self.docker_stop(jid);self.cleanup(jid)
                         self.store.update(jid,status='cancelled' if row['status']=='cancelling' else 'failed',error='The analysis process stopped unexpectedly.')
                 if time.monotonic()-maintained>10:
                     self.maintain(skip=children);self.notify();maintained=time.monotonic()
-                while len(children)<self.max_jobs and not STOP:
-                    row=self.claim()
+                pool.advance(lambda reservations, budget: memory_fits(reservations, budget, self.cfg['min_free_memory_bytes']))
+                while len(children)<self.max_jobs and not STOP and not pool.waiting:
+                    row=self.claim(pool.reserved)
                     if not row:break
                     jid = row['id']
+                    parent = child = None
                     try:
-                        cpu = self.cpu_pool.reserve(jid) if self.cpu_pool else None
-                        proc = context.Process(target=process_job, args=(self.cfg, row, cpu), daemon=True)
+                        if self.light_memory:
+                            parent, child = context.Pipe()
+                        cpu = pool.start(jid,row['initial_memory'],parent)
+                        proc = context.Process(target=process_job, args=(child_config, row, cpu, child), daemon=True)
                         proc.start()
                     except (OSError, subprocess.SubprocessError):
-                        if self.cpu_pool and jid in self.cpu_pool.owners:
-                            self.cpu_pool.release(jid)
+                        pool.release(jid)
+                        if parent is not None: parent.close()
                         LOG.warning('Dispatch will be retried', exc_info=True)
                         with self.store.connect(immediate=True) as db:
                             db.execute("UPDATE jobs SET status='queued',updated=?,progress=0 WHERE id=? AND status='running'",
                                        (time.time(), jid))
                         break
+                    finally:
+                        if child is not None: child.close()
                     children[jid] = proc
                 if self.cpu_pool: self.cpu_pool.rebalance()
                 time.sleep(2)
@@ -356,9 +421,9 @@ def stop_worker(signum,frame):
     STOP=True
 
 
-def process_job(config,row,cpu=None):
+def process_job(config,row,cpu=None,channel=None):
     signal.signal(signal.SIGTERM,stop_worker);signal.signal(signal.SIGINT,stop_worker)
-    Worker(config).process(row,cpu)
+    Worker(config).process(row,cpu,channel)
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--config',required=True);args=parser.parse_args()
