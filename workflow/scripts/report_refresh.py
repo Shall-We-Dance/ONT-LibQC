@@ -23,6 +23,7 @@ from report_bundle import validate
 from report_export import add_pdf_export
 from report_metrics import COLLISION_ROWS, METRIC_META, REPORT_CSS, REPORT_TOOLTIP_SCRIPT, scoped_metric_rows
 from report_profiles import render_profiles_card
+from report_sublibrary import render_sublibrary_composition, scope_color
 from report_provenance import RELEASE_VERSION
 from species_composition import render as render_species
 
@@ -91,6 +92,32 @@ def refresh_profile_layout(root, sample, text):
     ids = [scope.get('scope_id') for scope in scopes]
     if any(not isinstance(sid, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', sid) for sid in ids) or len(set(ids)) != len(ids):
         raise ValueError('Invalid retained scope identifiers')
+    mixture = next((n for n in parsed.elements if n['attrs'].get('id') == 'sublibrary-composition'), None)
+    composition = [(mixture, render_sublibrary_composition(metric))] if mixture else []
+    if metric.get('assay') == 'microc':
+        required = [root/'assets'/f"{sample}.{s['scope_id']}.full_library_profiles.tsv" for s in scopes[1:] or scopes]
+        # An upgraded bundle may retain readable SVGs after their source tables
+        # have been pruned. Rebuilding its card would drop those existing panels.
+        embedded = {n['attrs'].get('id') for n in parsed.elements if parsed.within(n, section)}
+        if 'pairtools' in embedded:
+            required.append(root/'data/pairtools'/f'{sample}.json')
+        if 'ligation' in embedded:
+            ligation = next(n for n in parsed.elements if n['attrs'].get('id') == 'ligation' and parsed.within(n, section))
+            panels = [n for n in parsed.elements if 'ligation-comparisons' in n['attrs'].get('class', '').split()
+                      and parsed.within(n, ligation)]
+            # Old cards combined both panels in .microc.ligation.svg. Keep that
+            # image intact if either data source for it has since been pruned.
+            # Split cards only need the inputs for the panels actually present.
+            sources = [('ligation', 'json'), ('ligation_lengths', 'units.tsv.gz')]
+            images = {Path(n['attrs'].get('src', '')).name for n in parsed.elements
+                      if n['tag'] == 'img' and any(parsed.within(n, panel) for panel in panels)}
+            for key, suffix in sources:
+                if not panels or f'{sample}.microc.{key}.svg' in images:
+                    required.append(root/'data/ligation'/f'{sample}.{suffix}')
+        if 'mnase' in embedded:
+            required.append(root/'data/ligation'/f'{sample}.mnase_fragments.tsv.gz')
+        if any(not path.is_file() for path in required):
+            return replace_ranges(text, composition)
     rna_path = root/'data/rna'/sample/'summary.json'
     rna = json.loads(rna_path.read_text()) if metric.get('assay') in {'rnaseq', 'clip'} and rna_path.is_file() else None
     scope_html = {}
@@ -112,7 +139,17 @@ def refresh_profile_layout(root, sample, text):
         if sid is None or sid in scope_html: raise ValueError('Cannot identify historical profile scope: '+sample)
         scope_html[sid] = parsed.fragment(node)
     if set(scope_html) != {s['scope_id'] for s in scopes}: raise ValueError('Retained profile scopes do not match metrics: '+sample)
-    if len(scopes) == 1 and rna is None:
+    microc = None
+    if metric.get('assay') == 'microc':
+        from report_microc_layout import prepare_microc_profiles
+        microc = prepare_microc_profiles(sample, scopes, root/'data', root/'assets', '../assets/', '../data')
+    chromatin = metric.get('assay') == 'chromatin'
+    if chromatin:
+        from report_regions import refresh_region_color
+        for i, scope in enumerate(scopes):
+            sid = scope['scope_id']
+            refresh_region_color(root/'assets'/f'{sample}.{sid}.regions.svg', scope_color(sid, max(0, i - 1)))
+    if len(scopes) == 1 and rna is None and not microc and not chromatin:
         # Single-library figures are already retained verbatim. Older reports
         # embed them inside Library quality; do not add a second card frame.
         new = parsed.fragment(section)
@@ -125,13 +162,35 @@ def refresh_profile_layout(root, sample, text):
     else:
         new = render_profiles_card(sample, scopes, [scope_html[s['scope_id']] for s in scopes],
                                    root/'assets', root/'data/gene_profile', '../assets/',
-                                   rna_summary=rna, rna_prefix='../data/rna/'+sample)
+                                   rna_summary=rna, rna_prefix='../data/rna/'+sample, microc=microc)
     replacements = [(section, new)]
+    if chromatin or rna is not None or microc:
+        quality = section['parent']
+        while quality and chromatin and quality['attrs'].get('id') != 'library-shape':
+            quality = quality['parent']
+        if quality and quality['attrs'].get('id') == 'library-shape':
+            # Move only the profiles section. Sibling evidence inside Library
+            # quality and independent replacements keep their source ranges.
+            after_quality = dict(start=quality['end'], end=quality['end'], closed=True)
+            replacements = [(section, ''), (after_quality, new)]
+    if chromatin or microc:
+        nav_links = {n['attrs'].get('href'): n for n in parsed.elements if n['tag'] == 'a'
+                     and n['parent'] and n['parent']['tag'] == 'nav'}
+        profile_link = nav_links.get('#profiles')
+        anchor = profile_link or nav_links.get('#library-shape')
+        if anchor:
+            label = 'Size &amp; Micro-C QC' if microc else 'Size &amp; profiles'
+            link = f"<a href='#profiles'>{label}</a>"
+            navigation = link if profile_link and microc else parsed.fragment(anchor)
+            if not profile_link:
+                navigation += link
+            if microc:
+                for panel, title in [('pairtools', 'Pairtools'), ('ligation', 'Ligation'), ('mnase', 'MNase')]:
+                    if panel in microc.section_ids and '#' + panel not in nav_links:
+                        navigation += f"<a href='#{panel}'>{title}</a>"
+            if navigation != parsed.fragment(anchor):
+                replacements.append((anchor, navigation))
     if rna is not None:
-        parent = section['parent']
-        if parent and parent['attrs'].get('id') == 'library-shape':
-            # Promote the old embedded profiles to their own report section.
-            replacements = [(parent, parsed.fragment(parent).replace(parsed.fragment(section), '', 1) + new)]
         for node in parsed.elements:
             parent = node['parent']
             if parent and parent['attrs'].get('id') == 'rna-qc':
@@ -139,7 +198,42 @@ def refresh_profile_layout(root, sample, text):
                     replacements.append((node, ''))
                 elif node['tag'] == 'style' and '.rna-comparison{' in parsed.fragment(node):
                     replacements.append((node, ''))
-    return replace_ranges(text, replacements)
+        # Retained RNA assay cards own their text, tables and evidence colors.
+        # Update just the identity marker and the two custom properties in the header.
+        for i, scope in enumerate(scopes[1:]):
+            sid = scope['scope_id']
+            card = next((n for n in parsed.elements if n['tag'] == 'details' and
+                         n['attrs'].get('id') == 'rna-scope-' + sid and n['attrs'].get('data-scope') == sid), None)
+            if card:
+                old = parsed.fragment(card)
+                header, end, body = old.partition('</summary>')
+                if end:
+                    color = scope_color(sid, i)
+                    header = re.sub(r'(--scope-(?:tint|border):|background:)#[0-9a-fA-F]{6}',
+                                    lambda m: m[1] + color, header)
+                    replacements.append((card, header + end + body))
+    if microc:
+        for node in parsed.elements:
+            parent = node['parent']
+            if parsed.within(node, section):
+                continue
+            if node['tag'] == 'section' and node['attrs'].get('id') in microc.section_ids:
+                replacements.append((node, ''))
+            if parent and parent['attrs'].get('id') == 'assay-qc':
+                if node['tag'] == 'h3' and 'Micro-C valid-contact funnel' in parsed.fragment(node):
+                    replacements.append((node, ''))
+                if node['tag'] == 'div' and 'plots' in node['attrs'].get('class', '').split():
+                    # Only the legacy native-contact gallery is moved into the scope disclosures.
+                    images = [n['attrs'].get('src', '') for n in parsed.elements
+                              if n['tag'] == 'img' and parsed.within(n, node)]
+                    if images and all(src.endswith(('.contact_funnel.svg', '.contact_distances.svg')) for src in images):
+                        replacements.append((node, ''))
+    page = replace_ranges(text, replacements + composition)
+    if rna is not None:
+        from rna_report import color_transcript_assets
+        page = color_transcript_assets(page, sample, scopes, rna, rna_path.parent,
+                                       root/'assets', '../data/rna/' + sample, '../assets/')
+    return page
 
 
 def refresh_collision_rows(root, sample, text):
@@ -264,19 +358,20 @@ def refresh(root, apply=False, expected_manifest_sha256=None):
     original = Path(root)
     if original.is_symlink(): raise ValueError('Report root must not be a symlink')
     root = original.resolve()
-    manifest = root/'manifest.json'
-    if expected_manifest_sha256 and hashlib.sha256(manifest.read_bytes()).hexdigest() != expected_manifest_sha256:
-        raise ValueError('Report manifest has changed')
-    data = json.loads(manifest.read_text())
-    samples = data.get('samples')
-    if data.get('schema_version') != 1 or not isinstance(samples, list) or not samples or any(not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', s) for s in samples):
-        raise ValueError('Unrecognized report manifest')
-    validate(root)
-    sample_pages = {p.stem for p in (root/'samples').glob('*.html')}
-    if len(set(samples)) != len(samples) or not set(samples) <= sample_pages:
-        raise ValueError('Manifest samples must identify distinct retained report pages')
     with (root.parent/('.'+root.name+'.refresh.lock')).open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        manifest = (root/'manifest.json').read_bytes()
+        if expected_manifest_sha256 and hashlib.sha256(manifest).hexdigest() != expected_manifest_sha256:
+            raise ValueError('Report manifest has changed')
+        data = json.loads(manifest)
+        samples = data.get('samples')
+        if (data.get('schema_version') != 1 or not isinstance(samples, list) or not samples
+                or any(not isinstance(s, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', s) for s in samples)):
+            raise ValueError('Unrecognized report manifest')
+        validate(root)
+        sample_pages = {p.stem for p in (root/'samples').glob('*.html')}
+        if len(set(samples)) != len(samples) or not set(samples) <= sample_pages:
+            raise ValueError('Manifest samples must identify distinct retained report pages')
         before = hashes(root)
         with tempfile.TemporaryDirectory(prefix='.'+root.name+'.refresh-', dir=root.parent) as tmp:
             stage = Path(tmp)/'report'

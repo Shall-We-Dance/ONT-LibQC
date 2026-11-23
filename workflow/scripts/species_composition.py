@@ -11,6 +11,7 @@ import tempfile
 from pathlib import Path
 
 from library_sequences import fastq_records, microc_leg_span, rc
+from report_sublibrary import AMBIGUOUS_COLOR, UNASSIGNED_COLOR, bar_ink
 
 NAMES = {"ARS_UCD2": "Cattle", "hg38": "Human", "mm39": "Mouse", "dm6": "Fruit fly",
          "ecoli": "E. coli", "ce11": "C. elegans", "sacCer3": "Budding yeast",
@@ -19,6 +20,12 @@ RAW = "Reads without a reconstructed insert"
 AMBIG = "Ambiguous species"
 NONE = "No confident match"
 TOTAL = "Total inserts"
+
+SPECIES_COLORS = {
+    "hg38": "#466575", "mm39": "#597860", "ARS_UCD2": "#8e614d", "dm6": "#b98653",
+    "ecoli": "#b67565", "ce11": "#8f7891", "sacCer3": "#c0aa78", "TAIR10": "#89936a",
+    "GRCz12ab": "#5c8b8c",
+}
 
 
 def queries(raw, table, output, expected_reads, leg_length=None):
@@ -175,8 +182,14 @@ def counts_table(title, scopes, species_keys, labels):
 
 def render(data):
     columns = [*data["panel"], AMBIG, NONE]
-    colors = {k: color for k, color in zip(data["panel"], ["#296ab5", "#18857e", "#8862a9", "#bf6b2d", "#587b49", "#985679", "#417a92", "#715a49", "#595ca2"])}
-    colors.update({AMBIG: "#a7aab8", NONE: "#e2e7ec"})
+    # Keep known references stable across panels. Use the unused colors first for custom references.
+    panel = set(data["panel"])
+    available = [color for key, color in SPECIES_COLORS.items() if key not in panel]
+    available.extend(("#675e78", "#9a8555", "#497884", "#9e6c75"))
+    colors = dict(SPECIES_COLORS)
+    for i, key in enumerate(sorted(panel - SPECIES_COLORS.keys())):
+        colors[key] = available[i % len(available)]
+    colors.update({AMBIG: AMBIGUOUS_COLOR, NONE: UNASSIGNED_COLOR})
     labels = {k: html.escape(NAMES.get(k, k) + (" (expected)" if k == data["reference"] else ""))
               for k in columns}
 
@@ -201,15 +214,15 @@ def render(data):
             description = f"{labels[key]} {percent(n, scope['n'])}"
             descriptions.append(description)
             width = 100 * n / scope["n"]
-            ink = "#223447" if key in (AMBIG, NONE) else "#fff"
+            ink = bar_ink(colors[key])
             segments.append(f"<span class='species-segment' title='{description}' style='width:{width:.8f}%;"
-                            f"background:{colors.get(key, '#536b80')};color:{ink}'><b>{percent(n, scope['n'])}</b></span>")
+                            f"background:{colors[key]};color:{ink}'><b>{percent(n, scope['n'])}</b></span>")
         label = html.escape(scope["scope"])
         description_list = ", ".join(descriptions)
         bars.append(f"<div class='species-row'><span class='mixture-label'>{label}</span>"
                     f"<div class='species-bar' role='img' aria-label='{label}, {description_list}'>"
                     + "".join(segments) + "</div></div>")
-    legend = "".join(f"<li><i aria-hidden='true' style='background:{colors.get(k, '#536b80')}'></i>{labels[k]}</li>"
+    legend = "".join(f"<li><i aria-hidden='true' style='background:{colors[k]}'></i>{labels[k]}</li>"
                      for k in columns if k in visible)
     chart = ("".join(bars) + f"<ul class='species-legend'>{legend}</ul>" if bars
              else "<p class='muted'>No inserts assigned to a sublibrary.</p>")

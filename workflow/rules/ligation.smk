@@ -5,6 +5,7 @@ rule microc_full_insert_ligation:
         script="workflow/scripts/microc_ligation.py",
         mnase_script="workflow/scripts/microc_mnase.py",
         trace_script="workflow/scripts/qc_plot_metrics.py",
+        palette="workflow/scripts/report_sublibrary.py",
         reference=reference_input("fasta"),
     output:
         sam=temp(f"{OUT}/qc/ligation/{{sample}}.full_insert.sam"),

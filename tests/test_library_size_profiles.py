@@ -11,7 +11,8 @@ import xml.etree.ElementTree as ET
 
 sys.path.insert(0, str(Path(__file__).parents[1] / 'workflow/scripts'))
 import ont_qc as qc
-from qc_plot_metrics import size_trace_data, svg_size_trace
+from qc_plot_metrics import refresh_scope_size_traces, size_trace_data, svg_size_trace
+from report_sublibrary import scope_color
 
 
 def unit(name, insert, scope='lib01', family='truseq', assigned=True):
@@ -141,6 +142,38 @@ class ProfileParser(HTMLParser):
 
 
 class LibraryReportTests(unittest.TestCase):
+    def test_refresh_replaces_only_the_area_and_line_in_sublibrary_size_plots(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            assets = Path(tmp)
+            legacy_color = '#e64b35'
+            legacy = svg_size_trace([100, 250], 'Legacy', color=legacy_color)
+            # A retained annotation may share the old paint.
+            legacy = legacy.replace('</svg>', f"<rect fill='{legacy_color}'/></svg>")
+            names = ('raw_lengths', 'insert_lengths', 'full_library_length_weighted',
+                     'full_library_count_based', 'mnase', 'single_block')
+            for sid in ('lib01', 'lib02', 'total'):
+                for name in (*names, 'ligation'):
+                    (assets / f's.{sid}.{name}.svg').write_text(legacy)
+            # The ordering deliberately differs from the assigned libNN identifiers.
+            scopes = [{'scope_id': 'lib02'}, {'scope_id': 'lib01'}]
+            for _ in range(2):
+                refresh_scope_size_traces(assets, 's', scopes)
+                for sid in ('lib01', 'lib02', 'total'):
+                    expected_color = scope_color(sid, 0) if sid != 'total' else legacy_color
+                    for name in (*names, 'ligation'):
+                        expected = legacy if name == 'ligation' else legacy.replace(legacy_color, expected_color, 2)
+                        self.assertEqual((assets / f's.{sid}.{name}.svg').read_text(), expected)
+
+    def test_new_full_library_plots_use_the_requested_scope_paint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            color = scope_color('lib02', 0)
+            assets = qc.write_library_size_assets(tmp, 's.lib02', 'Second library',
+                [unit('r1|u1', 164, 'lib02')], summary(), color=color)
+            for name in ('weighted', 'count'):
+                root = ET.parse(Path(tmp) / assets[name]).getroot()
+                self.assertEqual(root.find('{*}polygon').get('fill'), color)
+                self.assertEqual(root.find('{*}polyline').get('stroke'), color)
+
     def test_main_plot_and_collapsed_counts_share_exported_unit_lengths(self):
         with tempfile.TemporaryDirectory() as tmp:
             assets = qc.write_library_size_assets(tmp, 's.total', 'Total library',

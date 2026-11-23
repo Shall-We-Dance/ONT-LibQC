@@ -23,7 +23,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from report_sublibrary import COLORS, scope_color
+from report_sublibrary import TOTAL_COLOR, scope_color
 
 BIOTYPES = ('rRNA', 'mt-rRNA', 'mt-mRNA', 'tRNA', 'snRNA', 'snoRNA', 'protein_coding', 'lncRNA', 'other', 'unknown', 'ambiguous_family')
 REGIONS = ('CDS', 'five_prime_UTR', 'three_prime_UTR', 'other_exon', 'intron', 'genic_unannotated', 'intergenic')
@@ -701,7 +701,7 @@ def bars_svg(values, title, footnote='', percentage=True):
     return ''.join(svg)
 
 
-def profile_svg(profiles, title, color=COLORS[0]):
+def profile_svg(profiles, title, color=TOTAL_COLOR):
     """Display observed 5′ UTR/CDS/3′ UTR coverage, including single-insert genes."""
     import io
     import matplotlib

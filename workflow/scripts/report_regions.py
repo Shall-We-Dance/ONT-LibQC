@@ -4,7 +4,8 @@ import collections
 import gzip
 import html
 import json
-from report_sublibrary import COLORS
+import re
+from report_sublibrary import TOTAL_COLOR
 from report_svg import svg_start, text
 
 
@@ -116,7 +117,19 @@ def region_track(rate, background, color, x, y, width):
     return ''.join(parts)
 
 
-def svg_region_bars(metric, title, color=COLORS[0]):
+def refresh_region_color(path, color):
+    if not path.is_file():
+        return
+    svg = path.read_text()
+    # Only the observed proportions have a data-value. Older category plots
+    # use colors for the region classes and have no library identity to update.
+    updated = re.sub(r"""(<rect\b[^>]*\bdata-value=['"][^'"]+['"][^>]*\bfill=['"])#[0-9a-fA-F]{6}""",
+                     lambda m: m[1] + color, svg)
+    if updated != svg:
+        path.write_text(updated)
+
+
+def svg_region_bars(metric, title, color=TOTAL_COLOR):
     svg = svg_start(820, 235, title)
     svg.append("<metadata id='genomic-region-metrics'>" + html.escape(json.dumps(metric, sort_keys=True)) + '</metadata>')
     for x, label in [(535, 'Sample'), (658, 'Background'), (796, 'Enrichment')]:

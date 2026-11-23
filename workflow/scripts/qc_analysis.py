@@ -948,7 +948,7 @@ def full_library_profile(unit_rows, adapter_summary):
 
 
 def write_library_size_assets(directory, prefix, label, unit_rows, adapter_summary,
-                              maximum_bp=2000, bandwidth=.045):
+                              maximum_bp=2000, bandwidth=.045, color=None):
     """Emit paired full-library plots plus their numeric profiles and model data."""
     import csv
     directory = Path(directory)
@@ -963,7 +963,7 @@ def write_library_size_assets(directory, prefix, label, unit_rows, adapter_summa
     count_data = size_trace_data(model['lengths'], maximum_bp, bandwidth, weighting='count')
     for name, weighting, caption in [('weighted', 'length', 'length-weighted'), ('count', 'count', 'count-based')]:
         svg = svg_size_trace(model['lengths'], f'{label}: ONT full-library profile ({caption})',
-                             maximum_bp, bandwidth, weighting=weighting)
+                             maximum_bp, bandwidth, weighting=weighting, color=color)
         (directory / names[name]).write_text(svg)
     with (directory / names['profiles']).open('w') as handle:
         writer = csv.writer(handle, delimiter='\t')

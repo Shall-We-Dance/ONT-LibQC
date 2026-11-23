@@ -192,38 +192,41 @@ def run_analysis(args):
 def svg_categories(scope):
     esc = html.escape
     result = scope['after']
-    parts = ["<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 840 164' role='img' "
+    label = scope['scope_name'] if len(scope['scope_name']) <= 16 else scope['scope_id']
+    parts = ["<svg xmlns='http://www.w3.org/2000/svg' width='540' height='132' viewBox='0 0 540 132' role='img' "
              "style='font-family:DejaVu Sans,Arial,sans-serif' aria-label='Pairtools category fractions after duplicate marking'>",
-             "<rect width='840' height='164' fill='white'/>",
-             f"<text x='22' y='30' font-size='17' fill='#243d4b'>{esc(scope['scope_name'])}: Pairtools categories</text>",
-             "<text x='22' y='80' font-size='13' fill='#445966'>After marking</text>"]
-    x = 159
+             f"<title>{esc(scope['scope_name'])}: Pairtools categories</title>",
+             "<style>@media (max-width:550px){.pairtools-small-segment{display:none}}</style>",
+             "<rect width='100%' height='132' fill='white'/><svg x='2%' width='96%' height='132'>",
+             f"<text x='0' y='19' font-size='15' fill='#243d4b'>{esc(label)} · Pair types</text>",
+             "<text x='0' y='40' font-size='12' fill='#445966'>After marking</text>"]
+    x = 0
     if not scope['parsed_pairs']:
-        parts.append(f"<text x='{x}' y='80' font-size='14'>No parsed pairs</text>")
+        parts.append("<text x='0' y='66' font-size='13'>No parsed pairs</text>")
     for cat, color in zip(CATEGORIES, COLORS):
         frac = result['fractions'][cat] or 0
-        width = 650 * frac
-        parts.append(f"<rect x='{x:.3f}' y='57' width='{width:.3f}' height='34' fill='{color}'><title>{esc(cat)}: "
+        parts.append(f"<rect x='{x:.8%}' y='48' width='{frac:.8%}' height='26' fill='{color}'><title>{esc(cat)}: "
                      f"{result['counts'][cat]:,} ({frac:.2%})</title></rect>")
         if frac >= .065:
-            parts.append(f"<text x='{x+width/2:.3f}' y='79' text-anchor='middle' font-size='12' "
+            cls = " class='pairtools-small-segment'" if frac < .17 else ''
+            parts.append(f"<text{cls} x='{x+frac/2:.8%}' y='65' text-anchor='middle' font-size='11' "
                          f"fill='{'white' if cat == 'UU' else '#172e3b'}'>{frac:.1%}</text>")
-        x += width
+        x += frac
     for i, (cat, color) in enumerate(zip(CATEGORIES, COLORS)):
-        x = 159 + i*126
-        parts.append(f"<rect x='{x}' y='112' width='13' height='13' fill='{color}'/>"
-                     f"<text x='{x+19}' y='123' font-size='13'>{esc(cat)}</text>")
-    parts.append(f"<text x='159' y='151' font-size='12' fill='#526675'>Denominator: all {scope['parsed_pairs']:,} parsed pairs</text></svg>")
+        x = (0, 17, 45, 61, 79)[i]
+        parts.append(f"<rect x='{x}%' y='88' width='8' height='8' fill='{color}'/>"
+                     f"<text x='{x}%' dx='11' y='96' font-size='11'>{esc(cat)}</text>")
+    parts.append(f"<text x='0' y='121' font-size='12' fill='#526675'>All {scope['parsed_pairs']:,} parsed pairs</text></svg></svg>")
     return ''.join(parts)
 
 
-def report_html(result, assets, scopes, data_url='../qc/pairtools'):
+def report_parts(result, assets, scopes, data_url='../qc/pairtools', asset_url='assets/', data_dir=None):
     """Shared renderer for new analyses and existing portable examples."""
     esc = html.escape
     aligner=esc(result.get('settings',{}).get('aligner','bwa-mem2 mem -SP'))
     aligner_name='BWA-MEM' if aligner.startswith('bwa-mem ') else 'BWA-MEM2'
     sample = result['sample']
-    panels = []
+    panels = {}
     data_scopes = {s['scope_id']: s for s in result['scopes']}
     for requested in scopes:
         sid = requested.get('scope_id', 'total')
@@ -237,31 +240,44 @@ def report_html(result, assets, scopes, data_url='../qc/pairtools'):
         for cat in CATEGORIES:
             frac = scope['after']['fractions'][cat]
             cells = f"<td>{scope['after']['counts'][cat]:,}</td><td>{frac:.2%}</td>" if frac is not None else '<td>0</td><td>—</td>'
-            rows.append(f'<tr><th>{esc(cat)}</th>{cells}</tr>')
+            rows.append(f"<tr><th scope='row'>{esc(cat)}</th>{cells}</tr>")
         ratio = f"{scope['after']['uu_to_ur_ru']:.2f}" if scope['after']['uu_to_ur_ru'] is not None else '—'
-        panels.append(f"<div class='pairtools-scope'><h3>{esc(scope['scope_name'])}</h3>"
+        panels[sid] = (f"<div class='pairtools-scope'>"
                       f"<p>{scope['input_units']:,} eligible inserts → {scope['parsed_pairs']:,} parsed pairs; "
                       f"{scope['fastp_excluded_units']:,} excluded by fastp. {scope['short_inserts_excluded']:,} inserts &lt;50 bp excluded before end extraction.</p>"
-                      f"<figure class='plot-card'><a href='assets/{name}' target='_blank' rel='noopener'>"
-                      f"<img src='assets/{name}' alt='Pairtools UU, UR/RU, DD, WW and Other fractions' style='width:100%'></a></figure>"
-                      "<div class='table-scroll'><table><tr><th>Category</th><th>Count</th><th>Fraction</th></tr>"
-                      + ''.join(rows) + "</table></div>"
+                      f"<figure class='plot-card'><a href='{asset_url}{name}' target='_blank' rel='noopener'>"
+                      f"<img src='{asset_url}{name}' alt='Pairtools UU, UR/RU, DD, WW and Other fractions'></a></figure>"
+                      "<div class='table-scroll'><table><thead><tr><th scope='col'>Category</th><th scope='col'>Count</th>"
+                      "<th scope='col'>Fraction</th></tr></thead><tbody>" + ''.join(rows) + "</tbody></table></div>"
                       f"<p class='muted'>UU / (UR + RU): {ratio}.</p></div>")
     links = ' · '.join(f"<a href='{esc(data_url, quote=True)}/{sample}.{suffix}'>{label}</a>" for suffix, label in
-                       [('summary.tsv','Category counts and fractions'),('units.tsv.gz','Per-unit pair types'),('json','Settings and metrics')])
-    return ("<section class='report-section' id='pairtools'><span class='eyebrow'>PAIRED-END PARSING</span>"
-            "<h2>Pairtools pair types</h2><p>Reconstructed ONT inserts are viewed as overlapping terminal reads of at most 150 bp, "
-            f"filtered with fastp, aligned with {aligner_name} and classified by Pairtools. Results are shown after duplicate marking. Percentages use every parsed pair, including unmapped pairs and masked walks.</p>"
-            + ''.join(panels) + "<details><summary>Pair types and analysis settings</summary><p><strong>UU</strong>: unique–unique; "
+                       [('summary.tsv','Category counts and fractions'),('units.tsv.gz','Per-unit pair types'),('json','Settings and metrics')]
+                       if data_dir is None or (data_dir / f'{sample}.{suffix}').is_file())
+    intro = ("<p>Reconstructed ONT inserts are viewed as overlapping terminal reads of at most 150 bp, "
+            f"filtered with fastp, aligned with {aligner_name} and classified by Pairtools. Results are shown after duplicate marking. Percentages use every parsed pair, including unmapped pairs and masked walks.</p>")
+    methods = ("<details><summary>Pair types and analysis settings</summary><p><strong>UU</strong>: unique–unique; "
             "<strong>UR/RU</strong>: rescued single-ligation pairs; <strong>DD</strong>: coordinate duplicates marked within the sample; "
             "<strong>WW</strong>: masked complex walks; <strong>Other</strong>: remaining types, including unmapped or non-unique ends.</p>"
             f"<p>fastp paired-end adapter detection; {aligner}; Pairtools parse with MAPQ ≥1, walks-policy mask, "
             "maximum inter-alignment gap 20 bp and maximum molecule size 2,000 bp; duplicate marking with a 1-bp tolerance, max method and scipy backend. "
             "Duplicates stay in the denominator. Sublibraries inherit marks from the full sample.</p>"
             "<p>These are parsing outcomes, not direct ligation counts or a calibrated library-quality score. DD depends on sampling depth and does not estimate PCR duplication or library complexity. "
-            "The native valid-contact metrics above use their own end geometry and filters. "
+            "The native valid-contact metrics use their own end geometry and filters. "
             "<a href='https://pairtools.readthedocs.io/en/latest/parsing.html' target='_blank' rel='noopener'>Pairtools definitions</a>.</p></details>"
-            f"<p>{links}</p></section>")
+            f"<p>{links}</p>")
+    return intro, panels, methods
+
+
+def report_html(result, assets, scopes, data_url='../qc/pairtools'):
+    intro, panels, methods = report_parts(result, assets, scopes, data_url)
+    labels = {row['scope_id']: row['scope_name'] for row in result['scopes']}
+    parts = []
+    for scope in scopes:
+        sid = scope.get('scope_id', 'total')
+        label = html.escape(scope.get('scope_name', labels[sid]))
+        parts.append(f"<h3>{label}</h3>" + panels[sid])
+    body = ''.join(parts)
+    return "<section class='report-section' id='pairtools'><h2>Pairtools pair types</h2>" + intro + body + methods + "</section>"
 
 
 def main():

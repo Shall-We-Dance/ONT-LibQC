@@ -5,6 +5,7 @@ import gzip
 from collections import Counter, defaultdict
 import json
 from pathlib import Path
+import re
 from urllib.parse import quote, urlsplit
 
 from report_sublibrary import scope_color
@@ -12,6 +13,39 @@ from report_sublibrary import scope_color
 
 def esc(value):
     return html.escape(str(value), quote=True)
+
+
+def color_transcript_assets(page, sample, scopes, rna, source_dir, asset_dir, source_prefix, asset_prefix):
+    """Keep retained RNA input SVGs intact while updating displayed single-series profiles."""
+    for index, scope in enumerate(scopes):
+        sid = scope['scope_id']
+        name = rna.get('scopes', {}).get(sid, {}).get('plots', {}).get('profiles')
+        if not name or Path(name).name != name or not name.endswith('.svg'):
+            continue
+        source = source_dir / name
+        if not source.is_file():
+            continue
+        svg = source.read_text()
+        # Older multi-panel plots encode transcript categories with separate
+        # colors. Only the single-axis, single-curve profile uses library color.
+        if 'id="axes_2"' in svg or 'Observed coverage · equal gene weighting' not in svg:
+            continue
+        strokes = set(re.findall(r'stroke: (#[0-9a-fA-F]{6}); stroke-width: 1\.7[;"]', svg))
+        if len(strokes) != 1:
+            continue
+        color = scope_color(sid, max(0, index - 1))
+        old = strokes.pop()
+        target = asset_dir / f'{sample}.{sid}.rna_transcript.svg'
+        if old == color and not target.is_file():
+            continue
+        updated = svg.replace('stroke: ' + old + '; stroke-width: 1.7', 'stroke: ' + color + '; stroke-width: 1.7')
+        updated = updated.replace('fill: ' + old + '; fill-opacity: 0.18', 'fill: ' + color + '; fill-opacity: 0.18')
+        target.write_text(updated)
+        old_url = esc(source_prefix + '/' + name)
+        url = esc(asset_prefix + target.name)
+        page = re.sub(r"""\b(href|src)=(['"])""" + re.escape(old_url) + r'\2',
+                      lambda m: f'{m[1]}={m[2]}{url}{m[2]}', page)
+    return page
 
 
 def number(value, digits=0):

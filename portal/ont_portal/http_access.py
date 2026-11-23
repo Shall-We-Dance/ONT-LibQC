@@ -78,6 +78,10 @@ def access_services(s, store):
         media={'.svg':'image/svg+xml','.html':'text/html','.css':'text/css','.js':'text/javascript'}.get(path.suffix)
         if path.suffix in {'.zip','.gz','.tsv','.csv','.bed','.json','.txt','.md','.pdf'}:
             return FileResponse(path,media_type='application/pdf' if path.suffix=='.pdf' else 'application/octet-stream',filename=download_name if file == "report.zip" and download_name else path.name)
+        # This is the report's downloadable combined figure. Private report pages
+        # have an opaque origin, so the anchor's download attribute alone is ignored.
+        if path.parent == root / 'assets' and path.name.endswith('.microc_qc.svg'):
+            return FileResponse(path, media_type='image/svg+xml', filename=path.name)
         if path.suffix=='.html' and path.stat().st_size>s.max_html_bytes: raise HTTPException(413,'Report page exceeds the display limit; download the ZIP instead')
         if path.suffix=='.html' and links:
             # Give figures, tables and downloads short read-only links too. The

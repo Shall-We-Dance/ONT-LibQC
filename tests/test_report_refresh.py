@@ -1,3 +1,5 @@
+import fcntl
+import gzip
 import json
 from pathlib import Path
 import sys
@@ -75,6 +77,25 @@ class RefreshTests(unittest.TestCase):
                 self.assertNotIn('report/report.zip',z.namelist())
             rollback(root,result['backup']);self.assertEqual(hashes(root),before)
 
+    def test_manifest_precondition_uses_the_version_under_lock(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)/'report'
+            self.fixture(root)
+            expected = hashes(root)['manifest.json']
+            manifest = root/'manifest.json'
+            newer = json.loads(manifest.read_bytes())
+            newer['report_version'] = 'newer'
+            lock = fcntl.flock
+
+            def acquire_after_other_publisher(fd, flags):
+                manifest.write_text(json.dumps(newer))
+                lock(fd, flags)
+
+            with patch('report_refresh.fcntl.flock', acquire_after_other_publisher):
+                with self.assertRaisesRegex(ValueError, 'manifest has changed'):
+                    refresh(root, apply=True, expected_manifest_sha256=expected)
+            self.assertEqual(json.loads(manifest.read_bytes()), newer)
+
     def test_export_styles_survive_refresh_and_repair_prior_corruption(self):
         for corrupted in (False, "named", "unnamed"):
             with self.subTest(corrupted=corrupted), tempfile.TemporaryDirectory() as tmp:
@@ -105,23 +126,181 @@ class RefreshTests(unittest.TestCase):
                 with zipfile.ZipFile(root/'report.zip') as z:
                     self.assertEqual(z.read('report/samples/demo.html'),page.read_bytes())
 
-    def test_single_library_preserves_embedded_card_layout(self):
-        for wrapper in ("div class='library-profiles'", "section class='report-section'"):
-            with self.subTest(wrapper=wrapper), tempfile.TemporaryDirectory() as tmp:
-                root=Path(tmp)/'report';self.fixture(root)
-                metric=root/'data/metrics/demo.json'
-                metric.write_text(json.dumps({'sample':'demo','assay':'chromatin','sub_libraries':[]}))
-                scope="<section class='profile-scope'><h3>Total library</h3><p>Retained figure</p></section>"
+    def test_chromatin_profiles_are_sibling_cards_after_refresh(self):
+        for count, wrapper in [(0, 'div'), (0, 'section'), (2, 'section')]:
+            with self.subTest(scopes=count, wrapper=wrapper), tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp)/'report'; self.fixture(root)
                 page=root/'samples/demo.html'
-                page.write_text("<html><head><style>"+REPORT_CSS+"</style></head><body>"
-                                "<section id='library-shape'><"+wrapper+" id='profiles'><h3>Size and genomic profiles</h3>"
-                                +scope+"</"+wrapper.split()[0]+"></section></body></html>")
+                fixture=Elements(page.read_text())
+                card=next(n for n in fixture.elements if n['attrs'].get('id')=='profiles')
+                evidence="<section class='profile-scope'><h3>Total library</h3><p>Original figures</p></section>"
+                if count:
+                    inner=fixture.fragment(card)
+                else:
+                    (root/'data/metrics/demo.json').write_text(json.dumps(dict(sample='demo', assay='chromatin', sub_libraries=[])))
+                    inner=f"<{wrapper} class='library-profiles' id='profiles'><h3>Size and genomic profiles</h3>{evidence}</{wrapper}>"
+                nav="<nav><a href='#library-shape'>Library quality</a></nav>"
+                quality="<section id='library-shape'><div>"+inner+"</div><p>Other evidence</p></section>"
+                page.write_text("<html><head><style>"+REPORT_CSS+"</style></head><body>"+nav+quality+"</body></html>")
                 refresh(root,True)
-                nodes=Elements(page.read_text()).elements
-                profile=next(n for n in nodes if n['attrs'].get('id')=='profiles')
-                self.assertEqual(profile['tag'],'div')
-                self.assertEqual(profile['attrs']['class'],'library-profiles')
-                self.assertIn(scope,page.read_text())
+                updated=page.read_text()
+                nodes=Elements(updated)
+                profile=next(n for n in nodes.elements if n['attrs'].get('id')=='profiles')
+                library=next(n for n in nodes.elements if n['attrs'].get('id')=='library-shape')
+                self.assertEqual(profile['tag'],'section')
+                self.assertIn('report-section',profile['attrs']['class'].split())
+                self.assertIs(profile['parent'],library['parent'])
+                self.assertGreaterEqual(profile['start'],library['end'])
+                self.assertIn('<p>Other evidence</p>',nodes.fragment(library))
+                self.assertIn('<h2>Size and genomic profiles</h2>',nodes.fragment(profile))
+                self.assertEqual(sum(n['attrs'].get('href')=='#profiles' for n in nodes.elements),1)
+                if count:
+                    self.assertEqual(nodes.fragment(profile).count("class='profile-detail"),3)
+                else:
+                    self.assertIn(evidence,nodes.fragment(profile))
+                refresh(root,True)
+                self.assertEqual(page.read_text(),updated)
+
+    def test_chromatin_region_identity_and_single_total_color(self):
+        from report_regions import svg_region_bars
+        from report_sublibrary import TOTAL_COLOR, scope_color
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)/'report'
+            self.fixture(root)
+            metric = dict(promoter_proximal_rate=.35, promoter_proximal_background_rate=.1)
+            original = svg_region_bars(metric, 'Keep the title', '#2a6cbd')
+            self.assertIn(TOTAL_COLOR, svg_region_bars(metric, 'Single library'))
+            for sid in ('lib01', 'lib02', 'total'):
+                (root/'assets'/f'demo.{sid}.regions.svg').write_text(original)
+            refresh(root, True)
+            for sid in ('lib01', 'lib02', 'total'):
+                rendered = (root/'assets'/f'demo.{sid}.regions.svg').read_text()
+                self.assertEqual(rendered, original.replace('#2a6cbd', scope_color(sid, 0)))
+            self.assertNotEqual(TOTAL_COLOR, scope_color('lib01', 0))
+
+    def test_rna_scope_palette_preserves_source_svg_and_evidence_colors(self):
+        from report_sublibrary import scope_color
+        from rna_report import rna_scope_card
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)/'report'
+            self.fixture(root)
+            metrics = root/'data/metrics/demo.json'
+            record = json.loads(metrics.read_text())
+            record['assay'] = 'rnaseq'
+            metrics.write_text(json.dumps(record))
+            folder = root/'data/rna/demo'
+            folder.mkdir(parents=True)
+            old = '#23877f'
+            trace = ('<svg xmlns="http://www.w3.org/2000/svg"><text>Observed coverage · equal gene weighting</text>'
+                     '<g id="axes_1"><path d="M1 2 L3 4" style="fill: none; stroke: '+old+'; stroke-width: 1.7;"/>'
+                     '<path d="M1 3 L3 5" style="fill: '+old+'; fill-opacity: 0.18"/></g></svg>')
+            (folder/'lib02.profiles.svg').write_text(trace)
+            categorical = trace.replace('</svg>', '<g id="axes_2"/></svg>')
+            (folder/'lib01.profiles.svg').write_text(categorical)
+            rna = {sid: dict(units=10, family_counts={}, plots={'profiles': sid+'.profiles.svg'})
+                   for sid in ('lib01', 'lib02')}
+            (folder/'summary.json').write_text(json.dumps(dict(scopes=rna)))
+            page = root/'samples/demo.html'
+            source_url = '../data/rna/demo/lib02.profiles.svg'
+            evidence = '<p style="background:'+old+'">Reference evidence</p>'
+            detail = rna_scope_card('lib02', 'Second', 10, old, f'{evidence}<a href="{source_url}">Plot</a>')
+            page.write_text(page.read_text().replace('</body>', '<section id="rna-qc">'+detail+'</section></body>'))
+            refresh(root, True)
+            rendered = page.read_text()
+            color = scope_color('lib02', 0)
+            target = root/'assets/demo.lib02.rna_transcript.svg'
+            self.assertEqual(target.read_text(), trace.replace(old, color))
+            self.assertEqual((folder/'lib02.profiles.svg').read_text(), trace)
+            self.assertIn('--scope-tint:'+color+'0f', rendered)
+            self.assertIn(evidence, rendered)
+            self.assertNotIn(source_url, rendered)
+            self.assertGreaterEqual(rendered.count('../assets/'+target.name), 3)
+            self.assertIn('../data/rna/demo/lib01.profiles.svg', rendered)
+            self.assertFalse((root/'assets/demo.lib01.rna_transcript.svg').exists())
+            refresh(root, True)
+            self.assertEqual(page.read_text(), rendered)
+            with zipfile.ZipFile(root/'report.zip') as archive:
+                self.assertEqual(archive.read('report/assets/'+target.name), target.read_bytes())
+                self.assertEqual(archive.read('report/data/rna/demo/lib02.profiles.svg'), trace.encode())
+
+    def ligation_fixture(self, root, *, combined):
+        """The original standalone section and the later two-plots-in-one SVG layout."""
+        for folder in ('assets', 'samples', 'data/metrics', 'data/ligation'):
+            (root/folder).mkdir(parents=True, exist_ok=True)
+        (root/'manifest.json').write_text(json.dumps(dict(schema_version=1, samples=['demo'])))
+        (root/'index.html').write_text('<a href="samples/demo.html">Report</a>')
+        (root/'data/metrics/demo.json').write_text(json.dumps(dict(sample='demo', assay='microc')))
+        from microc_ligation import summarize
+        stats = summarize([dict(category='2', read_id='read1')])
+        (root/'data/ligation/demo.json').write_text(json.dumps(dict(stats, scopes={})))
+        with gzip.open(root/'data/ligation/demo.units.tsv.gz', 'wt') as stream:
+            stream.write('scope_id\tcategory\tinsert_bp\nlib01\t2\t240\n')
+        (root/'assets/demo.total.full_library_profiles.tsv').write_text(
+            'size_bp\tlength_weighted_relative_signal\n0\t0\n100\t100\n2000\t0\n')
+        legacy_svg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 500 160'><title>Retained ligation evidence</title></svg>"
+        (root/'assets/demo.total.ligation.svg').write_text(legacy_svg)
+        plot = "<img src='../assets/demo.total.ligation.svg'>"
+        scope = "<section class='profile-scope'><h3>Total library</h3></section>"
+        if combined:
+            (root/'assets/demo.microc.ligation.svg').write_text(legacy_svg)
+            inner = "<div class='microc-comparison' id='ligation'><img src='../assets/demo.microc.ligation.svg'></div>"
+            profiles = "<section id='profiles'>" + inner + scope + "</section>"
+        else:
+            profiles = "<section id='profiles'>" + scope + "</section><section id='ligation'>" + plot + "</section>"
+        page = root/'samples/demo.html'
+        page.write_text("<html><head><style>"+REPORT_CSS+"</style></head><body><nav><a href='#library-shape'>Library quality</a></nav>"
+                        "<section id='library-shape'><h2>Library quality</h2></section>" + profiles + "</body></html>")
+        build_archive(root)
+        return page
+
+    def test_combined_ligation_upgrades_both_downloads_without_losing_pruned_panel(self):
+        for source_to_remove in ('', 'demo.json', 'demo.units.tsv.gz'):
+            with self.subTest(source_to_remove=source_to_remove), tempfile.TemporaryDirectory() as t:
+                root = Path(t)/'report'
+                page = self.ligation_fixture(root, combined=True)
+                if source_to_remove:
+                    (root/'data/ligation'/source_to_remove).unlink()
+                old_svg = (root/'assets/demo.microc.ligation.svg').read_bytes()
+                refresh(root, True)
+                text = page.read_text()
+                if source_to_remove:
+                    self.assertNotIn('demo.microc.ligation_lengths.svg', text)
+                    self.assertEqual((root/'assets/demo.microc.ligation.svg').read_bytes(), old_svg)
+                else:
+                    self.assertEqual(text.count("id='ligation'"), 1)
+                    for name in ('demo.microc.ligation.svg', 'demo.microc.ligation_lengths.svg'):
+                        self.assertIn("src='../assets/"+name+"'", text)
+                        with zipfile.ZipFile(root/'report.zip') as archive:
+                            self.assertEqual(archive.read('report/assets/'+name), (root/'assets'/name).read_bytes())
+                    self.assertIn("href='#ligation'", text)
+                assets = hashes(root/'assets')
+                refresh(root, True)
+                self.assertEqual(text, page.read_text())
+                self.assertEqual(assets, hashes(root/'assets'))
+
+    def test_standalone_ligation_with_one_source_keeps_scope_image_and_one_anchor(self):
+        cases = [('demo.json', 'ligation_lengths', 'ligation'), ('demo.units.tsv.gz', 'ligation', 'ligation_lengths')]
+        for missing, available, absent in cases:
+            with self.subTest(missing=missing), tempfile.TemporaryDirectory() as t:
+                root = Path(t)/'report'
+                page = self.ligation_fixture(root, combined=False)
+                (root/'data/ligation'/missing).unlink()
+                refresh(root, True)
+                first = page.read_text()
+                self.assertEqual(first.count("id='ligation'"), 1)
+                self.assertEqual(first.count("href='#ligation'"), 1)
+                self.assertIn("href='#profiles'", first)
+                self.assertIn("src='../assets/demo.total.ligation.svg'", first)
+                self.assertIn(f"src='../assets/demo.microc.{available}.svg'", first)
+                self.assertNotIn(f"src='../assets/demo.microc.{absent}.svg'", first)
+                # A previously split one-panel report can refresh its present
+                # chart from its own source without demanding the missing other input.
+                chart = root/'assets'/f'demo.microc.{available}.svg'
+                expected = chart.read_bytes()
+                chart.write_text('<svg><title>Earlier rendering</title></svg>')
+                refresh(root, True)
+                self.assertEqual(first, page.read_text())
+                self.assertEqual(chart.read_bytes(), expected)
 
     def test_missing_numeric_input_leaves_original_unchanged(self):
         with tempfile.TemporaryDirectory() as tmp:

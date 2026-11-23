@@ -4,6 +4,7 @@ import sys,tempfile,os
 from playwright.sync_api import sync_playwright
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'workflow/scripts'))
 from report_profiles import render_profiles_card
+from report_sublibrary import scope_color
 with tempfile.TemporaryDirectory() as tmp:
  root=Path(tmp)
  for sid,signal in [('lib01',100),('lib02',60)]:
@@ -47,7 +48,7 @@ with tempfile.TemporaryDirectory() as tmp:
      buttons.first.hover()
     backgrounds=buttons.evaluate_all('(es)=>es.map(e=>getComputedStyle(e).backgroundColor)')
     assert backgrounds[0]!=backgrounds[1]
-    assert buttons.first.evaluate('(e)=>e.style.getPropertyValue("--legend-tint")')=='#2a6cbd0f'
+    assert buttons.first.evaluate('(e)=>e.style.getPropertyValue("--legend-tint")')==scope_color('lib01', 0)+'0f'
     page.emulate_media(media='print');assert opacities()==[1,1]
     page.emulate_media(media='screen')
     # Print layout can move the legend away from a stationary mouse pointer.
