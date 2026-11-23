@@ -29,7 +29,7 @@ def pair_label(pair):
     return f"{pair.get('name',pair.get('scope_id','library'))}: i5 {pair.get('i5') or '∅'} / i7 {pair.get('i7') or '∅'} ({(pair.get('support_fraction') or 0):.1%})"
 
 
-def identity_panel_html(metric, pairing, pairs, unit_rows=None):
+def identity_panel_html(metric, pairing, pairs, unit_rows=None, *, show_support_counts=False):
     from report_library_structure import family_label
     families = collections.defaultdict(collections.Counter)
     for row in unit_rows or []:
@@ -38,12 +38,18 @@ def identity_panel_html(metric, pairing, pairs, unit_rows=None):
     mode=str(pairing.get("mode","unresolved"))
     mode_label=mode.replace("_"," ").title()
     top=pairing.get("top_pair_fraction")
-    top_text="NA" if top is None else f"{top:.1%}"
+    top_text="—" if top is None else f"{top:.1%}"
+    denominator = pairing.get('informative_units')
     pair_rows=[]
     sub_ids = {scope['scope_id'] for scope in metric.get('sub_libraries', [])}
-    for pair in pairs:
-        matched = families.get(pair.get('scope_id'), {})
+    for pair in pairs or ():
+        matched = pair.get('adapter_family_counts') or families.get(pair.get('scope_id'), {})
         adapter = ' / '.join(family_label(name) for name in sorted(matched, key=lambda name: (-matched[name], name))) or 'Unresolved'
+        fraction = pair.get('support_fraction')
+        share = '—' if fraction is None else f'{fraction:.1%}'
+        support = pair.get('informative_support')
+        if show_support_counts and denominator and support is not None:
+            share += f'<small class="pair-support">{support:,} / {denominator:,}</small>'
         sid = pair.get('scope_id')
         row = f'<tr data-sublibrary="{html.escape(sid, quote=True)}">' if sid in sub_ids else '<tr>'
         pair_rows.append(row + "".join([
@@ -51,16 +57,30 @@ def identity_panel_html(metric, pairing, pairs, unit_rows=None):
             f"<td>{html.escape(adapter)}</td>",
             f"<td><code>{html.escape('Not detected' if pair.get('i5') is None else pair['i5'] or 'No index')}</code></td>",
             f"<td><code>{html.escape('Not detected' if pair.get('i7') is None else pair['i7'] or 'No index')}</code></td>",
-            f"<td>{(pair.get('support_fraction') or 0):.1%}</td>"]) + "</tr>")
+            f"<td>{share}</td>"]) + "</tr>")
     if not pair_rows:
-        pair_rows=["<tr><td colspan='5'>No confident index combination resolved</td></tr>"]
+        reason = 'No confident index combination resolved' if pairs is not None else 'Physical indexes were not recorded'
+        pair_rows=[f"<tr><td colspan='5'>{reason}</td></tr>"]
+    note = 'Percentages are among index-informative units.'
+    if show_support_counts:
+        if denominator is None:
+            note = 'Index support counts were not recorded.'
+        else:
+            note = f'Index percentages use {denominator:,} {"unit" if denominator == 1 else "units"} with both sample-index positions resolved.'
+    classification = ''
+    threshold = pairing.get('single_library_fraction', None if show_support_counts else .9)
+    if threshold is not None:
+        minimum = pairing.get('minimum_informative_units')
+        depth = f'Classification requires {minimum:,} index-informative units. ' if minimum is not None else ''
+        classification = (f'<details><summary>Library classification</summary><p>{depth}'
+                          f'A single library is called when the top pair accounts for at least {threshold:.0%} '
+                          'of index-informative units, or when only one pair is resolved and supported.</p></details>')
     return ("<div class='identity-panel'><section class='identity-card'><h3>Library identity</h3><div class='identity-grid'>"
             f"<div class='identity-item'><small>Reference assembly</small><strong>{html.escape(str(metric.get('reference_assembly','unspecified')))}</strong></div>"
             f"<div class='identity-item'><small>Assay</small><strong>{html.escape({'chromatin':'Chromatin','microc':'Micro-C'}.get(metric.get('assay'),str(metric.get('assay','unknown'))))}</strong></div>"
             f"<div class='identity-item'><small>Library mode</small><span class='mode-badge'>{html.escape(mode_label)}</span></div>"
             f"<div class='identity-item'><small>Top-pair percentage</small><strong>{html.escape(top_text)}</strong></div></div>"
-            "<div class='cutoff-note'>Percentages are among index-informative units."
-            f"<details><summary>Library classification</summary><p>A dominant i5–i7 pair is single_library at ≥{pairing.get('single_library_fraction', .9):.0%}, or when it is the only resolved pair. See overall assignment and ambiguous/unassigned fractions below.</p></details></div></section>"
+            f"<div class='cutoff-note'>{note}{classification}</div></section>"
             "<section class='identity-card'><h3>Physical indexes</h3><div class='pair-table-scroll' tabindex='0' aria-label='Physical indexes'><table class='pair-table'><tr><th>Library</th><th>Adapter</th><th>i5</th><th>i7</th><th title='Among index-informative units'>Percentage</th></tr>"
             + "".join(pair_rows) + "</table></div></section></div>")
 

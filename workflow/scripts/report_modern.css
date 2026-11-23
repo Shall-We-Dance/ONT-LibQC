@@ -277,19 +277,81 @@ tr:last-child td {
 }
 
 .identity-panel {
-  margin-bottom: 20px;
+  display: grid;
+  grid-template-columns: minmax(260px,.8fr) minmax(420px,1.4fr);
+  gap: 14px;
+  margin: 16px 0 20px;
 }
 
 .identity-card {
+  border: 1px solid #dce3e8;
+  overflow: hidden;
+  background: white;
   box-shadow: none;
   border-radius: 8px;
 }
 
 .identity-card h3 {
+  margin: 0;
+  padding: 11px 14px;
   background: #f6f9fa;
   color: var(--deep);
   font-size: 13px;
   font-weight: 600;
+}
+
+.identity-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.identity-item {
+  padding: 11px 14px;
+  border-bottom: 1px solid #edf1f3;
+}
+
+.identity-item:nth-child(odd) {
+  border-right: 1px solid #edf1f3;
+}
+
+.identity-item small {
+  display: block;
+  color: #6a7a86;
+  margin-bottom: 4px;
+}
+
+.identity-item strong {
+  color: #173042;
+}
+
+.mode-badge {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #e3f1ec;
+  color: #116145;
+  font-size: 12px;
+}
+
+.pair-table th,.pair-table td {
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.pair-table th:last-child,.pair-table td:last-child {
+  text-align: right;
+}
+
+.cutoff-note {
+  padding: 8px 12px;
+  color: #667783;
+}
+
+.pair-support {
+  display: block;
+  white-space: nowrap;
+  color: var(--muted);
 }
 
 .adapter-context {
@@ -1476,6 +1538,8 @@ code {
 
 .pair-table {
   min-width: 420px;
+  width: 100%;
+  font-variant-numeric: tabular-nums;
 }
 
 .mode-badge,.library-mode,.sample-kind {

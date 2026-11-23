@@ -20,6 +20,11 @@ AMBIG = "Ambiguous species"
 NONE = "No confident match"
 TOTAL = "Total inserts"
 
+# ggsci BMJ palette, keyed by organism so the color survives panel reordering.
+BMJ = {"ARS_UCD2": "#2a6ebb", "hg38": "#cd202c", "mm39": "#f0ab00", "dm6": "#00b2a9",
+       "ecoli": "#e37222", "ce11": "#c50084", "GRCz12ab": "#7d5cc6", "danRer11": "#7d5cc6",
+       "TAIR10": "#69be28", "sacCer3": "#747678"}
+
 
 def queries(raw, table, output, expected_reads, leg_length=None):
     by_read = collections.defaultdict(list)
@@ -174,8 +179,15 @@ def counts_table(title, scopes, species_keys, labels):
 
 
 def render(data):
+    cdna = data.get("method") == "competitive-cdna-v1"
+    if cdna and data.get("status") != "complete":
+        message = ("No cDNA passed the barcode, UMI and length filters." if data.get("status") == "no_qualified_cdna"
+                   else "A competitive species panel was not configured for this run.")
+        return "<section class='report-section' id='species-composition'><h2>Species composition</h2><p>" + message + "</p></section>"
     columns = [*data["panel"], AMBIG, NONE]
     colors = {k: color for k, color in zip(data["panel"], ["#296ab5", "#18857e", "#8862a9", "#bf6b2d", "#587b49", "#985679", "#417a92", "#715a49", "#595ca2"])}
+    if cdna:
+        colors.update(BMJ)
     colors.update({AMBIG: "#a7aab8", NONE: "#e2e7ec"})
     labels = {k: html.escape(NAMES.get(k, k) + (" (expected)" if k == data["reference"] else ""))
               for k in columns}
@@ -185,9 +197,14 @@ def render(data):
     libraries = [r for r in rows if r["scope"] not in extras]
     whole = [r for r in rows if r["scope"] in extras]
     table_order = sorted(data["panel"], key=lambda key: key != data["reference"]) + [AMBIG, NONE]
+    if cdna:
+        libraries = [r for r in rows if r["scope"] not in (TOTAL, RAW)]
+        whole = [dict(r, scope="All qualified cDNA") for r in rows if r["scope"] == TOTAL]
+        if data.get("non_rrna_row") is not None:
+            whole.append(dict(data["non_rrna_row"], scope="Excluding rRNA and mt-rRNA"))
     tables = (counts_table("Sublibraries", libraries, table_order, labels)
               + counts_table("Whole library", whole, table_order, labels))
-    bars = []
+    bars, unresolved_bars = [], []
     visible = set()
     for scope in libraries:
         if not scope["n"]:
@@ -202,15 +219,20 @@ def render(data):
             descriptions.append(description)
             width = 100 * n / scope["n"]
             ink = "#223447" if key in (AMBIG, NONE) else "#fff"
+            if cdna and colors.get(key) in {"#f0ab00", "#69be28", "#00b2a9", "#e37222"}:
+                ink = "#162a38"
             segments.append(f"<span class='species-segment' title='{description}' style='width:{width:.8f}%;"
                             f"background:{colors.get(key, '#536b80')};color:{ink}'><b>{percent(n, scope['n'])}</b></span>")
         label = html.escape(scope["scope"])
         description_list = ", ".join(descriptions)
-        bars.append(f"<div class='species-row'><span class='mixture-label'>{label}</span>"
+        group = unresolved_bars if cdna and scope["scope"] in ("Unassigned index", "Ambiguous index") else bars
+        group.append(f"<div class='species-row'><span class='mixture-label'>{label}</span>"
                     f"<div class='species-bar' role='img' aria-label='{label}, {description_list}'>"
                     + "".join(segments) + "</div></div>")
     legend = "".join(f"<li><i aria-hidden='true' style='background:{colors.get(k, '#536b80')}'></i>{labels[k]}</li>"
                      for k in columns if k in visible)
+    if unresolved_bars:
+        bars.append("<details><summary>Unresolved indexes</summary>" + "".join(unresolved_bars) + "</details>")
     chart = ("".join(bars) + f"<ul class='species-legend'>{legend}</ul>" if bars
              else "<p class='muted'>No inserts assigned to a sublibrary.</p>")
     microc_note = ""
@@ -221,6 +243,19 @@ def render(data):
                        f"{ends.get('one_end', 0):,}. Ends assigned to different species ({ends.get('discordant', 0):,}) "
                        "and ambiguous end matches count as ambiguous inserts. Each insert counts once.</p>")
     windows = " · ".join(html.escape(NAMES.get(k,k)) + f" {rows[0]['windows'].get(k,0):,}" for k in data["panel"])
+    intro = ""
+    details_note = ("Counts and percentages use the screened total in each column. Total inserts excludes adapter dimers. "
+                    "Reads without a reconstructed insert are counted separately.")
+    method_note = ("Close matches are ambiguous. RNA splice junctions can reduce assignment. A species match can also reflect a spike-in. "
+                   "Raw-read matches alone cannot identify free genomic DNA.")
+    if cdna:
+        intro = f"<p>{rows[0]['n']:,} barcode- and UMI-qualified cDNA fragments screened against {len(data['panel'])} genomes.</p>"
+        details_note = "Each fragment counts once per column. The whole-library comparison uses all qualified cDNA and the subset remaining after RNA family classification excludes rRNA and mt-rRNA."
+        if data.get("host_assembly") and data["host_assembly"] != data["reference"]:
+            details_note += (f" The species panel uses {html.escape(data['reference'])} for the expected organism. "
+                             f"RNA alignment uses {html.escape(data['host_assembly'])}.")
+        method_note = ("Similar scores across genomes are reported as ambiguous. Conserved rRNA may match several species, "
+                       "and splice junctions can reduce coverage in this genomic screen.")
     return ("<section class='report-section' id='species-composition'><h2>Species composition</h2>"
             "<style>.species-row{display:grid;grid-template-columns:minmax(5em,18%) minmax(0,1fr);"
             "align-items:center;gap:1em;margin:.65em 0}.species-row .mixture-label{overflow-wrap:anywhere}"
@@ -232,14 +267,12 @@ def render(data):
             ".species-legend li{display:inline-flex;align-items:center;gap:.4em}"
             ".species-legend i{width:.85em;height:.85em;border-radius:2px}"
             ".species-bar,.species-legend i{print-color-adjust:exact;-webkit-print-color-adjust:exact}</style>"
-            + chart + "<details><summary>Counts and whole-library totals</summary>"
-            "<p>Counts and percentages use the screened total in each column. Total inserts excludes adapter dimers. "
-            "Reads without a reconstructed insert are counted separately.</p>"
+            + intro + chart + "<details><summary>Counts and whole-library totals</summary><p>" + details_note + "</p>"
             + tables + microc_note + "<p>Distinct 10 kb windows with a "
             "confidently placed total-library insert (MAPQ ≥20): " + windows +
             ".</p><p>Bowtie 2 compares local alignments across the listed genomes. A match requires at least "
             "30 aligned bases, 70% query coverage, 85% identity and a 6-point lead over the next genome. "
-            "Close matches are ambiguous. RNA splice junctions can reduce assignment. A species match can also reflect a spike-in. Raw-read matches alone cannot identify free genomic DNA.</p></details></section>")
+            + method_note + "</p></details></section>")
 
 
 def main():

@@ -141,6 +141,16 @@ def infer_utrs(exons, cds, strand):
     return (right, left) if strand == '-' else (left, right)
 
 
+def transcript_segments(parts, exons, strand):
+    cds = intersect_intervals(exons, parts['CDS'] + parts.get('codon', [])) if parts['CDS'] else []
+    five, three = infer_utrs(exons, cds, strand)
+    if parts.get('utr5'):
+        five = subtract_intervals(intersect_intervals(exons, parts['utr5']), cds)
+    if parts.get('utr3'):
+        three = subtract_intervals(intersect_intervals(exons, parts['utr3']), cds)
+    return {'five_prime_UTR': five, 'CDS': cds, 'three_prime_UTR': three}
+
+
 @dataclass
 class Gene:
     gene_id: str
@@ -174,11 +184,9 @@ class Gene:
                 candidates.append((interval_length(exons), transcript, exons, parts))
         if candidates:
             _, _, self.representative, parts = sorted(candidates, key=lambda x: (-x[0], x[1]))[0]
-            cds = merge_intervals(parts['CDS'])
         else:
-            self.representative, cds = self.exons, self.cds
-        five, three = infer_utrs(self.representative, cds, self.strand)
-        self.segments = {'five_prime_UTR': five, 'CDS': cds, 'three_prime_UTR': three}
+            self.representative, parts = self.exons, {'CDS': self.cds}
+        self.segments = transcript_segments(parts, self.representative, self.strand)
         five, three = infer_utrs(self.exons, self.cds, self.strand)
         self.utr5, self.utr3 = merge_intervals(self.utr5 or five), merge_intervals(self.utr3 or three)
 
@@ -213,7 +221,7 @@ class Annotation:
         return [self.genes[key] for key in sorted(found)]
 
 
-def read_annotation(path, mitochondrial=('chrM', 'MT')):
+def read_annotation(path, mitochondrial=('chrM', 'MT'), *, transcript_regions=False):
     genes, malformed, digest = {}, 0, hashlib.sha256()
     with open_text(path) as handle:
         for line in handle:
@@ -245,8 +253,13 @@ def read_annotation(path, mitochondrial=('chrM', 'MT')):
             if destination is not None:
                 destination.append(interval)
             transcript = attrs.get('transcript_id')
-            if transcript and feature in ('exon', 'CDS'):
-                gene.transcripts.setdefault(transcript, {'exon': [], 'CDS': []})[feature].append(interval)
+            part = feature if feature in ('exon', 'CDS') else None
+            if transcript_regions and part is None:
+                part = {'five_prime_utr': 'utr5', '5utr': 'utr5', 'three_prime_utr': 'utr3', '3utr': 'utr3',
+                        'start_codon': 'codon', 'stop_codon': 'codon'}.get(feature.lower())
+            if part and (transcript or transcript_regions):
+                parts = gene.transcripts.setdefault(transcript or '', {'exon': [], 'CDS': []})
+                parts.setdefault(part, []).append(interval)
     known = set()
     for gene in genes.values():
         for parts in gene.transcripts.values():
@@ -410,6 +423,13 @@ def profile_vector(blocks, exons, strand, bins=100):
     return vector
 
 
+def transcript_profile_vectors(blocks, gene):
+    intervals = {'gene_body': gene.representative, **gene.segments}
+    return {'_lengths': {key: interval_length(exons) for key, exons in intervals.items()},
+            **{key: profile_vector(blocks, exons, gene.strand, 100 if key == 'gene_body' else 30)
+               for key, exons in intervals.items()}}
+
+
 def wilson_interval(success, total):
     if not total:
         return [None, None]
@@ -478,7 +498,7 @@ def discover_motifs(sequences, minimum=100, seed=1729, shuffles=8, maximum=2000)
     return discover_homer(sequences, dinucleotide_shuffle, minimum, seed, shuffles, maximum)
 
 
-def analyze_units(units, alignments, annotation, mapq=10):
+def analyze_units(units, alignments, annotation, mapq=10, *, collect_profiles=True):
     rows, profiles = [], {}
     for name, unit in units.items():
         records = alignments.get(name, [])
@@ -527,31 +547,48 @@ def analyze_units(units, alignments, annotation, mapq=10):
                     row['strand_evidence'] = 'sense' if row['physical_strand'] in strands else 'antisense'
                 if gene is not None:
                     row.update(gene_id=gene.gene_id, gene_name=gene.name, gene_strand=gene.strand, eligible_gene=True)
-                    profiles[name] = {'gene_body': profile_vector(record['blocks'], gene.representative, gene.strand), '_lengths': {'gene_body': interval_length(gene.representative), **{key: interval_length(value) for key, value in gene.segments.items()}}}
-                    for region, exons in gene.segments.items():
-                        profiles[name][region] = profile_vector(record['blocks'], exons, gene.strand, 30)
+                    if collect_profiles:
+                        profiles[name] = transcript_profile_vectors(record['blocks'], gene)
         rows.append(row)
     return rows, profiles
 
 
-def summarize_profiles(rows, vectors, min_gene_units=10, min_bias_genes=20):
-    counts = collections.Counter(row['gene_id'] for row in rows if row['eligible_gene'] and
-        row['unit_id'] in vectors and sum(vectors[row['unit_id']]['gene_body']) > 0)
-    # Plot every observed gene; depth thresholds apply only to end-bias inference.
-    eligible = set(counts)
-    bias_eligible = {gene for gene, count in counts.items() if count >= min_gene_units}
-    by_gene, lengths = collections.defaultdict(dict), {}
-    for row in rows:
-        if row['gene_id'] not in eligible or row['unit_id'] not in vectors:
-            continue
-        source = vectors[row['unit_id']]
-        lengths[row['gene_id']] = source['_lengths']
-        for kind, vector in source.items():
-            if kind.startswith('_'):
+class GeneProfileCounts:
+    def __init__(self):
+        self.by_gene = {}
+        self.lengths = {}
+        self.units_per_gene = collections.Counter()
+        self.supporting_units = collections.Counter()
+
+    def add(self, gene_id, vectors):
+        if not any(vectors['gene_body']):
+            return
+        self.units_per_gene[gene_id] += 1
+        self.lengths[gene_id] = vectors['_lengths']
+        totals = self.by_gene.setdefault(gene_id, {})
+        for kind, vector in vectors.items():
+            if kind == '_lengths':
                 continue
-            target = by_gene[row['gene_id']].setdefault(kind, [0.] * len(vector))
-            for index, value in enumerate(vector):
-                target[index] += value
+            self.supporting_units[kind] += bool(any(vector))
+            if kind in totals:
+                for i, value in enumerate(vector):
+                    totals[kind][i] += value
+            else:
+                totals[kind] = vector.copy()
+
+
+def summarize_profiles(rows, vectors, min_gene_units=10, min_bias_genes=20):
+    counts = GeneProfileCounts()
+    for row in rows:
+        if row['eligible_gene'] and row['unit_id'] in vectors:
+            counts.add(row['gene_id'], vectors[row['unit_id']])
+    return summarize_gene_profiles(counts, min_gene_units, min_bias_genes)
+
+
+def summarize_gene_profiles(counts, min_gene_units=10, min_bias_genes=20):
+    # Plot every observed gene; depth thresholds apply only to end-bias inference.
+    by_gene, lengths = counts.by_gene, counts.lengths
+    bias_eligible = {gene for gene, count in counts.units_per_gene.items() if count >= min_gene_units}
     output, end_fractions, both_ends = {}, [], 0
     for kind, bins in (('gene_body', 100), ('five_prime_UTR', 30), ('CDS', 30), ('three_prime_UTR', 30)):
         normalized, missing_region = [], 0
@@ -576,11 +613,9 @@ def summarize_profiles(rows, vectors, min_gene_units=10, min_bias_genes=20):
                     end_fractions.append(five / (five + three))
         mean = [statistics.mean(v[i] for v in normalized) for i in range(bins)] if normalized else [None] * bins
         sem = [statistics.stdev(v[i] for v in normalized) / math.sqrt(len(normalized)) for i in range(bins)] if len(normalized) > 1 else [None] * bins
-        supporting_units = sum(1 for row in rows if row['gene_id'] in eligible and row['unit_id'] in vectors
-                               and sum(vectors[row['unit_id']].get(kind, [])) > 0)
         output[kind] = {'contributing_genes': len(normalized), 'genes_missing_region': missing_region,
             'covered_genes': sum(any(value > 0 for value in vector) for vector in normalized),
-            'supporting_units': supporting_units, 'minimum_units_per_gene': 1,
+            'supporting_units': counts.supporting_units[kind], 'minimum_units_per_gene': 1,
             'mean_relative_coverage': mean, 'sem_across_genes': sem}
     available = len(end_fractions) >= min_bias_genes
     median_fraction = statistics.median(end_fractions) if available else None
