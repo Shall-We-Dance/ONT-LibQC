@@ -19,11 +19,13 @@ import tempfile
 import uuid
 import zipfile
 
+from custom_regions_ui import upgrade_html as refresh_custom_controls
 from report_bundle import validate
 from report_export import add_pdf_export
 from report_metrics import COLLISION_ROWS, METRIC_META, REPORT_CSS, REPORT_TOOLTIP_SCRIPT, scoped_metric_rows
+from report_palette import scope_color
 from report_profiles import render_profiles_card
-from report_sublibrary import render_sublibrary_composition, scope_color
+from report_sublibrary import render_sublibrary_composition
 from report_provenance import RELEASE_VERSION
 from species_composition import render as render_species
 
@@ -82,6 +84,24 @@ def replace_ranges(text, replacements):
     return text
 
 
+# A sublibrary TSS–TES plot is a single deepTools series. Older renderers used
+# navy or a previous scope palette for the curve and uncertainty band.
+GENE_SERIES_PAINT = re.compile(
+    r"""(\b(?:fill|stroke)(?:=["']|:\s*))(?:#000080|#2a6cbd|#23877f|#8364b2|#b66b35|"""
+    r"""#427c9b|#a4547c|#68863b|#675ea4|#e64b35|#4dbbd5|#00a087|#3c5488|"""
+    r"""#f39b7f|#8491b4|#91d1c2|#dc0000|#7e6148|#b09c85)\b""", re.IGNORECASE,
+)
+
+
+def refresh_gene_profile_color(path, sid):
+    if path.is_file():
+        original = path.read_text()
+        color = scope_color(sid)
+        updated = GENE_SERIES_PAINT.sub(lambda m: m[1] + color, original)
+        if updated != original:
+            path.write_text(updated)
+
+
 def refresh_profile_layout(root, sample, text):
     parsed = Elements(text)
     sections = [n for n in parsed.elements if n['attrs'].get('id') == 'profiles']
@@ -120,6 +140,8 @@ def refresh_profile_layout(root, sample, text):
             return replace_ranges(text, composition)
     rna_path = root/'data/rna'/sample/'summary.json'
     rna = json.loads(rna_path.read_text()) if metric.get('assay') in {'rnaseq', 'clip'} and rna_path.is_file() else None
+    for sid in ids[1:]:
+        refresh_gene_profile_color(root/'assets'/f'{sample}.{sid}.TSS_TES.svg', sid)
     scope_html = {}
     for node in parsed.elements:
         if 'profile-scope' not in node['attrs'].get('class', '').split() or not parsed.within(node, section): continue
@@ -146,9 +168,9 @@ def refresh_profile_layout(root, sample, text):
     chromatin = metric.get('assay') == 'chromatin'
     if chromatin:
         from report_regions import refresh_region_color
-        for i, scope in enumerate(scopes):
+        for scope in scopes:
             sid = scope['scope_id']
-            refresh_region_color(root/'assets'/f'{sample}.{sid}.regions.svg', scope_color(sid, max(0, i - 1)))
+            refresh_region_color(root/'assets'/f'{sample}.{sid}.regions.svg', scope_color(sid))
     if len(scopes) == 1 and rna is None and not microc and not chromatin:
         # Single-library figures are already retained verbatim. Older reports
         # embed them inside Library quality; do not add a second card frame.
@@ -200,7 +222,7 @@ def refresh_profile_layout(root, sample, text):
                     replacements.append((node, ''))
         # Retained RNA assay cards own their text, tables and evidence colors.
         # Update just the identity marker and the two custom properties in the header.
-        for i, scope in enumerate(scopes[1:]):
+        for scope in scopes[1:]:
             sid = scope['scope_id']
             card = next((n for n in parsed.elements if n['tag'] == 'details' and
                          n['attrs'].get('id') == 'rna-scope-' + sid and n['attrs'].get('data-scope') == sid), None)
@@ -208,7 +230,7 @@ def refresh_profile_layout(root, sample, text):
                 old = parsed.fragment(card)
                 header, end, body = old.partition('</summary>')
                 if end:
-                    color = scope_color(sid, i)
+                    color = scope_color(sid)
                     header = re.sub(r'(--scope-(?:tint|border):|background:)#[0-9a-fA-F]{6}',
                                     lambda m: m[1] + color, header)
                     replacements.append((card, header + end + body))
@@ -290,7 +312,7 @@ def refresh_tables(root, sample, text):
 def refresh_page(root, sample):
     page = root/'samples'/f'{sample}.html'
     text = refresh_profile_layout(root, sample, page.read_text())
-    page.write_text(refresh_tables(root, sample, text))
+    page.write_text(refresh_custom_controls(refresh_tables(root, sample, text)))
 
 
 def refresh_presentation(text):

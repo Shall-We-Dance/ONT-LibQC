@@ -10,7 +10,7 @@ from pathlib import Path
 from qc_definitions import profile as metric_profile, configured_params
 from qc_plot_metrics import svg_size_trace
 from qc_reference_guide import reference_notes_html
-from report_sublibrary import TOTAL_COLOR, scope_color
+from report_palette import scope_color
 from report_brand import brand_bar, copy_mark, favicon
 from report_export import add_pdf_export
 from report_provenance import RELEASE_VERSION, analysis_record, analysis_label
@@ -262,23 +262,23 @@ def render_sample_report(sample, cfg, out, report_params, prior_provenance, anno
                     report_mapq, report_reference["chrom_sizes"], report_chrom_sizes, report_primary,
                     profile_upstream, profile_downstream, profile_body, profile_bin, profile_threads)
     profile_sections=[]
-    for scope_index, scope in enumerate(scopes):
+    for scope in scopes:
         scope_id=scope["scope_id"]; label=scope.get("scope_name",scope_id)
         profile={"raw_lengths":raw,"insert_lengths":inserts} if scope_id=="total" else scope_profiles.get(scope_id, {"raw_lengths":[],"insert_lengths":[]})
         raw_asset=out/"reports"/"assets"/f"{sample}.{scope_id}.raw_lengths.svg"
         insert_asset=out/"reports"/"assets"/f"{sample}.{scope_id}.insert_lengths.svg"
         region_asset=out/"reports"/"assets"/f"{sample}.{scope_id}.regions.svg"
         karyotype_asset=out/"reports"/"assets"/f"{sample}.{scope_id}.karyotype.svg"
-        color = scope_color(scope_id, scope_index - 1) if scope_id != "total" else None
         trace_max=float(report_params.get("size_trace_max_bp", 2000))
         trace_bandwidth=float(report_params.get("size_trace_bandwidth", .045))
-        raw_asset.write_text(svg_size_trace(profile["raw_lengths"],f"{label}: raw ONT molecule size",trace_max,trace_bandwidth,color=color))
-        insert_asset.write_text(svg_size_trace(profile["insert_lengths"],f"{label}: adapter-bounded insert size",trace_max,trace_bandwidth,color=color))
+        trace_color = scope_color(scope_id) if scope_id != "total" else None
+        raw_asset.write_text(svg_size_trace(profile["raw_lengths"],f"{label}: raw ONT molecule size",trace_max,trace_bandwidth, color=trace_color))
+        insert_asset.write_text(svg_size_trace(profile["insert_lengths"],f"{label}: adapter-bounded insert size",trace_max,trace_bandwidth, color=trace_color))
         full_library_assets=write_library_size_assets(out/"reports"/"assets", f"{sample}.{scope_id}", label,
-            scope_profiles.get(scope_id, {}).get("unit_rows", []), adapter_summary, trace_max, trace_bandwidth, color=color)
+            scope_profiles.get(scope_id, {}).get("unit_rows", []), adapter_summary, trace_max, trace_bandwidth, color=trace_color)
         if metric["assay"] == "chromatin":
             region_metric=region_metrics if scope_id == "total" else sub_region_metrics[scope_id]
-            region_asset.write_text(svg_region_bars(region_metric, f"{label}: genomic regions", color or TOTAL_COLOR))
+            region_asset.write_text(svg_region_bars(region_metric, f"{label}: genomic regions", scope_color(scope_id)))
             write_data(region_asset.with_suffix(".json"), "genomic_regions", region_metric)
         else:
             region_asset.unlink(missing_ok=True)

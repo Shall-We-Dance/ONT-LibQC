@@ -56,18 +56,47 @@ def normalize_bed(source,dest,sizes):
     if not rows:raise InputError('BED contains no usable regions.')
     Path(dest).write_text(''.join(rows))
 
-def main():
-    root=Path('/job'); os.chdir(root)
-    request=json.loads((root/'request.json').read_text());cfg=yaml.safe_load((root/'config.yaml').read_text())
-    result={'ok':False,'error':'Analysis did not finish.'}
-    try:
+def phase_targets(phase, cfg, options):
+    sample = options['sample']
+    out = cfg['output_dir']
+    if phase == 'prepare':
+        return [f'{out}/qc/adapters/{sample}.summary.json']
+    if phase == 'align':
+        targets = [f'{out}/bam/{sample}.bam.bai', f'{out}/qc/mycoplasma/{sample}.json',
+                   f'{out}/qc/spike_in/{sample}.json']
+        if cfg.get('species_composition', {}).get('indexes'):
+            targets.append(f'{out}/qc/species_composition/{sample}.json')
+        if options['assay'] == 'microc':
+            targets.extend([f'{out}/qc/ligation/{sample}.json', f'{out}/qc/pairtools/{sample}.json'])
+        if options['assay'] in ('rnaseq', 'clip'):
+            targets.append(f'{out}/qc/rna/{sample}')
+        return targets
+    if phase in ('report', 'full'):
+        return []
+    raise ValueError('Unknown portal workflow phase')
+
+
+def run_phase(root, request, cfg, phase):
+    targets = phase_targets(phase, cfg, request['options'])
+    if phase in ('prepare', 'full'):
         count=normalize_fastq('/input/input.upload',root/'input.fastq.gz',request['compressed'],request['max_expanded_bytes'],request['max_reads'])
         if request['custom_regions']:
             normalize_bed('/input/regions.upload',root/'regions.bed',cfg['references'][cfg['default_reference']]['chrom_sizes'])
         shutil.copy2('/app/Snakefile',root/'Snakefile')
         shutil.copytree('/app/workflow',root/'workflow',ignore=shutil.ignore_patterns('__pycache__'))
-        proc=subprocess.run(['snakemake','--cores',str(request['cores']),'--resources','portal_slot=1','--default-resources','portal_slot=1','--rerun-incomplete','--printshellcmds'],cwd=root)
-        if proc.returncode: raise RuntimeError('The pipeline could not complete this file. Please check the assay and reference settings or contact the service operator.')
+    else:
+        previous = json.loads((root/'result.json').read_text())
+        if not previous['ok'] or previous['phase'] != {'align':'prepare', 'report':'align'}[phase]:
+            raise ValueError('Missing previous phase result')
+        count = previous['raw_reads']
+    # Partial invocations must keep all temp outputs for the final workflow.
+    args = ['snakemake', *targets, '--cores', str(request['cores']), '--resources', 'portal_slot=1',
+            '--default-resources', 'portal_slot=1', '--rerun-incomplete', '--printshellcmds']
+    if targets:
+        args.append('--notemp')
+    subprocess.run(args, cwd=root, check=True)
+    result = {'ok': True, 'phase': phase, 'raw_reads': count}
+    if phase in ('report', 'full'):
         sys.path.insert(0,str(root/'workflow/scripts'))
         from report_bundle import validate
         report=root/'report'
@@ -80,7 +109,17 @@ def main():
         manifest=json.loads((report/'manifest.json').read_text())
         manifest.update(entrypoint=entry,validation=validation)
         (report/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
-        result={'ok':True,'raw_reads':count,'validation':validation}
+        result['validation'] = validation
+    return result
+
+
+def main():
+    root=Path('/job'); os.chdir(root)
+    result={'ok':False,'error':'Analysis did not finish.'}
+    try:
+        request=json.loads((root/'request.json').read_text())
+        cfg=yaml.safe_load((root/'config.yaml').read_text())
+        result=run_phase(root, request, cfg, os.environ.get('ONT_LIBQC_PHASE', 'full'))
     except InputError as exc: result['error']=str(exc)
     except Exception as exc:
         print(type(exc).__name__+': '+str(exc),file=sys.stderr,flush=True)

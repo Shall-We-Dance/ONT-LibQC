@@ -5,7 +5,7 @@ import gzip
 import html
 import json
 import re
-from report_sublibrary import TOTAL_COLOR
+from report_palette import POOLED
 from report_svg import svg_start, text
 
 
@@ -129,7 +129,7 @@ def refresh_region_color(path, color):
         path.write_text(updated)
 
 
-def svg_region_bars(metric, title, color=TOTAL_COLOR):
+def svg_region_bars(metric, title, color=POOLED):
     svg = svg_start(820, 235, title)
     svg.append("<metadata id='genomic-region-metrics'>" + html.escape(json.dumps(metric, sort_keys=True)) + '</metadata>')
     for x, label in [(535, 'Sample'), (658, 'Background'), (796, 'Enrichment')]:

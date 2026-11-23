@@ -24,6 +24,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'workflow/scripts'))
 from report_refresh import refresh
 from report_spike_matrix import spike_matrix_html
+from report_sublibrary import render_sublibrary_composition
 from report_metrics import REPORT_CSS, scoped_table_html
 from species_composition import classify, render as render_species
 from report_export import add_pdf_export
@@ -291,8 +292,9 @@ def check_refreshed_layout(browser, original, refreshed, sample):
 
 def check_composition_tables(browser):
     ids = [f'lib{i:02}' for i in range(1, 7)]
-    hit = ('dm6', 60, True, ('chr1', 0))
-    data = classify(ids, [[hit]] * len(ids), ['hg38', 'dm6'], 'dm6')
+    panel = ['hg38', 'dm6', 'sacCer3']
+    hits = [[(species, 60, True, ('chr1', 0))] for species in panel]
+    data = classify([sid for sid in ids for _ in panel], hits * len(ids), panel, 'dm6')
     scopes = [dict(scope_id=sid, collision_observed_pairs=i, collision_oe=2.5,
                    mycoplasma_status='NOT_DETECTED', mycoplasma_screened_reads=1)
               for i, sid in enumerate(['total', *ids])]
@@ -301,8 +303,19 @@ def check_composition_tables(browser):
                               "<header class='report-hero'><h1>Sample</h1></header>"
                               + render_species(data) + metrics + "</body></html>")
     page = browser.new_page(viewport={'width': 1250, 'height': 900})
+    def check_bar_labels():
+        segments = page.locator('.species-bar').first.locator('.species-segment')
+        assert segments.locator('b').all_inner_texts() == ['33.3%'] * len(panel)
+        assert all(label.is_visible() for label in segments.locator('b').all())
+        assert segments.evaluate_all('''bars => bars.map(bar => [
+            getComputedStyle(bar).backgroundColor, getComputedStyle(bar.querySelector("b")).color
+        ])''') == [['rgb(70, 101, 117)', 'rgb(255, 255, 255)'],
+                  ['rgb(185, 134, 83)', 'rgb(0, 0, 0)'],
+                  ['rgb(192, 170, 120)', 'rgb(0, 0, 0)']]
+
     try:
         page.set_content(document)
+        check_bar_labels()
         page.locator('details').evaluate('(node) => node.open = true')
         assert page.locator('.species-counts').first.evaluate('(t) => t.clientWidth <= t.parentNode.clientWidth + 1')
         assert page.locator('.metric-note').first.inner_text() == 'Low depth'
@@ -316,6 +329,7 @@ def check_composition_tables(browser):
         page.evaluate('window.ONTReportExport.prepare()')
         page.emulate_media(media='print')
         page.set_viewport_size({'width': 703, 'height': 1000})
+        check_bar_labels()
         for kind, count in [('species-counts', 2), ('qc-metrics', 2)]:
             copies = page.locator('.report-print-tables .' + kind)
             assert copies.count() == count
@@ -325,6 +339,46 @@ def check_composition_tables(browser):
         assert page.locator('.report-print-tables .metric-note').count() == 5
         page.evaluate('window.ONTReportExport.restore()')
         assert page.locator('.report-print-tables').count() == 0
+    finally:
+        page.close()
+
+
+def check_sublibrary_percentages(browser, engine):
+    scopes = [dict(scope_id=sid, library_units=count)
+              for sid, count in [('lib01', 400), ('lib02', 240), ('lib03', 180), ('lib04', 120)]]
+    section = render_sublibrary_composition(dict(library_units=1000, sub_libraries=scopes,
+                                                 index_pairing=dict(ambiguous_units=0, unassigned_units=60)))
+    doc = add_pdf_export(f"<html><head><style>{REPORT_CSS}</style></head><body>"
+                         f"<header class='report-hero'><h1>Sample</h1></header>{section}</body></html>")
+    page = browser.new_page()
+    try:
+        page.set_content(doc)
+        labels = page.locator('.mixture-segment-text')
+        percentages = ['40.0%', '24.0%', '18.0%', '12.0%', '6.0%']
+        assert labels.all_text_contents() == percentages
+        for media, width in [('screen', 1250), ('screen', 375), ('print', 703)]:
+            page.set_viewport_size({'width': width, 'height': 900})
+            if media == 'print':
+                page.evaluate('window.ONTReportExport.prepare()')
+            page.emulate_media(media=media)
+            visible = [label.is_visible() for label in labels.all()]
+            if width == 375:
+                assert all(visible[:2]) and not visible[-1], (media, width, visible)
+            else:
+                assert all(visible[:4]), (media, width, visible)
+            assert labels.evaluate_all('''nodes => nodes.every(label =>
+                label.getBoundingClientRect().width <= label.parentElement.getBoundingClientRect().width + 1
+            )'''), (media, width)
+            assert labels.evaluate_all("""nodes => nodes.map(label => [
+                getComputedStyle(label.parentElement).backgroundColor, getComputedStyle(label).color
+            ])""") == [['rgb(40, 120, 200)', 'rgb(255, 255, 255)'],
+                       ['rgb(223, 122, 20)', 'rgb(255, 255, 255)'],
+                       ['rgb(33, 147, 87)', 'rgb(255, 255, 255)'],
+                       ['rgb(147, 86, 192)', 'rgb(255, 255, 255)'],
+                       ['rgb(221, 220, 212)', 'rgb(0, 0, 0)']]
+            assert page.locator('.mixture-legend strong').all_inner_texts() == percentages
+        if engine == 'chromium':
+            page.pdf(path=str(OUTPUT/'sublibrary-composition.pdf'), format='A4', print_background=True)
     finally:
         page.close()
 
@@ -395,6 +449,7 @@ with tempfile.TemporaryDirectory() as directory:
                 browser = getattr(playwright, engine).launch(**options)
                 try:
                     check_composition_tables(browser)
+                    check_sublibrary_percentages(browser, engine)
                     check_spike_matrix_print(browser, engine)
                     for sample in ('HL120', 'HL240'):
                         check_refreshed_layout(browser, ROOT/'example_report', examples, sample)

@@ -6,7 +6,7 @@ import re
 import textwrap
 from pathlib import Path
 
-from report_sublibrary import scope_color
+from report_palette import scope_color
 
 
 # The size SVG generator emits a single adjacent area and curve. Match both
@@ -19,9 +19,9 @@ _TRACE_PAINT = re.compile(
 
 def refresh_scope_size_traces(assets, sample, sublibraries):
     """Align retained single-library size traces with their current overview color."""
-    for index, scope in enumerate(sublibraries):
+    for scope in sublibraries:
         sid = scope['scope_id']
-        color = scope_color(sid, index)
+        color = scope_color(sid)
         for suffix in ('full_library_length_weighted', 'full_library_count_based',
                        'raw_lengths', 'insert_lengths', 'mnase', 'single_block'):
             path = Path(assets) / f'{sample}.{sid}.{suffix}.svg'

@@ -11,7 +11,7 @@ from microc_pairtools import report_parts
 from microc_ligation import CATEGORY_COLORS
 from report_microc import native_contact_summary, write_microc_comparisons
 from report_metrics import fmt, METRIC_META, scoped_table_html
-from report_sublibrary import scope_color
+from report_palette import scope_color
 from report_svg import text
 
 
@@ -172,9 +172,9 @@ def prepare_microc_profiles(sample, scopes, data_dir, assets, asset_url, data_ur
 
     has_ligation = 'ligation' in comparisons or 'ligation_lengths' in comparisons
     if has_ligation:
-        for i, scope in enumerate(scopes[1:]):
+        for scope in scopes[1:]:
             sid = scope['scope_id']
-            color_retained_ligation(assets / f'{sample}.{sid}.ligation.svg', scope_color(sid, i))
+            color_retained_ligation(assets / f'{sample}.{sid}.ligation.svg', scope_color(sid))
         table = ''
         if any(s.get('ligation_screened_units') is not None for s in scopes):
             table = scoped_table_html(scopes, [k for k in METRIC_META if k.startswith('ligation_')], {})

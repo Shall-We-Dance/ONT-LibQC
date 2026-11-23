@@ -163,20 +163,20 @@ class RefreshTests(unittest.TestCase):
 
     def test_chromatin_region_identity_and_single_total_color(self):
         from report_regions import svg_region_bars
-        from report_sublibrary import TOTAL_COLOR, scope_color
+        from report_palette import POOLED, scope_color
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)/'report'
             self.fixture(root)
             metric = dict(promoter_proximal_rate=.35, promoter_proximal_background_rate=.1)
             original = svg_region_bars(metric, 'Keep the title', '#2a6cbd')
-            self.assertIn(TOTAL_COLOR, svg_region_bars(metric, 'Single library'))
+            self.assertIn(POOLED, svg_region_bars(metric, 'Single library'))
             for sid in ('lib01', 'lib02', 'total'):
                 (root/'assets'/f'demo.{sid}.regions.svg').write_text(original)
             refresh(root, True)
             for sid in ('lib01', 'lib02', 'total'):
                 rendered = (root/'assets'/f'demo.{sid}.regions.svg').read_text()
                 self.assertEqual(rendered, original.replace('#2a6cbd', scope_color(sid, 0)))
-            self.assertNotEqual(TOTAL_COLOR, scope_color('lib01', 0))
+            self.assertNotEqual(POOLED, scope_color('lib01', 0))
 
     def test_rna_scope_palette_preserves_source_svg_and_evidence_colors(self):
         from report_sublibrary import scope_color

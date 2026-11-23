@@ -11,7 +11,7 @@ import tempfile
 from pathlib import Path
 
 from library_sequences import fastq_records, microc_leg_span, rc
-from report_sublibrary import AMBIGUOUS_COLOR, UNASSIGNED_COLOR, bar_ink
+from report_palette import AMBIGUOUS_COLOR, UNASSIGNED_COLOR, bar_ink
 
 NAMES = {"ARS_UCD2": "Cattle", "hg38": "Human", "mm39": "Mouse", "dm6": "Fruit fly",
          "ecoli": "E. coli", "ce11": "C. elegans", "sacCer3": "Budding yeast",

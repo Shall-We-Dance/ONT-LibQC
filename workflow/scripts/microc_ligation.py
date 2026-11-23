@@ -117,12 +117,12 @@ def plots(result,units_path,segments_path,output):
     import matplotlib;matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     import numpy as np
-    from report_sublibrary import scope_color
+    from report_palette import scope_color
     with gzip.open(units_path,'rt') as f:rows=list(csv.DictReader(f,delimiter='\t'))
     with gzip.open(segments_path,'rt') as f:segs=list(csv.DictReader(f,delimiter='\t'))
     base=Path(output);base.parent.mkdir(parents=True,exist_ok=True)
-    library_colors = {scope: scope_color(scope, i) for i, scope in
-                      enumerate(s for s in result['scopes'] if s not in {'total', 'unassigned'})}
+    library_colors = {scope: scope_color(scope) for scope in result['scopes']
+                      if scope not in {'total', 'unassigned'}}
     for scope in ['total']+list(result['scopes']):
         selected=rows if scope=='total' else [r for r in rows if r['scope_id']==scope];stat=result if scope=='total' else result['scopes'][scope]
         fig,axs=plt.subplots(1,2,figsize=(11,4.8),gridspec_kw={'width_ratios':[1.35,1]});colors=CATEGORY_COLORS;vals=[stat['category_counts'][c] for c in CATEGORIES]

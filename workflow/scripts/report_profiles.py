@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.parse import quote
 import re
 
-from report_sublibrary import scope_color
+from report_palette import scope_color
 from report_svg import svg_start, text
 from report_regions import REGION_ROWS, REGION_LEGEND, region_track, region_percent
 from report_profile_band import read_profile_band
@@ -117,7 +117,7 @@ def virtual_lanes(series, *, compact=False):
             svg.append(f"<rect x='{lane_x}' y='{y0:.3f}' width='{lane_w}' height='{y1-y0:.3f}' fill='rgb({shade},{shade},{shade})'/>")
         svg += [f"<rect x='{lane_x}' y='{top}' width='{lane_w}' height='{bottom-top}' fill='none' stroke='#aab4bc' stroke-width='.8'/>",
                 f"<rect x='{lane_x}' y='{top-7}' width='{lane_w}' height='4' fill='{row['color']}'/>",
-                text(lane_x+lane_w/2, bottom+23, row['id'], size=13, color=row['color']), '</g>']
+                text(lane_x+lane_w/2, bottom+23, row['id'], size=13, color='#34495e'), '</g>']
     svg += [text(width/2, bottom+45, 'Fragment size (bp)', size=14, color='#111'), '</svg>']
     return ''.join(svg)
 
@@ -223,7 +223,7 @@ def region_comparison(series):
             rate, bg, fold = (metric.get(key + suffix) for suffix in ('_rate', '_background_rate', '_enrichment'))
             tip = f"{row['label']} · {label}: {region_percent(rate)}, background {region_percent(bg)}"
             svg.append(f"<g data-scope='{html.escape(row['id'],quote=True)}' data-region='{key}'><title>{html.escape(tip)}</title>")
-            svg.append(text(28, y + 4, row['id'], 'start', 13, row['color']))
+            svg.append(text(28, y + 4, row['id'], 'start', 13, '#34495e'))
             svg.append(region_track(rate, bg, row['color'], 108, y, 322))
             for x, value in [(535,region_percent(rate)),(658,region_percent(bg)),(796,'—' if fold is None else f'{fold:,.2f}×')]:
                 svg.append(text(x,y+4,value,'end',14,'#34495e'))
@@ -248,7 +248,7 @@ def rna_region_comparison(series, metrics):
             total = scope.get('region_denominator_bases')
             count = counts.get(key, 0) if counts is not None else None
             fraction = count / total if total and count is not None else None
-            svg.append(text(28, y + 4, row['id'], 'start', 13, row['color']))
+            svg.append(text(28, y + 4, row['id'], 'start', 13, '#34495e'))
             svg.append(region_track(fraction, None, row['color'], 110, y, 290))
             svg.append(text(590, y + 4, '—' if count is None else f'{count:,}', 'end', 14))
             svg.append(text(737, y + 4, region_percent(fraction), 'end', 14))
@@ -292,9 +292,9 @@ def render_profiles_card(sample, scopes, scope_html, asset_dir, gene_dir, asset_
         return opening + heading + scope_html[0] + '</section>'
     parts = [opening + f'<style>{CSS}</style>' + heading]
     series=[]
-    for i, scope in enumerate(sub or scopes[:1]):
+    for scope in sub or scopes[:1]:
         sid=scope['scope_id'];label=scope.get('scope_name',sid)
-        series.append(dict(id=sid,label=label,color=scope_color(sid, i),
+        series.append(dict(id=sid,label=label,color=scope_color(sid),
                            sizes=read_size_profile(asset_dir/f'{sample}.{sid}.full_library_profiles.tsv'),
                            gene=None))
         if rna_summary is not None or microc:

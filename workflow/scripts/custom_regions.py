@@ -2,7 +2,7 @@
 import collections,html,json,math,re
 from pathlib import Path
 import numpy as np
-from custom_regions_ui import render_section
+from custom_regions_ui import custom_profile_color, render_section
 
 PARAMS=dict(mode='auto',upstream_bp=5000,downstream_bp=5000,flank_bins=50,body_bins=100,reference_bins=100)
 
@@ -91,14 +91,14 @@ def compute_profile(records,regions,sizes,params=PARAMS):
     clean=lambda v:[float(x) if math.isfinite(x) else None for x in v]
     return dict(mean=clean(mean),sem=clean(sem),regions_per_bin=counts.tolist(),eligible_alignments=len(records))
 
-def static_plot(profiles,label,path,params=PARAMS):
+def static_plot(profiles,label,path,params,colors):
     import matplotlib;matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     plt.rcParams.update({'svg.fonttype':'none','pdf.fonttype':42})
-    fig,ax=plt.subplots(figsize=(8.2,4.4));colors=['#000080','#23877f','#8364b2','#b66b35']
-    for i,(scope,p) in enumerate(profiles.items()):
+    fig,ax=plt.subplots(figsize=(8.2,4.4))
+    for scope,p in profiles.items():
         y=np.array([np.nan if v is None else v for v in p['mean']]);se=np.array([np.nan if v is None else v for v in p['sem']]);x=np.arange(len(y))+.5
-        if np.isfinite(y).any():ax.plot(x,y,label=scope,color=colors[i%len(colors)],lw=1.8);ax.fill_between(x,y-se,y+se,color=colors[i%len(colors)],alpha=.20,linewidth=0)
+        if np.isfinite(y).any():ax.plot(x,y,label=scope,color=colors[scope],lw=1.8);ax.fill_between(x,y-se,y+se,color=colors[scope],alpha=.20,linewidth=0)
     point=params.get('mode')=='reference_point'
     n=params['reference_bins'] if point else 2*params['flank_bins']+params['body_bins']
     u,d=params['upstream_bp'],params['downstream_bp']
@@ -139,7 +139,8 @@ def report_html(out,sample,reference,sizes,primary,scope_records,scopes,sample_c
         result=dict(sample=sample,assembly=reference,label=configured.get('label',source.stem),bed=str(source.resolve()),bed_name=bed_name,region_origin=configured.get('region_origin',{}),parameters=params,**info,profiles=profiles)
         (folder/f'{sample}.json').write_text(json.dumps(result,indent=2)+'\n')
         bedasset=out/'reports/assets'/f'{sample}.custom_regions.bed';bedasset.write_text(bedtext)
-        plot=out/'reports/assets'/f'{sample}.custom_regions.svg';static_plot(profiles,sample+' · '+result['label'],plot,params)
+        colors = {scope['name']: custom_profile_color(sid) for sid, scope in payload['scopes'].items()}
+        plot=out/'reports/assets'/f'{sample}.custom_regions.svg';static_plot(profiles,sample+' · '+result['label'],plot,params,colors)
         with (folder/f'{sample}.profile.tsv').open('w') as f:
             f.write('scope\tbin\tmean_cpm\tsem_across_regions\tregions_in_bin\n')
             for scope,p in profiles.items():

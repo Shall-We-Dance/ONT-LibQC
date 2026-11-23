@@ -8,7 +8,7 @@ from pathlib import Path
 import re
 from urllib.parse import quote, urlsplit
 
-from report_sublibrary import scope_color
+from report_palette import scope_color
 
 
 def esc(value):
@@ -17,7 +17,7 @@ def esc(value):
 
 def color_transcript_assets(page, sample, scopes, rna, source_dir, asset_dir, source_prefix, asset_prefix):
     """Keep retained RNA input SVGs intact while updating displayed single-series profiles."""
-    for index, scope in enumerate(scopes):
+    for scope in scopes:
         sid = scope['scope_id']
         name = rna.get('scopes', {}).get(sid, {}).get('plots', {}).get('profiles')
         if not name or Path(name).name != name or not name.endswith('.svg'):
@@ -33,7 +33,7 @@ def color_transcript_assets(page, sample, scopes, rna, source_dir, asset_dir, so
         strokes = set(re.findall(r'stroke: (#[0-9a-fA-F]{6}); stroke-width: 1\.7[;"]', svg))
         if len(strokes) != 1:
             continue
-        color = scope_color(sid, max(0, index - 1))
+        color = scope_color(sid)
         old = strokes.pop()
         target = asset_dir / f'{sample}.{sid}.rna_transcript.svg'
         if old == color and not target.is_file():
@@ -328,7 +328,7 @@ def render_rna_section(summary_path, relative_prefix=None, scope_labels=None):
 
     scopes = data['scopes']
     order = list(dict.fromkeys([*scope_labels, *scopes]))
-    colors = {scope: scope_color(scope, i) for i, scope in enumerate(s for s in order if s != 'total')}
+    colors = {scope: scope_color(scope) for scope in order if scope != 'total'}
     sublibraries = [scope for scope in colors if scope in scopes]
     labels = {scope: scope_labels.get(scope) or scope for scope in sublibraries}
     for scope in [*sublibraries, 'total']:

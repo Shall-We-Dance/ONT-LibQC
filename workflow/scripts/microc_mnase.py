@@ -2,7 +2,7 @@
 import csv,gzip,json,statistics
 from pathlib import Path
 from qc_plot_metrics import svg_size_trace
-from report_sublibrary import scope_color
+from report_palette import scope_color
 
 BANDS=[('short_fraction',0,100),('mono_range_fraction',100,200),('intermediate_fraction',200,300),('long_fraction',300,float('inf'))]
 
@@ -41,8 +41,8 @@ def write_mnase(ligation_path,plot_prefix):
                 fragment_table=str(table),**summarize(rows),scopes={},
                 input_paths=[str(unitpath),str(segpath)],
                 limitations='Conditional on successful ligation, library selection, sequencing and alignment resolution. Short/repetitive fragments may be lost. Adjacent collinear fragments can merge; reference span estimates protected genomic length, not exact physical pre-ligation length. No calibrated digestion efficiency or nucleosome identity is inferred.')
-    for index, scope in enumerate(['total']+list(lig['scopes'])):
-        color = None if scope in ('total', 'unassigned') else scope_color(scope, index - 1)
+    for scope in ['total', *lig['scopes']]:
+        color = None if scope in ('total', 'unassigned') else scope_color(scope)
         selected=rows if scope=='total' else [r for r in rows if r['scope_id']==scope]
         if scope!='total':result['scopes'][scope]=summarize(selected)
         title=f"{lig['sample']} · {scope}: inferred pre-ligation fragments"

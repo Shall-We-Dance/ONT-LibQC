@@ -11,7 +11,7 @@ from microc_ligation import (CATEGORIES as BLOCK_CATEGORIES, CATEGORY_COLORS as 
                              summarize as summarize_ligation)
 from microc_pairtools import CATEGORIES as PAIR_CATEGORIES, COLORS as PAIR_COLORS
 from qc_plot_metrics import size_trace_data
-from report_sublibrary import bar_ink, scope_color
+from report_palette import bar_ink, scope_color
 from report_svg import svg_start, text
 
 
@@ -65,7 +65,7 @@ def _stacked_chart(scopes, title, description, categories, labels, colors, rows,
         y = 97 + 35 * i
         sid = scope['scope_id']
         svg += [_scope_group(scope),
-                f"<circle cx='28' cy='{y}' r='4' fill='{scope_color(sid, i)}'/>",
+                f"<circle cx='28' cy='{y}' r='4' fill='{scope_color(sid)}'/>",
                 text(40, y + 4, _scope_label(sid), 'start', 13, '#263541')]
         row = rows.get(sid)
         if row is None:
@@ -175,7 +175,7 @@ def _ligation_lengths_chart(scopes, units):
             ly = legend_y + row * 19
             sid = scope['scope_id']
             svg += [f"<rect data-library-key='{html.escape(sid, quote=True)}' x='{lx}' y='{ly-10}' "
-                    f"width='11' height='9' fill='{scope_color(sid, start+i)}' stroke='#000000' stroke-width='.8'/>",
+                    f"width='11' height='9' fill='{scope_color(sid)}' stroke='#000000' stroke-width='.8'/>",
                     text(lx + 17, ly, _scope_label(sid), 'start', 13, '#263541')]
         top = legend_y + 19 * legend_rows
         bottom = top + frame_height
@@ -199,7 +199,7 @@ def _ligation_lengths_chart(scopes, units):
                 if (sid, category) in boxes:
                     x = center + (i - (len(chunk) - 1) / 2) * spacing
                     svg.append(_length_box_svg(scope, category, boxes[sid, category], x, spacing * .73, y,
-                                               scope_color(sid, start + i)))
+                                               scope_color(sid)))
         offset = bottom + 31
     svg.append(text(left, offset + 4, 'Whiskers within 1.5 × IQR. Outliers hidden.', 'start', 13))
     svg.append('</g></svg>')
@@ -223,7 +223,7 @@ def _ligation_chart(scopes, result):
             stats = summarize_ligation([])
         y = first_row_y + row_pitch * i
         svg += [_scope_group(scope),
-                f"<circle cx='{left+3}' cy='{y-4}' r='3.2' fill='{scope_color(sid, i)}'/>",
+                f"<circle cx='{left+3}' cy='{y-4}' r='3.2' fill='{scope_color(sid)}'/>",
                 text(left + 13, y, _scope_label(sid), 'start', 14, '#263541')]
         if stats is None:
             svg += [text(right, y, 'Unavailable', 'end'), '</g>']
@@ -283,7 +283,7 @@ def _mnase_chart(scopes, fragment_file):
     visible = False
     for i, scope in enumerate(scopes):
         sid = scope['scope_id']
-        color = scope_color(sid, i)
+        color = scope_color(sid)
         values = lengths[sid]
         y = 361 + i * 24
         svg.append(_scope_group(scope))
@@ -363,7 +363,7 @@ def native_contact_summary(scopes):
         y = 103 + i * row_height
         svg += [_scope_group(scope),
                 f"<line x1='24' x2='815' y1='{y-17}' y2='{y-17}' stroke='#e1e7eb'/>",
-                f"<circle cx='28' cy='{y-3}' r='4' fill='{scope_color(sid, i)}'/>",
+                f"<circle cx='28' cy='{y-3}' r='4' fill='{scope_color(sid)}'/>",
                 text(40, y, _scope_label(sid), 'start', 13, '#263541'),
                 text(250, y, count(scope.get('unique_valid_contacts')), 'end', 14, '#263541')]
         for x, (_, key, numerator_key, denominator_key) in zip(columns, rates):
