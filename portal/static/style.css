@@ -834,6 +834,13 @@ input[type=file]::file-selector-button {
   color: var(--ink);
 }
 
+.library-settings {
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
 .file-body {
   padding: 20px;
 }

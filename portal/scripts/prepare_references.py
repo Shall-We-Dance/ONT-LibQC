@@ -5,6 +5,7 @@ from pathlib import Path
 import yaml
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from ont_portal.catalog import public_catalog, bt2_ready, bwa_ready
+from ont_portal.scrna_catalog import barcodes_ready
 from ont_portal.minimap_prep import prepare_minimap_indices
 from ont_portal.reference_prep import GIB, memory_bytes, tool_memory, check_headroom, normalize_names
 
@@ -208,15 +209,35 @@ def build(args):
     save(root/'catalog.admin.json',catalog);save(root/'catalog.public.json',ready)
     print('Catalog:',root/'catalog.admin.json')
 
+def enable_scrna(catalog_path, barcode_dir, output):
+    directory = Path(barcode_dir).resolve()
+    if not barcodes_ready(directory):
+        raise ValueError('Missing or mismatched barcode files; run prepare-scrna-barcodes first')
+    catalog = json.loads(Path(catalog_path).read_text())
+    catalog['scrna_barcodes'] = str(directory)
+    public = public_catalog(catalog)
+    ready = [row['id'] for row in public['references'] if row['scrna_ready']]
+    if not ready:
+        raise ValueError('No prepared STAR index matches its catalog reference ID and annotation')
+    output = Path(output)
+    output.mkdir(parents=True, exist_ok=True)
+    save(output / 'catalog.admin.json', catalog)
+    save(output / 'catalog.public.json', public)
+    print('Single-cell RNA available for:', ', '.join(ready))
+
+
 def main():
     p=argparse.ArgumentParser(description=__doc__);sub=p.add_subparsers(dest='command',required=True)
     a=sub.add_parser('adopt');a.add_argument('--config',required=True);a.add_argument('--output',required=True)
+    s=sub.add_parser('enable-scrna',help='Enable shallow single-cell RNA for verified local STAR and barcode resources')
+    s.add_argument('--catalog',required=True);s.add_argument('--barcodes',required=True);s.add_argument('--output',required=True)
     b=sub.add_parser('build');b.add_argument('--sources',default=str(DEFAULT_SOURCES));b.add_argument('--output',required=True);b.add_argument('--threads',type=int,default=2);b.add_argument('--memory',default='96g',help='Maximum build memory; each tool gets a smaller estimated cap when possible');b.add_argument('--reserve-memory',default='16g');b.add_argument('--only',nargs='+',help='Reference IDs to prepare; default is the ten common species');b.add_argument('--reuse-catalog',help='Explicitly reuse prepared references of the same assembly');b.add_argument('--image',default='ont-qc-runner:1')
     m=sub.add_parser('minimap2',help='Add prepared Minimap2 indexes to an existing administrator catalog')
     m.add_argument('--catalog',required=True);m.add_argument('--output',required=True);m.add_argument('--threads',type=int,default=2)
     m.add_argument('--memory',default='96g');m.add_argument('--reserve-memory',default='16g');m.add_argument('--image',default='ont-qc-runner:1')
     args=p.parse_args()
     if args.command=='adopt':adopt(args.config,args.output)
+    elif args.command=='enable-scrna':enable_scrna(args.catalog,args.barcodes,args.output)
     elif args.command=='minimap2':
         prepare_minimap_indices(json.loads(Path(args.catalog).read_text()),args.output,threads=args.threads,memory=args.memory,reserve_memory=args.reserve_memory,image=args.image)
         print('Catalog:',Path(args.output).resolve()/'catalog.admin.json')

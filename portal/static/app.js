@@ -4,11 +4,17 @@ let catalog, files = [], tasks = [], submitting = false, refreshing = false, ret
 // These IDs only connect controls within this page; task credentials come from the server.
 let nextLocalId = 0;
 let loadingExample = false;
-const isRnaAssay = assay => ['rnaseq', 'clip'].includes(assay);
-const assayLabel = assay => ({chromatin: 'Chromatin', microc: 'Micro-C', rnaseq: 'RNA-seq (Beta)', clip: 'CLIP-seq (Beta)'})[assay] || '';
+const isRnaAssay = assay => ['rnaseq', 'clip', 'scrna'].includes(assay);
+const assayLabels = {chromatin: 'Chromatin', microc: 'Micro-C', rnaseq: 'RNA-seq (Beta)', clip: 'CLIP-seq (Beta)', scrna: 'scRNA-seq (Beta)'};
+const assayLabel = assay => assayLabels[assay] || '';
+// The submission schema supplies the current menu. Private task pages can open without loading the catalog.
+function assayChoices() {
+  return catalog?.assays?.map(({id, label, beta}) => [id, label + (beta ? ' (Beta)' : '')]) || Object.entries(assayLabels);
+}
 function assayAvailable(reference, assay) {
   if (!reference) return true;
   if (Array.isArray(reference.assays)) return reference.assays.includes(assay);
+  if (assay === 'scrna') return Boolean(reference.scrna_ready);
   if (isRnaAssay(assay)) return Boolean(reference.rna_ready);
   return Boolean(reference.ready && (assay !== 'microc' || reference.mappers.some(mapper => ['bwa-mem2', 'bwa-mem', 'minimap2'].includes(mapper))));
 }
@@ -92,10 +98,10 @@ function referenceChange(entry) {
 function updateAssay(entry) {
   const reference = catalog.references.find(x => x.id === entry.ref.value);
   const r = reference || { mappers: [] };
-  for (const assay of ['chromatin', 'microc', 'rnaseq', 'clip']) {
+  for (const [assay, shortLabel] of assayChoices()) {
     const option = entry.assay.querySelector(`option[value="${assay}"]`);
     option.disabled = !assayAvailable(reference, assay);
-    const label = assay === 'chromatin' ? 'Chromatin · CUT&RUN / CUT&Tag / ChIP / ATAC, etc.' : assayLabel(assay);
+    const label = assay === 'chromatin' ? 'Chromatin · CUT&RUN / CUT&Tag / ChIP / ATAC, etc.' : shortLabel;
     option.textContent = label + (option.disabled ? ' · unavailable for this reference' : '');
   }
   if (entry.assay.selectedOptions[0]?.disabled) {
@@ -104,7 +110,10 @@ function updateAssay(entry) {
     return;
   }
   const assay = entry.assay.value, rna = isRnaAssay(assay);
-  entry.availabilityNote.textContent = assay === 'microc' ? reference?.availability_note || '' : '';
+  const singleCell = assay === 'scrna';
+  entry.librarySettings.hidden = entry.librarySettings.disabled = singleCell;
+  entry.availabilityNote.textContent = singleCell ? 'Barcode layout is detected from the reads. Supported libraries include 10x Chromium, MGI C4 and Parse.'
+    : assay === 'microc' ? reference?.availability_note || '' : '';
   entry.availabilityNote.hidden = !entry.availabilityNote.textContent;
   entry.mapper.disabled = !assay || !entry.ref.value;
   const defaultMapper = rna ? 'STARlong' : assay === 'microc' ? (r.microc_mapper || 'bwa-mem2').toUpperCase() : 'Bowtie2';
@@ -172,8 +181,8 @@ function addFiles(incoming) {
     if (file.size > catalog.max_upload_bytes) { errors.push('“' + file.name + '” was not added: maximum ' + bytes(catalog.max_upload_bytes) + ' per file. For larger files, download the pipeline from GitHub and run it locally.'); continue; }
     const entry = { file, id: ++nextLocalId };
     entry.sample = node('input', { class: 'sample-name', value: file.name.replace(/\.(fastq|fq)(\.gz)?$/i, '').replace(/[^A-Za-z0-9_-]/g, '_').replace(/^[^A-Za-z]/, 'S_').slice(0, 48), required: true, pattern: '[A-Za-z][A-Za-z0-9_-]{0,47}', maxlength: '48' });
-    entry.assay = select([['', 'Choose library assay…'], ['chromatin', 'Chromatin · CUT&RUN / CUT&Tag / ChIP / ATAC, etc.'], ['microc', 'Micro-C'], ['rnaseq', 'RNA-seq (Beta)'], ['clip', 'CLIP-seq (Beta)']], '');
-    const available = catalog.references.filter(r => r.ready || r.rna_ready);
+    entry.assay = select([['', 'Choose library assay…'], ...assayChoices()], '');
+    const available = catalog.references.filter(r => r.ready || r.rna_ready || r.scrna_ready);
     entry.ref = select([['', 'Choose reference genome…'], ...available.map(r => [r.id, r.label])], '');
     entry.mapper = select([['auto', 'Default · Bowtie2']], 'auto');
     entry.myco = screenCheck('Mycoplasma screen');
@@ -270,9 +279,11 @@ function addFiles(incoming) {
     entry.availabilityNote = node('p', { class: 'field-note', role: 'status', hidden: true });
     entry.applyButton = node('button', { type: 'button', class: 'secondary apply-all', onclick: () => applyToAll(entry), 'aria-label': 'Apply reference genome and library assay from ' + file.name + ' to all libraries' }, 'Apply to all');
     entry.applyRow = node('div', { class: 'apply-row', hidden: true }, entry.applyNote, entry.applyButton);
+    const screens = node('div', { class: 'check-list' }, entry.myco.wrapper, entry.spike.wrapper, entry.declared.wrapper, entry.bedCheck.wrapper);
+    entry.librarySettings = node('fieldset', { class: 'library-settings', 'aria-label': 'Library settings' }, entry.structure.root, screens, entry.bedBox, advanced, ranges);
     entry.card = node('article', { class: 'file-card' }, header, node('div', { class: 'file-body' },
       node('div', { class: 'fields' }, control('Sample name', entry.sample), requiredChoice('Reference genome', entry.ref), node('div', { class: 'full' }, requiredChoice('Library assay', entry.assay))),
-      entry.availabilityNote, entry.applyRow, entry.structure.root, node('div', { class: 'check-list' }, entry.myco.wrapper, entry.spike.wrapper, entry.declared.wrapper, entry.bedCheck.wrapper), entry.bedBox, advanced, ranges));
+      entry.availabilityNote, entry.applyRow, entry.librarySettings));
     entry.ref.addEventListener('change', () => referenceChange(entry)); entry.assay.addEventListener('change', () => updateAssay(entry));
     for (const input of [entry.ref, entry.assay]) input.addEventListener('change', () => {
       for (const file of files) file.applyFeedback = '';
@@ -326,6 +337,7 @@ function updateCount() {
 }
 function optionsFor(e) {
   if (!e.ref.value || !e.assay.value) throw new Error('Choose a reference genome and library assay for ' + e.file.name + '.');
+  if (e.assay.value === 'scrna') return {sample: e.sample.value, assay: 'scrna', reference: e.ref.value};
   const pairs = e.pairs.value.trim() ? e.pairs.value.trim().split(/\n+/).map(line => {
     const columns = line.trim().split(/\s+/);
     if (columns.length !== 3) throw new Error('Index pairs need exactly three columns: name i5 i7.');

@@ -3,7 +3,7 @@ import argparse, fcntl, json, logging, os, shutil, signal, subprocess, threading
 from pathlib import Path
 import yaml
 from .limits import load_limits
-from .schema import Options
+from .schema import UploadMetadata
 from .store import Store, ACTIVE, TERMINAL
 from .catalog import public_catalog
 from .worker import valid_id, remove_tree
@@ -64,10 +64,10 @@ class Bridge:
     def reserve(self,row):
         jid=row['id']
         if not valid_id(jid) or type(row['expected_bytes']) is not int or not 0<row['expected_bytes']<=self.cfg['max_upload_bytes']:raise ValueError('Invalid remote task')
-        Options.model_validate_json(row['options']).check_catalog(self.public)
-        # Reuse the public schema to exclude filename/email and configuration injection.
-        from .schema import Submission
-        Submission.model_validate({'email':row['email'],'filename':row['filename'],'size':row['expected_bytes'],'options':json.loads(row['options']),'consent':True})
+        # The frontend checks consent when it creates the task. Validate the stored fields again on import.
+        metadata = UploadMetadata(email=row['email'], filename=row['filename'], size=row['expected_bytes'],
+                                  options=json.loads(row['options']))
+        metadata.options.check_catalog(self.public)
         with self.store.connect(immediate=True) as c:
             existing=c.execute('SELECT status FROM jobs WHERE id=?',(jid,)).fetchone()
             if existing:return existing['status']=='created' and bool(c.execute('SELECT 1 FROM remote_jobs WHERE id=?',(jid,)).fetchone())

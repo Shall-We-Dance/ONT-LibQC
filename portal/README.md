@@ -10,12 +10,14 @@ A self-hosted interface for uploading FASTQ files, running ONT-LibQC and sharing
 
 1. Add `.fastq`, `.fq`, `.fastq.gz` or `.fq.gz` files. Basecall POD5/FAST5 files first.
 2. Choose a **Reference genome** and **Library assay** for each file. Neither is preselected. With several files, **Apply to all** copies these two settings; other settings and sample names stay independent.
-3. Leave the library structure on **Auto**, or customize adapters and fixed-length UMIs below.
+3. scRNA-seq detects its barcode layout automatically. For other assays, leave library structure on **Auto** or customize adapters and fixed-length UMIs.
 4. Add an email address if you want notification, accept the data declarations and submit. Save the private task links.
 
 RNA-seq and CLIP-seq are marked **Beta**. They use a validated STARlong reference and infer RNA composition, splice evidence and strand bias from completed NGS library inserts without requiring protocol metadata. References without a prepared RNA index keep their existing chromatin/Micro-C support. When several completed RNA/CLIP tasks are open together, the task page compares gene-count profiles locally in the browser using each task’s existing private authorization. Comparisons require the same assay, genome assembly and annotation SHA, at least 200 gene-assigned inserts per library and at least 20 jointly detected genes. This descriptive correlation does not establish replicate identity.
 
-Mycoplasma and foreign-sequence screens start enabled for all assays when the selected reference has a prepared panel. For RNA/CLIP these screens are opportunistic and do not measure RNA source fractions. Users can switch them off; unavailable panels stay disabled. Declaring an intentional spike-in is a separate choice.
+**scRNA-seq (Beta)** uses a STARlong reference and verified barcode lists for 10x Chromium, MGI C4 and Parse. The private report includes barcode ranks, gene-assigned UMIs and downloadable barcode-by-gene counts.
+
+Mycoplasma and foreign-sequence screens start enabled for Chromatin, Micro-C, RNA-seq and CLIP-seq when the selected reference has a prepared panel. For RNA/CLIP these screens are opportunistic and do not measure RNA source fractions. Users can switch them off; unavailable panels stay disabled. Declaring an intentional spike-in is a separate choice.
 
 **Do not upload human patient data, including de-identified patient data, or other sensitive personal data.** This applies to reads, BED files, filenames and sample names. The upload form requires separate permission and data-policy acknowledgments; these are user declarations, not automatic data screening.
 

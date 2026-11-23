@@ -3,6 +3,12 @@ import gzip, json, os, re, shutil, subprocess, sys, time
 from pathlib import Path
 import yaml
 
+PIPELINE = Path(__file__).resolve().parents[2]
+if __package__ in (None, ''):  # The offline Docker entry point runs this file by path.
+    sys.path.insert(0, str(PIPELINE / 'portal'))
+from ont_portal.report_entry import direct_report
+from ont_portal.scrna_job import package_scrna_report, scrna_command
+
 class InputError(ValueError): pass
 
 def normalize_fastq(source,dest,compressed,max_bytes,max_reads):
@@ -76,34 +82,48 @@ def phase_targets(phase, cfg, options):
     raise ValueError('Unknown portal workflow phase')
 
 
-def run_phase(root, request, cfg, phase):
+def run_workflow(root, request, cfg, phase):
     targets = phase_targets(phase, cfg, request['options'])
     if phase in ('prepare', 'full'):
-        count=normalize_fastq('/input/input.upload',root/'input.fastq.gz',request['compressed'],request['max_expanded_bytes'],request['max_reads'])
-        if request['custom_regions']:
-            normalize_bed('/input/regions.upload',root/'regions.bed',cfg['references'][cfg['default_reference']]['chrom_sizes'])
-        shutil.copy2('/app/Snakefile',root/'Snakefile')
-        shutil.copytree('/app/workflow',root/'workflow',ignore=shutil.ignore_patterns('__pycache__'))
-    else:
-        previous = json.loads((root/'result.json').read_text())
-        if not previous['ok'] or previous['phase'] != {'align':'prepare', 'report':'align'}[phase]:
-            raise ValueError('Missing previous phase result')
-        count = previous['raw_reads']
+        shutil.copy2(PIPELINE / 'Snakefile', root / 'Snakefile')
+        shutil.copytree(PIPELINE / 'workflow', root / 'workflow', ignore=shutil.ignore_patterns('__pycache__'))
     # Partial invocations must keep all temp outputs for the final workflow.
     args = ['snakemake', *targets, '--cores', str(request['cores']), '--resources', 'portal_slot=1',
             '--default-resources', 'portal_slot=1', '--rerun-incomplete', '--printshellcmds']
     if targets:
         args.append('--notemp')
     subprocess.run(args, cwd=root, check=True)
+
+
+def run_phase(root, request, cfg, phase):
+    if phase not in ('prepare', 'align', 'report', 'full'):
+        raise ValueError('Unknown portal workflow phase')
+    options = request['options']
+    if phase in ('prepare', 'full'):
+        count=normalize_fastq('/input/input.upload',root/'input.fastq.gz',request['compressed'],request['max_expanded_bytes'],request['max_reads'])
+        if request['custom_regions']:
+            normalize_bed('/input/regions.upload',root/'regions.bed',cfg['references'][cfg['default_reference']]['chrom_sizes'])
+    else:
+        previous = json.loads((root/'result.json').read_text())
+        if not previous['ok'] or previous['phase'] != {'align':'prepare', 'report':'align'}[phase]:
+            raise ValueError('Missing previous phase result')
+        count = previous['raw_reads']
+
+    if options['assay'] == 'scrna':
+        if phase in ('align', 'full'):
+            subprocess.run(scrna_command(root, request, cfg['scrna'], PIPELINE), cwd=root, check=True)
+    else:
+        run_workflow(root, request, cfg, phase)
     result = {'ok': True, 'phase': phase, 'raw_reads': count}
     if phase in ('report', 'full'):
-        sys.path.insert(0,str(root/'workflow/scripts'))
+        sys.path.insert(0,str(PIPELINE/'workflow/scripts'))
         from report_bundle import validate
         report=root/'report'
+        if options['assay'] == 'scrna':
+            package_scrna_report(root/'scrna', report, options['sample'], count)
         (report/'.snakemake_timestamp').unlink(missing_ok=True)
         # Public reports contain only container-local paths and the submitted analysis settings.
         (report/'data/submission.json').write_text(json.dumps({'options':request['options'],'raw_reads':count},indent=2)+'\n')
-        from report_entry import direct_report
         entry=direct_report(report,request['options']['sample'])
         validation=validate(report)
         manifest=json.loads((report/'manifest.json').read_text())

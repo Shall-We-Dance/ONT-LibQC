@@ -8,7 +8,7 @@
 
 ONT-LibQC uses shallow Oxford Nanopore sequencing to check finished **Chromatin and Micro-C libraries**. It identifies i5/i7 index pairs and reports fragment sizes, mapping rates and assay-specific QC for each library and its sublibraries.
 
-Beta workflows are available for [RNA-seq and CLIP-seq](docs/RNA_BETA.md) and for [single-cell RNA-seq](docs/SCRNA_QC.md). The single-cell workflow runs locally and supports 10x Chromium, MGI C4 and Parse libraries.
+Beta workflows are available for [RNA-seq and CLIP-seq](docs/RNA_BETA.md) and for [single-cell RNA-seq](docs/SCRNA_QC.md). The single-cell workflow supports 10x Chromium, MGI C4 and Parse libraries. Run it locally or select **scRNA-seq (Beta)** in the portal for a supported reference.
 
 ## Try it online
 

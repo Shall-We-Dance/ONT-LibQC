@@ -11,7 +11,7 @@ import tempfile
 from pathlib import Path
 
 from library_sequences import fastq_records, microc_leg_span, rc
-from report_palette import AMBIGUOUS_COLOR, UNASSIGNED_COLOR, bar_ink
+from report_palette import bar_ink
 
 NAMES = {"ARS_UCD2": "Cattle", "hg38": "Human", "mm39": "Mouse", "dm6": "Fruit fly",
          "ecoli": "E. coli", "ce11": "C. elegans", "sacCer3": "Budding yeast",
@@ -21,12 +21,14 @@ AMBIG = "Ambiguous species"
 NONE = "No confident match"
 TOTAL = "Total inserts"
 
+# The BMJ categorical palette, keyed by species so panel order never changes the legend.
 SPECIES_COLORS = {
-    "hg38": "#466575", "mm39": "#597860", "ARS_UCD2": "#8e614d", "dm6": "#b98653",
-    "ecoli": "#b67565", "ce11": "#8f7891", "sacCer3": "#c0aa78", "TAIR10": "#89936a",
-    "GRCz12ab": "#5c8b8c",
+    "ARS_UCD2": "#2a6ebb", "hg38": "#cd202c", "mm39": "#f0ab00", "dm6": "#00b2a9",
+    "ecoli": "#e37222", "ce11": "#c50084", "GRCz12ab": "#7d5cc6", "TAIR10": "#69be28",
+    "sacCer3": "#747678",
 }
 SPECIES_COLORS["danRer11"] = SPECIES_COLORS["GRCz12ab"]
+SPECIES_STATUS_COLORS = {AMBIG: "#a7aab8", NONE: "#e2e7ec"}
 
 
 def queries(raw, table, output, expected_reads, leg_length=None):
@@ -196,7 +198,7 @@ def render(data):
     colors = dict(SPECIES_COLORS)
     for i, key in enumerate(sorted(panel - SPECIES_COLORS.keys())):
         colors[key] = available[i % len(available)]
-    colors.update({AMBIG: AMBIGUOUS_COLOR, NONE: UNASSIGNED_COLOR})
+    colors.update(SPECIES_STATUS_COLORS)
     labels = {k: html.escape(NAMES.get(k, k) + (" (expected)" if k == data["reference"] else ""))
               for k in columns}
 

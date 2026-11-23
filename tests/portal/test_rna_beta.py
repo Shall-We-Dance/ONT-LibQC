@@ -1,5 +1,6 @@
 """RNA/CLIP admission must select a validated spliced mapper and reserve its RAM."""
 import copy
+import gzip
 import json
 import os
 from pathlib import Path
@@ -71,6 +72,25 @@ class RnaBetaTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Spike-in reference is unavailable'):
             self.options(spike_in=True).check_catalog(public_catalog(self.catalog))
 
+    def test_single_cell_requires_its_own_resources_and_supported_settings(self):
+        public = public_catalog(self.catalog)
+        row = public['references'][0]
+        self.assertTrue(row['rna_ready'])
+        with self.assertRaisesRegex(ValueError, 'scRNA-seq .*unavailable'):
+            self.options('scrna').check_catalog(public)
+        row.update(scrna_ready=True, mycoplasma=True, spike_in=True)
+        accepted = self.options('scrna', params={'mapq': 30}).check_catalog(public)
+        self.assertFalse(accepted.mycoplasma)
+        self.assertFalse(accepted.spike_in)
+        self.assertEqual(resolve_mapper(accepted.mapper, accepted.assay, row), 'starlong')
+        self.assertEqual(Options(**accepted.model_dump()).check_catalog(public), accepted)
+        for settings in ({'mapper': 'bowtie2'}, {'mycoplasma': True}, {'spike_in': True},
+                         {'custom_regions': True}, {'declared_spike_in': True},
+                         {'library_structure': {'mode': 'custom'}}, {'params': {'minimum_raw_reads': 1}},
+                         {'qc_reference_ranges': {'raw_reads': None}}, {'screen_minimum_reads': 40}):
+            with self.subTest(settings=settings), self.assertRaises(ValueError):
+                self.options('scrna', **settings).check_catalog(public)
+
     def test_production_microc_fallback_is_preserved(self):
         self.assertEqual(resolve_mapper('auto', 'microc', {'mappers': ['bowtie2', 'bwa-mem'], 'microc_mapper': 'bwa-mem'}), 'bwa-mem')
         self.assertEqual(resolve_mapper('auto', 'microc', {'mappers': ['bwa-mem', 'bwa-mem2']}), 'bwa-mem2')
@@ -128,6 +148,25 @@ class RnaBetaTests(unittest.TestCase):
         self.assertEqual(cfg['samples']['Synthetic']['mapper'], 'bowtie2')
         self.assertEqual(cfg['qc_reference_ranges']['mitochondrial_fraction']['max'], .2)
 
+    def test_compute_bridge_imports_an_admitted_single_cell_upload(self):
+        from ont_portal.remote_bridge import Bridge
+        from ont_portal.store import Store
+        bridge = Bridge.__new__(Bridge)
+        bridge.state = self.root
+        bridge.store = Store(self.root)
+        bridge.public = public_catalog(self.catalog)
+        bridge.public['references'][0]['scrna_ready'] = True
+        bridge.cfg = dict(max_upload_bytes=1000, max_pending=5, max_reserved_bytes=10**8, min_free_bytes=0)
+        with bridge.store.connect() as c:
+            c.execute('CREATE TABLE remote_jobs (id TEXT PRIMARY KEY)')
+        options = self.options('scrna').check_catalog(bridge.public)
+        row = dict(id='a' * 32, client='test', options=options.model_dump_json(), filename='synthetic.fq',
+                   email='', expected_bytes=20, expires=2000000000, bed_ready=0)
+        self.assertTrue(bridge.reserve(row))
+        self.assertTrue(bridge.reserve(row))
+        with self.assertRaises(ValueError):
+            bridge.reserve(row | {'id': 'b' * 32, 'filename': '../bad.fq'})
+
     def test_resource_budget_cannot_be_reduced_below_index_requirement(self):
         worker = Worker.__new__(Worker); worker.memory='2g'; worker.cfg={'max_memory':'8g'}; worker.catalog=self.catalog
         self.assertEqual(worker.memory_for(self.options()), 4*GIB)
@@ -143,9 +182,10 @@ class RnaBetaTests(unittest.TestCase):
     def test_api_acceptance_keeps_private_access_and_data_policy(self):
         settings = Settings(state=self.root/'state', public_url='https://testserver', allowed_hosts=['testserver'],
                             secret='test-only-'*8, submission_key='', public_catalog=public_catalog(self.catalog), min_free_bytes=0)
+        settings.public_catalog['references'][0]['scrna_ready'] = True
         app=create_app(settings); app.state.store.heartbeat()
         with TestClient(app, base_url='https://testserver', headers={'X-Portal-Request':'1'}) as client:
-            for assay in ('rnaseq', 'clip'):
+            for assay in ('rnaseq', 'clip', 'scrna'):
                 payload={'filename':'synthetic.fastq','size':32,'consent':True,'data_policy_acknowledged':True,
                          'options':{'sample':'Synthetic','reference':'synthetic','assay':assay}}
                 response=client.post('/api/jobs', json=payload)
@@ -172,7 +212,9 @@ class RnaBetaBrowserTests(unittest.TestCase):
             unavailable=copy.deepcopy(catalog['references'][0]); unavailable.update(id='dna_only',label='DNA only',rna_ready=False,
                 assays=['chromatin','microc'],mappers=['bowtie2','bwa-mem2'])
             catalog['references'].append(unavailable)
-            catalog['references'][0].update(mycoplasma=True,spike_in=True)
+            ready = catalog['references'][0]
+            ready.update(mycoplasma=True, spike_in=True, scrna_ready=True)
+            ready['assays'].append('scrna')
             errors=[]
             with sync_playwright() as playwright:
                 # Use a downloaded browser through Playwright's normal installation path.
@@ -194,7 +236,14 @@ class RnaBetaBrowserTests(unittest.TestCase):
                             if target.is_file(): route.fulfill(path=target)
                             else: route.fulfill(status=404,body='')
                     page.route('**/*', serve); page.goto('http://portal.test/')
-                    page.locator('#fastq-input').set_input_files({'name':'synthetic.fastq','mimeType':'text/plain','buffer':b'@synthetic\nACGT\n+\nIIII\n'})
+                    with page.expect_file_chooser() as choosing:
+                        page.get_by_text('browse files', exact=True).click()
+                    chooser = choosing.value
+                    # Native file dialogs can disable .fastq.gz when filtering compound suffixes.
+                    self.assertIsNone(chooser.element.get_attribute('accept'))
+                    chooser.set_files({'name': 'synthetic.fastq.gz', 'mimeType': 'application/gzip',
+                                       'buffer': gzip.compress(b'@synthetic\nACGT\n+\nIIII\n')})
+                    self.assertTrue(page.evaluate("Boolean(filenameProblem('archive.tar.gz'))"))
                     page.get_by_label('Reference genomeRequired', exact=True).select_option('synthetic')
                     page.get_by_label('Library assayRequired', exact=True).select_option('rnaseq')
                     result=page.evaluate('optionsFor(files[0])')
@@ -208,12 +257,25 @@ class RnaBetaBrowserTests(unittest.TestCase):
                     self.assertFalse(page.evaluate('optionsFor(files[0]).mycoplasma'))
                     self.assertFalse(page.evaluate('optionsFor(files[0]).spike_in'))
                     self.assertEqual(page.evaluate('optionsFor(files[0]).assay'), 'clip')
-                    page.get_by_label('Library assayRequired', exact=True).select_option('chromatin')
+                    assay_field = page.get_by_label('Library assayRequired', exact=True)
+                    assay_field.select_option('scrna')
+                    self.assertTrue(page.get_by_text('Barcode layout is detected', exact=False).is_visible())
+                    self.assertTrue(page.get_by_label('Mycoplasma screen').is_hidden())
+                    self.assertTrue(page.get_by_label('Alignment method').is_disabled())
+                    # Invalid inactive settings cannot block the native HTML form.
+                    page.evaluate("files[0].pairs.value = 'unfinished'; files[0].chromosomes.value = 'old'")
+                    self.assertEqual(page.evaluate('optionsFor(files[0])'), {
+                        'assay': 'scrna', 'reference': 'synthetic', 'sample': 'synthetic'})
+                    page.evaluate("files[0].pairs.value = ''; files[0].chromosomes.value = ''")
+                    assay_field.select_option('chromatin')
+                    self.assertTrue(page.get_by_label('Mycoplasma screen').is_visible())
                     restored=page.evaluate('optionsFor(files[0])')
                     self.assertTrue(restored['mycoplasma']); self.assertTrue(restored['spike_in'])
                     self.assertEqual(restored['qc_reference_ranges']['mitochondrial_fraction']['max'], .2)
                     page.get_by_label('Reference genomeRequired', exact=True).select_option('dna_only')
                     self.assertTrue(page.get_by_label('Library assayRequired', exact=True).locator('option[value="rnaseq"]').is_disabled())
+                    self.assertTrue(assay_field.locator('option[value="scrna"]').is_disabled())
+                    self.assertFalse(page.evaluate("assayAvailable({rna_ready:true}, 'scrna')"))
                     self.assertEqual(errors, [])
                     genes={f'g{i}':i for i in range(1,31)}
                     jobs=[]

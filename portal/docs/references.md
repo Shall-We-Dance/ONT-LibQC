@@ -79,3 +79,18 @@ Set the optional operator field `te_bed` to an assembly-matched, TE-only BED (pl
 The three genomic regions retain their existing overlap rule: promoter first, then gene body, then distal. TE overlap is independent, so those reads can also belong to any of the three regions. Each eligible alignment is counted once per category, even when it intersects multiple TE copies.
 
 The displayed background is the exact expected overlap fraction for uniformly placed intervals with the observed chromosome and alignment-span distribution. All valid starts on each chromosome are considered analytically, including chromosome boundaries; no random simulation is used. Enrichment is sample fraction divided by that background. The SVG metadata also retains unweighted genome base coverage fractions. A zero or unavailable denominator yields an unavailable enrichment value. These ratios describe the MAPQ-filtered alignments; they are not IP/input enrichment or significance estimates and do not correct for repeat mappability.
+## Shallow single-cell RNA references
+
+Prepare the barcode files once on the operator host and verify them against an existing STAR catalog. The example uses an output directory separate from the original catalog.
+
+```sh
+python workflow/scripts/ont_qc.py prepare-scrna-barcodes --out /srv/ont-qc/references/scrna-barcodes
+python portal/scripts/prepare_references.py enable-scrna \
+  --catalog /srv/ont-qc/references/star/catalog.admin.json \
+  --barcodes /srv/ont-qc/references/scrna-barcodes \
+  --output /srv/ont-qc/references/scrna-catalog
+```
+
+The first command downloads four 10x on-lists, an MGI C4 barcode definition and the Parse on-list. It verifies each file's pinned SHA-256. The second command writes the absolute `scrna_barcodes` directory to `catalog.admin.json` and only availability flags to the existing public reference descriptions in `catalog.public.json`. Use these catalogs in the worker and frontend deployment. A reference offers shallow single-cell RNA when STARlong is enabled, the STAR manifest identifies that catalog reference, and the annotation's SHA-256 matches the index. The submitted job reads the verified files offline.
+
+Each reference can also name an assembly-matched `rna_family_gtf`, a UCSC `repeatmasker` table and an `rna_source_panel` directory containing `panel.fa` and `panel.json`. By default the workflow uses the host GTF and the bundled rRNA panel. To add a competitive species screen, configure the existing top-level `species_composition.indexes` map of Bowtie 2 prefixes. The screen requires the expected host and at least one competitor with complete indexes. `species_composition.assembly_aliases` can map a host catalog ID to the corresponding species-panel ID. Reports distinguish the host reference used for RNA alignment from the expected species-panel reference.
