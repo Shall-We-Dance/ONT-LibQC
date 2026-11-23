@@ -4,6 +4,12 @@ import json
 from pathlib import Path
 import re
 
+from report_palette import scope_color
+
+
+def custom_profile_color(sid):
+    return '#000080' if sid == 'total' else scope_color(sid)
+
 
 def render_section(payload, initial='', requested_mode='auto', bed_name=None):
     reference=html.escape(payload['reference'])
@@ -14,7 +20,8 @@ def render_section(payload, initial='', requested_mode='auto', bed_name=None):
         submitted=("<div id='custom-submitted'><h3>Submitted BED</h3>"
                    "<p class='muted'>The plot below uses the BED submitted with this analysis"+source+
                    '</p>'+initial+'</div>')
-    options=''.join(f"<option value='{html.escape(s,quote=True)}'>{html.escape(x['name'])}</option>" for s,x in payload['scopes'].items())
+    options = ''.join(f"<option value='{html.escape(sid, quote=True)}' data-color='{custom_profile_color(sid)}'>{html.escape(scope['name'])}</option>"
+                      for sid, scope in payload['scopes'].items())
     modes=''.join(f"<option value='{value}'{' selected' if value==requested_mode else ''}>{label}</option>" for value,label in [('auto','Auto'),('reference_point','Reference point'),('region','Region (scaled)')])
     heading='Analyze another BED' if initial else 'Analyze a BED file'
     explanation='Choose a BED file, confirm the genome assembly, then click Draw metaplot. Runs in your browser; files can contain up to 100,000 regions and be up to 10 MiB.'
@@ -42,6 +49,8 @@ def upgrade_html(text, bed_name=None):
             end=section.index('</div>',start)
             old=section[start:end]
             initial=old[old.index('</p>')+4:]
+        elif "id='custom-local'" in section:
+            initial=''
         else:
             heading=re.search(r'<h2>Custom region metaplot</h2></div>',section)
             controls=re.search(r"<p class=['\"]muted['\"]>Choose a BED file",section)

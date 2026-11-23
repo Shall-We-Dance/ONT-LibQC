@@ -95,11 +95,11 @@ def size_trace_data(values, maximum_bp=2000, bandwidth=.045, points=650, weighti
                 above_range_weight=sum(v if weighting == "length" else 1 for v in values if v > maximum_bp))
 
 
-def svg_size_trace(values, title, maximum_bp=2000, bandwidth=.045, footnote=None, weighting="count"):
+def svg_size_trace(values, title, maximum_bp=2000, bandwidth=.045, footnote=None, weighting="count", color=None):
     values = list(values)
     data = size_trace_data(values, maximum_bp, bandwidth, weighting=weighting)
     weighting_label = "length-weighted" if weighting == "length" else "count-based"
-    color = "#008577" if weighting == "length" else "#176cad"
+    color = color or ("#008577" if weighting == "length" else "#176cad")
     width,height,left,top,plot_w,plot_h=940,570,78,82,690,365
     baseline = top+plot_h
     if not values:

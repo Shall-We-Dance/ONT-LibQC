@@ -33,6 +33,7 @@ rule reports:
         analysis_modules=["workflow/scripts/qc_analysis.py", "workflow/scripts/library_sequences.py", "workflow/scripts/profile_data.py"],
         rna_script="workflow/scripts/rna_qc.py",
         rna_renderer="workflow/scripts/rna_report.py",
+        palette="workflow/scripts/report_palette.py",
         mixture_renderer="workflow/scripts/report_sublibrary.py",
         region_renderer="workflow/scripts/report_regions.py",
         te_annotations=sorted({reference_for(sample)["te_bed"] for sample in CHROMATIN if reference_for(sample).get("te_bed")}),
