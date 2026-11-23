@@ -4,7 +4,7 @@ import collections
 import gzip
 import html
 import json
-from report_sublibrary import COLORS
+from report_palette import POOLED
 from report_svg import svg_start, text
 
 
@@ -116,7 +116,7 @@ def region_track(rate, background, color, x, y, width):
     return ''.join(parts)
 
 
-def svg_region_bars(metric, title, color=COLORS[0]):
+def svg_region_bars(metric, title, color=POOLED):
     svg = svg_start(820, 235, title)
     svg.append("<metadata id='genomic-region-metrics'>" + html.escape(json.dumps(metric, sort_keys=True)) + '</metadata>')
     for x, label in [(535, 'Sample'), (658, 'Background'), (796, 'Enrichment')]:

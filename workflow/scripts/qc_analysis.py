@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 from qc_definitions import profile as metric_profile, metric_settings, summarize_contacts, contact_evidence_status
+from report_palette import scope_color
 from qc_plot_metrics import normalized_collision_stats, collision_metric_fields, svg_size_trace, size_trace_data
 from spikein_auto import scoped_summary as auto_spikein_summary
 from library_structure import normalize_structure, umi_lengths, handles, extract_umis, adapter_families, POSITIONS as UMI_POSITIONS
@@ -948,7 +949,7 @@ def full_library_profile(unit_rows, adapter_summary):
 
 
 def write_library_size_assets(directory, prefix, label, unit_rows, adapter_summary,
-                              maximum_bp=2000, bandwidth=.045):
+                              maximum_bp=2000, bandwidth=.045, color=None):
     """Emit paired full-library plots plus their numeric profiles and model data."""
     import csv
     directory = Path(directory)
@@ -963,7 +964,7 @@ def write_library_size_assets(directory, prefix, label, unit_rows, adapter_summa
     count_data = size_trace_data(model['lengths'], maximum_bp, bandwidth, weighting='count')
     for name, weighting, caption in [('weighted', 'length', 'length-weighted'), ('count', 'count', 'count-based')]:
         svg = svg_size_trace(model['lengths'], f'{label}: ONT full-library profile ({caption})',
-                             maximum_bp, bandwidth, weighting=weighting)
+                             maximum_bp, bandwidth, weighting=weighting, color=color)
         (directory / names[name]).write_text(svg)
     with (directory / names['profiles']).open('w') as handle:
         writer = csv.writer(handle, delimiter='\t')
@@ -1520,7 +1521,7 @@ def build_sublibrary_gene_profile(out, sample, scope_id, label, bam, genes, qnam
                         "--sortRegions", "keep", "--samplesLabel", label, "--startLabel", "TSS", "--endLabel", "TES",
                         "-p", str(threads), "-o", str(matrix_path)], check=True)
         subprocess.run([plot_profile, "-m", str(matrix_path), "-o", str(plot_path),
-                        "--outFileNameData", str(data_path), "--plotType", "se",
+                        "--outFileNameData", str(data_path), "--plotType", "se", "--colors", scope_color(scope_id),
                         "--startLabel", "TSS", "--endLabel", "TES",
                         "--yAxisLabel", "CPM-normalized signal", "--samplesLabel", label], check=True)
         save_profile(matrix_path, data_path, data_path.with_suffix(".json"))

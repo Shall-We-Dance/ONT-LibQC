@@ -11,6 +11,7 @@ import tempfile
 from pathlib import Path
 
 from library_sequences import fastq_records, microc_leg_span, rc
+from report_palette import bar_ink
 
 NAMES = {"ARS_UCD2": "Cattle", "hg38": "Human", "mm39": "Mouse", "dm6": "Fruit fly",
          "ecoli": "E. coli", "ce11": "C. elegans", "sacCer3": "Budding yeast",
@@ -20,10 +21,14 @@ AMBIG = "Ambiguous species"
 NONE = "No confident match"
 TOTAL = "Total inserts"
 
-# ggsci BMJ palette, keyed by organism so the color survives panel reordering.
-BMJ = {"ARS_UCD2": "#2a6ebb", "hg38": "#cd202c", "mm39": "#f0ab00", "dm6": "#00b2a9",
-       "ecoli": "#e37222", "ce11": "#c50084", "GRCz12ab": "#7d5cc6", "danRer11": "#7d5cc6",
-       "TAIR10": "#69be28", "sacCer3": "#747678"}
+# ggsci pal_bmj("default"), keyed by reference so subsets and reorderings keep their colors.
+# https://nanx.me/ggsci/reference/pal_bmj.html
+SPECIES_COLORS = {
+    "ARS_UCD2": "#2a6ebb", "hg38": "#cd202c", "mm39": "#f0ab00", "dm6": "#00b2a9",
+    "ecoli": "#e37222", "ce11": "#c50084", "GRCz12ab": "#7d5cc6", "TAIR10": "#69be28",
+    "sacCer3": "#747678", AMBIG: "#a7aab8", NONE: "#e2e7ec",
+}
+SPECIES_COLORS["danRer11"] = SPECIES_COLORS["GRCz12ab"]
 
 
 def queries(raw, table, output, expected_reads, leg_length=None):
@@ -185,10 +190,7 @@ def render(data):
                    else "A competitive species panel was not configured for this run.")
         return "<section class='report-section' id='species-composition'><h2>Species composition</h2><p>" + message + "</p></section>"
     columns = [*data["panel"], AMBIG, NONE]
-    colors = {k: color for k, color in zip(data["panel"], ["#296ab5", "#18857e", "#8862a9", "#bf6b2d", "#587b49", "#985679", "#417a92", "#715a49", "#595ca2"])}
-    if cdna:
-        colors.update(BMJ)
-    colors.update({AMBIG: "#a7aab8", NONE: "#e2e7ec"})
+    colors = {k: SPECIES_COLORS.get(k, '#536b80') for k in columns}
     labels = {k: html.escape(NAMES.get(k, k) + (" (expected)" if k == data["reference"] else ""))
               for k in columns}
 
@@ -218,18 +220,16 @@ def render(data):
             description = f"{labels[key]} {percent(n, scope['n'])}"
             descriptions.append(description)
             width = 100 * n / scope["n"]
-            ink = "#223447" if key in (AMBIG, NONE) else "#fff"
-            if cdna and colors.get(key) in {"#f0ab00", "#69be28", "#00b2a9", "#e37222"}:
-                ink = "#162a38"
+            ink = bar_ink(colors[key])
             segments.append(f"<span class='species-segment' title='{description}' style='width:{width:.8f}%;"
-                            f"background:{colors.get(key, '#536b80')};color:{ink}'><b>{percent(n, scope['n'])}</b></span>")
+                            f"background:{colors[key]};color:{ink}'><b>{percent(n, scope['n'])}</b></span>")
         label = html.escape(scope["scope"])
         description_list = ", ".join(descriptions)
         group = unresolved_bars if cdna and scope["scope"] in ("Unassigned index", "Ambiguous index") else bars
         group.append(f"<div class='species-row'><span class='mixture-label'>{label}</span>"
                     f"<div class='species-bar' role='img' aria-label='{label}, {description_list}'>"
                     + "".join(segments) + "</div></div>")
-    legend = "".join(f"<li><i aria-hidden='true' style='background:{colors.get(k, '#536b80')}'></i>{labels[k]}</li>"
+    legend = "".join(f"<li><i aria-hidden='true' style='background:{colors[k]}'></i>{labels[k]}</li>"
                      for k in columns if k in visible)
     if unresolved_bars:
         bars.append("<details><summary>Unresolved indexes</summary>" + "".join(unresolved_bars) + "</details>")

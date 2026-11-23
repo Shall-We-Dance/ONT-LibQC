@@ -115,11 +115,12 @@ runButton.addEventListener('click',async()=>{
     const file=await CustomRegions.checkedBedFile(bedInput);if(version!==selectionVersion)return;
     message.textContent='Calculating…';await new Promise(resolve=>setTimeout(resolve,0));
     const text=await file.text();if(version!==selectionVersion)return;
-    const bed=CustomRegions.parseBed(text,payload.sizes,payload.primary),scope=payload.scopes[document.getElementById('custom-scope').value],params=CustomRegions.resolveParameters(bed.rows,{...payload.parameters,mode:document.getElementById('custom-mode').value}),p=CustomRegions.compute(scope.records,bed.rows,payload.sizes,params);
+    const bed=CustomRegions.parseBed(text,payload.sizes,payload.primary),choice=document.getElementById('custom-scope').selectedOptions[0],scope=payload.scopes[choice.value],params=CustomRegions.resolveParameters(bed.rows,{...payload.parameters,mode:document.getElementById('custom-mode').value}),p=CustomRegions.compute(scope.records,bed.rows,payload.sizes,params);
     const point=params.mode==='reference_point',modeLabel=point?'Reference point (interval midpoint)':'Region (scaled body)';
     if(!p.eligible_alignments)throw Error('No eligible nuclear alignments for this library.');
     // Match the report's TSS–TES plots: boxed axes, round ticks and a quiet SEM band.
-    const w=820,h=440,l=80,t=52,pw=712,ph=298,n=p.mean.length,color='#000080',ink='#202b36';
+    const color=/^#[0-9a-f]{6}$/i.test(choice.dataset.color) ? choice.dataset.color : '#000080';
+    const w=820,h=440,l=80,t=52,pw=712,ph=298,n=p.mean.length,ink='#202b36';
     const maximum=Math.max(0,...p.mean.map((v,i)=>v==null?0:v+(p.sem[i]||0)))||1;
     const magnitude=10**Math.floor(Math.log10(maximum/4));
     const step=[1,2,2.5,5,10].map(v=>v*magnitude).reduce((a,b)=>Math.abs(Math.log(a/(maximum/4)))<Math.abs(Math.log(b/(maximum/4)))?a:b);

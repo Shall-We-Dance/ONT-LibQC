@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
-from report_sublibrary import scope_color
+from report_palette import scope_color
 
 
 def esc(value):
@@ -294,7 +294,7 @@ def render_rna_section(summary_path, relative_prefix=None, scope_labels=None):
 
     scopes = data['scopes']
     order = list(dict.fromkeys([*scope_labels, *scopes]))
-    colors = {scope: scope_color(scope, i) for i, scope in enumerate(s for s in order if s != 'total')}
+    colors = {scope: scope_color(scope) for scope in order if scope != 'total'}
     sublibraries = [scope for scope in colors if scope in scopes]
     labels = {scope: scope_labels.get(scope) or scope for scope in sublibraries}
     for scope in [*sublibraries, 'total']:

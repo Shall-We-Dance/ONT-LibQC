@@ -1,16 +1,7 @@
 """Shared, alignment-independent mixture proportions for every assay report."""
 import html
 
-from report_palette import NPG, bar_ink
-
-COLORS = ('#2a6cbd', '#23877f', '#8364b2', '#b66b35', '#427c9b', '#a4547c', '#68863b', '#675ea4')
-
-def scope_color(scope, index):
-    # Standard libNN identifiers retain their color when a scope has no RNA reads.
-    suffix = scope.removeprefix('lib')
-    if suffix != scope and suffix.isascii() and suffix.isdecimal() and int(suffix) > 0:
-        index = int(suffix) - 1
-    return COLORS[index % len(COLORS)]
+from report_palette import NPG, bar_ink, scope_color
 
 
 CSS = '''
@@ -32,10 +23,11 @@ CSS = '''
 def mixture_counts(metric, color_for_scope=None):
     """Never renormalize assigned units or infer mixing shares from raw reads."""
     total = int(metric.get('library_units', 0))
+    color_for_scope = color_for_scope or scope_color
     rows = []
-    for i, sublib in enumerate(metric.get('sub_libraries', [])):
+    for sublib in metric.get('sub_libraries', []):
         scope = sublib.get('scope_id') or sublib['scope_name']
-        color = color_for_scope(scope) if color_for_scope else COLORS[i % len(COLORS)]
+        color = color_for_scope(scope)
         rows.append((str(sublib.get('scope_name') or scope), int(sublib['library_units']), color))
     pairing = metric.get('index_pairing', {})
     if any(n < 0 for _, n, _ in rows) or total < 0:
