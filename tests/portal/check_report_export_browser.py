@@ -309,9 +309,9 @@ def check_composition_tables(browser):
         assert all(label.is_visible() for label in segments.locator('b').all())
         assert segments.evaluate_all('''bars => bars.map(bar => [
             getComputedStyle(bar).backgroundColor, getComputedStyle(bar.querySelector("b")).color
-        ])''') == [['rgb(70, 101, 117)', 'rgb(255, 255, 255)'],
-                  ['rgb(185, 134, 83)', 'rgb(0, 0, 0)'],
-                  ['rgb(192, 170, 120)', 'rgb(0, 0, 0)']]
+        ])''') == [['rgb(205, 32, 44)', 'rgb(255, 255, 255)'],
+                  ['rgb(0, 178, 169)', 'rgb(0, 0, 0)'],
+                  ['rgb(116, 118, 120)', 'rgb(255, 255, 255)']]
 
     try:
         page.set_content(document)

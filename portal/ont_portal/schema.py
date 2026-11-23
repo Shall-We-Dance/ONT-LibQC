@@ -64,7 +64,7 @@ class IndexPair(StrictModel):
 
 class Options(StrictModel):
     sample: str = Field(pattern='^'+SAFE_NAME+'$', max_length=48)
-    assay: Literal['chromatin','microc','rnaseq','clip']
+    assay: Literal['chromatin','microc','rnaseq','clip','scrna']
     reference: str = Field(pattern=r'^[a-zA-Z0-9_-]{1,32}$')
     mapper: Literal['auto','bowtie2','bwa-mem2','bwa-mem','minimap2','starlong'] = 'auto'
     spike_in: bool = True
@@ -124,7 +124,20 @@ class Options(StrictModel):
         refs = {r['id']:r for r in catalog['references']}
         ref = refs.get(self.reference)
         if not ref: raise ValueError('Reference is unavailable')
-        if self.assay in RNA_ASSAYS:
+        if self.assay == 'scrna':
+            if not ref.get('scrna_ready'):
+                raise ValueError('scRNA-seq (Beta) is unavailable for this reference')
+            # The single-cell workflow detects its layout from the reads.
+            if self.library_structure.mode != 'auto' or self.index_pairs:
+                raise ValueError('scRNA-seq requires automatic library structure and index detection')
+            if self.primary_chromosomes is not None or self.qc_reference_ranges or self.params.keys() - {'mapq'}:
+                raise ValueError('scRNA-seq only supports the minimum mapping quality parameter')
+            if self.declared_spike_in:
+                raise ValueError('Intentional spike-in is unavailable for scRNA-seq')
+            for field in ('screen_minimum_reads', 'spike_minimum_aligned_bp', 'spike_minimum_query_coverage', 'spike_minimum_identity'):
+                if getattr(self, field) != Options.model_fields[field].default:
+                    raise ValueError('DNA screen settings are unavailable for scRNA-seq')
+        elif self.assay in RNA_ASSAYS:
             if not ref.get('rna_ready', False):
                 raise ValueError('RNA/CLIP beta is unavailable for this reference')
         elif not ref['ready']:
@@ -139,7 +152,7 @@ class Options(StrictModel):
         # Apply defaults only where a prepared panel exists. Explicit requests
         # still fail clearly when a reference cannot support the requested screen.
         for field, label in (('mycoplasma', 'Mycoplasma'), ('spike_in', 'Spike-in')):
-            if getattr(self, field) and not ref[field]:
+            if getattr(self, field) and (self.assay == 'scrna' or not ref[field]):
                 if field in self.model_fields_set:
                     raise ValueError(label + ' reference is unavailable')
                 setattr(self, field, False)
@@ -160,22 +173,12 @@ class Options(StrictModel):
                     raise ValueError(f'{index} in expected index pairs must match its configured length')
         return self
 
-class Submission(StrictModel):
+class UploadMetadata(StrictModel):
+    """Fields retained when an admitted job is transferred to a compute worker."""
     email: str = Field(default='',max_length=254)
     filename: str = Field(min_length=1,max_length=180)
     size: int = Field(gt=0)
     options: Options
-    consent: Literal[True]
-    data_policy_acknowledged: bool = Field(strict=True)
-    submission_key: str = Field(default='',max_length=128)
-    website: str = Field(default='',max_length=100)
-
-    @field_validator('data_policy_acknowledged')
-    @classmethod
-    def acknowledge_data_policy(cls, value):
-        if value is not True:
-            raise ValueError('Confirm that this submission contains no human patient data or other sensitive personal data')
-        return value
 
     @field_validator('email',mode='before')
     @classmethod
@@ -196,6 +199,19 @@ class Submission(StrictModel):
             raise ValueError('Rename the file before uploading: start with an English letter or number and use only English letters, numbers, spaces, dots, hyphens (-) or underscores (_). Parentheses such as (1) are not allowed; rename sample(1).fastq to sample_1.fastq')
         return v
 
+class Submission(UploadMetadata):
+    consent: Literal[True]
+    data_policy_acknowledged: bool = Field(strict=True)
+    submission_key: str = Field(default='',max_length=128)
+    website: str = Field(default='',max_length=100)
+
+    @field_validator('data_policy_acknowledged')
+    @classmethod
+    def acknowledge_data_policy(cls, value):
+        if value is not True:
+            raise ValueError('Confirm that this submission contains no human patient data or other sensitive personal data')
+        return value
+
 class BatchSubmission(StrictModel):
     # The configured limit can be adjusted up to this defensive parsing ceiling.
     files: list[Submission] = Field(min_length=1, max_length=64)
@@ -204,5 +220,6 @@ def schema_payload():
     return {'params':[{ 'key':k,'label':v[0],'default':v[1],'min':v[2],'max':v[3],'kind':v[4],'group':v[5]} for k,v in PARAMS.items()],
             'ranges':RANGES,'rna_descriptive_ranges':['primary_mapping_rate','usable_fragment_rate','mitochondrial_fraction'],
             'assays':[{'id':'chromatin','label':'Chromatin','beta':False},{'id':'microc','label':'Micro-C','beta':False},
-                      {'id':'rnaseq','label':'RNA-seq','beta':True},{'id':'clip','label':'CLIP-seq','beta':True}],
+                      {'id':'rnaseq','label':'RNA-seq','beta':True},{'id':'clip','label':'CLIP-seq','beta':True},
+                      {'id':'scrna','label':'scRNA-seq','beta':True}],
             'metric_profile':'ont_native','library_structure':structure_catalog()}

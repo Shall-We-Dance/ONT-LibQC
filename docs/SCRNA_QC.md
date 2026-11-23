@@ -1,6 +1,6 @@
 # Shallow single-cell RNA QC (Beta)
 
-The local scRNA workflow takes a shallow ONT FASTQ from a finished sequencing library. It identifies supported assay layouts from their barcode positions and adjacent sequences, then measures the yield of gene-assigned molecules. One run represents one FASTQ. Expected cell recovery and paired short-read data are optional experimental context.
+The scRNA workflow takes a shallow ONT FASTQ from a finished sequencing library. It identifies supported assay layouts from their barcode positions and adjacent sequences, then measures the yield of gene-assigned molecules. In the portal, add your FASTQ, choose a prepared reference genome and select **scRNA-seq (Beta)** under **Library assay**. Each FASTQ produces its own report. Expected cell recovery and paired short-read data are optional experimental context.
 
 ## Run a sample
 

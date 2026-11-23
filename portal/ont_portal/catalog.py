@@ -3,10 +3,19 @@ import copy, json, re, struct
 from pathlib import Path
 from .mappers import RNA_ASSAYS, resolve_mapper, microc_bwa_mapper, microc_default
 from .star_resources import star_ready, star_memory_bytes
+from . import scrna_catalog
 
 BT2_PARTS=('1','2','3','4','rev.1','rev.2')
+def bt2_files(prefix):
+    if prefix:
+        for suffix in ('bt2','bt2l'):
+            paths = [Path(f'{prefix}.{part}.{suffix}') for part in BT2_PARTS]
+            if all(path.is_file() for path in paths):
+                return paths
+    return []
+
 def bt2_ready(prefix):
-    return bool(prefix and any(all(Path(str(prefix)+'.'+part+'.'+suffix).is_file() for part in BT2_PARTS) for suffix in ('bt2','bt2l')))
+    return bool(bt2_files(prefix))
 def bwa_ready(prefix):
     return bool(prefix and all(Path(str(prefix)+'.'+part).is_file() for part in ('0123','amb','ann','bwt.2bit.64','pac')))
 def bwa_mem_ready(prefix):
@@ -34,6 +43,7 @@ def minimap_ready(value):
 
 def public_catalog(catalog):
     result=[]
+    barcode_ready = scrna_catalog.barcodes_ready(catalog.get('scrna_barcodes'))
     for key,r in catalog['references'].items():
         sizes=Path(r['chrom_sizes'])
         chromosomes=[line.split()[0] for line in sizes.read_text().splitlines() if line.strip()] if sizes.is_file() else []
@@ -53,9 +63,10 @@ def public_catalog(catalog):
         base_ready=all(Path(r.get(k,'/missing')).is_file() for k in ('fasta','chrom_sizes','annotation'))
         dna_ready=base_ready and 'bowtie2' in mappers and any(m in mappers for m in ('bwa-mem2','bwa-mem'))
         rna_ready=base_ready and 'starlong' in mappers
+        scrna_ready=rna_ready and barcode_ready and scrna_catalog.reference_ready(key,r)
         result.append({'id':key,'label':r.get('label',key),'assembly':r.get('assembly',key),
-            'ready':dna_ready,'rna_ready':rna_ready,
-            'assays':(['chromatin','microc'] if dna_ready else [])+(['rnaseq','clip'] if rna_ready else []),
+            'ready':dna_ready,'rna_ready':rna_ready,'scrna_ready':scrna_ready,
+            'assays':(['chromatin','microc'] if dna_ready else [])+(['rnaseq','clip'] if rna_ready else [])+(['scrna'] if scrna_ready else []),
             'microc_mapper':microc_default(dict(r,mappers=mappers)),
             'availability_note':r.get('availability_note',''),
             'mappers':mappers,'mycoplasma':bt2_ready(r.get('mycoplasma_index')),'spike_in':spike_ready,
@@ -63,7 +74,15 @@ def public_catalog(catalog):
     return {'references':result}
 
 class ReferenceMounts:
-    def __init__(self): self.parents={}
+    def __init__(self):
+        self.parents = {}
+        self.exact = {}
+    def bind(self, source, destination):
+        path = Path(source).resolve(strict=True)
+        if not path.is_file():
+            raise ValueError('Expected a regular reference file')
+        self.exact[destination] = path
+        return destination
     def path(self,value,prefix=False):
         p=Path(value).absolute()
         # Prefixes need not exist, but their parent must be a real directory.
@@ -76,14 +95,22 @@ class ReferenceMounts:
         return self.parents[parent]+'/'+p.name
     def arguments(self):
         args=[]
-        for source,dest in self.parents.items():
+        bindings = list(self.parents.items())
+        bindings.extend((source, dest) for dest, source in self.exact.items())
+        for source,dest in bindings:
             if ',' in str(source): raise ValueError('Commas are not supported in reference directory paths')
             args+=['--mount',f'type=bind,src={source},dst={dest},readonly']
         return args
 
 def job_config(options,catalog,jobdir,cores):
     from .schema import PARAMS, RANGES
-    data=options.model_dump(); ref=copy.deepcopy(catalog['references'][options.reference]); mounts=ReferenceMounts()
+    ref=copy.deepcopy(catalog['references'][options.reference]); mounts=ReferenceMounts()
+    if options.assay == 'scrna':
+        if 'starlong' in ref.get('disabled_mappers', []) or not star_ready(ref.get('star_index')):
+            raise ValueError('Single-cell RNA requires an available STARlong index')
+        resources = scrna_catalog.job_resources(options.reference,ref,catalog,jobdir,mounts,bt2_files)
+        return {'default_reference': options.reference, 'output_dir': '.work', 'report_dir': 'report',
+                'scrna': resources}, mounts
     reference={k:mounts.path(ref[k],prefix=k.endswith('_index')) for k in ('fasta','chrom_sizes','annotation','te_bed','bowtie2_index','bwa_mem2_index','bwa_index') if ref.get(k)}
     if ref.get('te_source'):reference['te_source']=ref['te_source']
     mapper=resolve_mapper(options.mapper,options.assay,ref)

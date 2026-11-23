@@ -1,5 +1,5 @@
 """Shared mapper selection for admission, resource budgeting and job configuration."""
-RNA_ASSAYS = frozenset({'rnaseq', 'clip'})
+RNA_ASSAYS = frozenset({'rnaseq', 'clip', 'scrna'})
 BWA_INDEX_KEYS = {'bwa-mem': 'bwa_index', 'bwa-mem2': 'bwa_mem2_index'}
 
 

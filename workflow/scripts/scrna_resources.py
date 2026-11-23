@@ -14,14 +14,7 @@ TENX = {
     '3p-v4': '3M-3pgex-may-2023.txt.gz',
     '5p-v3': '3M-5pgex-jan-2023.txt.gz',
 }
-HASHES = {
-    TENX['v2']: '802cdaf299276253fab7523212843bea337b9f562140e0776f417da48d06204f',
-    TENX['3p-v3']: '6f5c08bd6c0c63e7cd4f62bc5ec47024baaf6b230524f313799b9f5431df7b37',
-    TENX['3p-v4']: '649c5cc14a2b449db16867e9772cc7a115ac971563a6a4a9097156ff8c84940a',
-    TENX['5p-v3']: '3d020ec113063aee59a28a108693fcb2991b74e0ec07e13fbf99ce4d248ff2be',
-    'C4.json': '33937e94d1ab231462531aa6a97131354aac12c82b5599bcf7027d1369c41ed4',
-    'v3_onlist.txt': '1acc5c8cf790dc4fce8f9caffff2c6c4d913a3a6a1d968e01a4ef9dfe025bc42',
-}
+HASHES = json.loads((Path(__file__).resolve().parents[1] / 'resources' / 'scrna_barcodes.json').read_text())
 URLS = {name: ONT_DATA + name for name in TENX.values()}
 URLS.update({
     'C4.json': 'https://raw.githubusercontent.com/MGI-tech-bioinformatics/DNBelab_C_Series_scRNA-analysis-software/2b5c226c189ae24c1dc3ebab242e8cdd65a112f9/config/DNBelabC4_scRNA_readStructure.json',

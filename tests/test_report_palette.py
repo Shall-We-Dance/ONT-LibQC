@@ -8,7 +8,7 @@ from custom_regions_ui import render_section, upgrade_html
 from report_palette import AMBIGUOUS_COLOR, SUBLIBRARY_COLORS, UNASSIGNED_COLOR, bar_ink, scope_color
 from report_refresh import refresh_gene_profile_color
 from report_sublibrary import mixture_counts, render_sublibrary_composition
-from species_composition import AMBIG, NONE, NAMES, SPECIES_COLORS, render
+from species_composition import AMBIG, NONE, NAMES, SPECIES_COLORS, SPECIES_STATUS_COLORS, render
 
 
 class PaletteTests(unittest.TestCase):
@@ -46,11 +46,12 @@ class PaletteTests(unittest.TestCase):
                 dict(scope='lib01', n=len(keys), counts=dict.fromkeys(keys, 1), windows={})]))
             for key in keys:
                 label = NAMES.get(key, key) + (' (expected)' if key == expected else '')
-                color = {**SPECIES_COLORS, AMBIG: AMBIGUOUS_COLOR, NONE: UNASSIGNED_COLOR}[key]
+                color = {**SPECIES_COLORS, **SPECIES_STATUS_COLORS}[key]
                 self.assertIn(f"background:{color}'></i>{label}</li>", doc)
                 self.assertIn(f"background:{color};color:{bar_ink(color)}'", doc)
-        self.assertEqual(SPECIES_COLORS['hg38'], '#466575')
-        self.assertEqual(SPECIES_COLORS['dm6'], '#b98653')
+        self.assertEqual(SPECIES_COLORS['hg38'], '#cd202c')
+        self.assertEqual(SPECIES_COLORS['dm6'], '#00b2a9')
+        self.assertEqual(SPECIES_STATUS_COLORS, {AMBIG: '#a7aab8', NONE: '#e2e7ec'})
         self.assertEqual(set(SPECIES_COLORS), set(NAMES) | {'danRer11'})
         self.assertEqual(SPECIES_COLORS['danRer11'], SPECIES_COLORS['GRCz12ab'])
         for fish in ('danRer11', 'GRCz12ab'):
@@ -60,7 +61,7 @@ class PaletteTests(unittest.TestCase):
             self.assertNotIn(f"background:{SPECIES_COLORS[fish]}'></i>custom</li>", colors)
 
     def test_automatic_label_colors_have_normal_text_contrast_on_all_fills(self):
-        for fill in (*SUBLIBRARY_COLORS, *SPECIES_COLORS.values(), AMBIGUOUS_COLOR, UNASSIGNED_COLOR, '#bcbab1'):
+        for fill in (*SUBLIBRARY_COLORS, *SPECIES_COLORS.values(), *SPECIES_STATUS_COLORS.values(), AMBIGUOUS_COLOR, UNASSIGNED_COLOR, '#bcbab1'):
             rgb = [int(fill[j:j + 2], 16) / 255 for j in (1, 3, 5)]
             rgb = [v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4 for v in rgb]
             luminance = sum(v * w for v, w in zip(rgb, (0.2126, 0.7152, 0.0722)))

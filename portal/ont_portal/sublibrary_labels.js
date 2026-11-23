@@ -24,8 +24,11 @@
   for (const summary of document.querySelectorAll('details.profile-detail[data-scope] > summary')) {
     addLabel(summary, summary.parentElement.dataset.scope);
   }
-  for (const el of document.querySelectorAll('.table-scroll th, .rna-composition-card thead th, .rna-profile-panels figcaption, .mixture-label')) {
+  const labelElements = ['.table-scroll th', '.rna-composition-card thead th', '.rna-profile-panels figcaption', '.mixture-label',
+    '.sc-report main th', '.sc-report #chemistry h4', '.sc-report main details > summary', '.sc-report main [data-scope-label]'];
+  for (const el of document.querySelectorAll(labelElements.join(', '))) {
     const text = Array.from(el.childNodes).filter(n => n.nodeType === Node.TEXT_NODE).map(n => n.textContent).join('').trim();
-    addLabel(el, scopes.get(text));
+    const name = el.closest('.sc-report') ? (el.dataset.scopeLabel || text.replace(/^Physical library · /, '')) : text;
+    addLabel(el, scopes.get(name));
   }
 })();

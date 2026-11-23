@@ -57,6 +57,16 @@ def tree_size(path):
             except FileNotFoundError:pass
     return total
 
+def check_reference_mounts(mounts, state, secrets_file):
+    state = Path(state).resolve()
+    secrets = Path(secrets_file).resolve()
+    for directory in mounts.parents:
+        if directory.is_relative_to(state) or state.is_relative_to(directory) or secrets.is_relative_to(directory):
+            raise ValueError('Reference directory overlaps private service data')
+    for source in mounts.exact.values():
+        if not source.is_file() or source == secrets or source.is_relative_to(state):
+            raise ValueError('Reference file is unavailable or overlaps private service data')
+
 def publish_report(source,dest,max_bytes=DEFAULTS['max_report_bytes'],max_html_bytes=DEFAULTS['max_html_bytes']):
     """Treat the sandbox output as untrusted: no symlinks, devices or arbitrary files."""
     if source.is_symlink() or not source.is_dir(): raise ValueError('Report must be a real directory')
@@ -252,8 +262,12 @@ class Worker:
         if time.monotonic()-start > self.timeout:
             raise TimeoutError('The analysis exceeded the runtime limit. Use a smaller ONT file.')
 
-    def run_container(self, jid, start, work, phase, launch, log, offset):
+    def run_container(self, jid, start, work, phase, launch, log, offset, assay):
         lower, upper = {'full':(0,100), 'prepare':(5,18), 'align':(18,65), 'report':(65,95)}[phase]
+        if assay == 'scrna':
+            stage = {'prepare': 'Validating input reads', 'align': 'Analyzing single-cell RNA libraries',
+                     'report': 'Packaging single-cell report files', 'full': 'Running single-cell RNA QC'}[phase]
+            self.store.update(jid, stage=stage, progress=max(5, lower))
         with subprocess.Popen(launch, stdout=log, stderr=subprocess.STDOUT,
                               preexec_fn=lambda:limit_log_output(self.cfg['max_log_bytes'])) as proc:
             try:
@@ -264,15 +278,16 @@ class Worker:
                     if (tree_size(work) > self.cfg['max_work_bytes'] or size > self.cfg['max_log_bytes']
                             or shutil.disk_usage(self.state).free < self.cfg['min_free_bytes']):
                         raise TimeoutError('The analysis exceeded the storage limit. Use a smaller ONT file.')
-                    with open(log.name, 'rb') as reader:
-                        reader.seek(max(offset, size-32768))
-                        tail = reader.read().decode('utf8','replace')
-                    matches = re.findall(r'\d+ of \d+ steps \((\d+)%\)', tail)
-                    fields = {'stage':analysis_stage(work, tail)}
-                    if matches:
-                        progress = lower + (upper-lower)*int(matches[-1])//100
-                        fields['progress'] = max(5, min(95, progress))
-                    self.store.update(jid, **fields)
+                    if assay != 'scrna':
+                        with open(log.name, 'rb') as reader:
+                            reader.seek(max(offset, size-32768))
+                            tail = reader.read().decode('utf8','replace')
+                        matches = re.findall(r'\d+ of \d+ steps \((\d+)%\)', tail)
+                        fields = {'stage':analysis_stage(work, tail)}
+                        if matches:
+                            progress = lower + (upper-lower)*int(matches[-1])//100
+                            fields['progress'] = max(5, min(95, progress))
+                        self.store.update(jid, **fields)
                     time.sleep(3)
                 return proc.returncode
             finally:
@@ -299,9 +314,7 @@ class Worker:
             work.mkdir(mode=0o700,exist_ok=False)
             copy_uploads(self.state/'uploads'/jid,work/'incoming',row['expected_bytes'],options.custom_regions)
             cfg,mounts=job_config(options,self.catalog,work,self.cores)
-            for directory in mounts.parents:
-                for private in [self.state.resolve(),Path(self.cfg['secrets_file']).resolve().parent]:
-                    if directory==private or directory in private.parents:raise ValueError('Reference directory overlaps private service data')
+            check_reference_mounts(mounts, self.state, self.cfg['secrets_file'])
             (work/'config.yaml').write_text(yaml.safe_dump(cfg,sort_keys=False))
             (work/'request.json').write_text(json.dumps({'compressed':row['filename'].lower().endswith('.gz'),
                 'max_expanded_bytes':self.cfg['max_expanded_bytes'],'max_reads':self.cfg['max_reads'],
@@ -334,7 +347,7 @@ class Worker:
                                                 *phase_args,self.image]
                     log.write(f'Portal phase {phase}: container memory {budget} bytes\n'.encode());log.flush()
                     offset = log.tell()
-                    returncode = self.run_container(jid, start, work, phase, launch, log, offset)
+                    returncode = self.run_container(jid, start, work, phase, launch, log, offset, options.assay)
                     result_file=work/'result.json'
                     if result_file.is_symlink() or not result_file.is_file() or result_file.stat().st_size>16384:raise ValueError('Missing bounded job result')
                     result=json.loads(result_file.read_text())
