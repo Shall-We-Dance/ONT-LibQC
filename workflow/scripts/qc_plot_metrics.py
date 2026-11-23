@@ -2,7 +2,35 @@
 import collections
 import html
 import math
+import re
 import textwrap
+from pathlib import Path
+
+from report_palette import scope_color
+
+
+# The size SVG generator emits a single adjacent area and curve. Match both
+# with the same old paint so axes, lane intensities and annotations are untouched.
+_TRACE_PAINT = re.compile(
+    r"""(?P<area><polygon\b[^<>]*?\sfill=["'])(?P<old>#[0-9a-fA-F]{6})"""
+    r"""(?P<curve>["'][^<>]*?/>\s*<polyline\b[^<>]*?\sstroke=["'])(?P=old)(?P<end>["'])"""
+)
+
+
+def refresh_scope_size_traces(assets, sample, sublibraries):
+    """Align retained single-library size traces with their current overview color."""
+    for scope in sublibraries:
+        sid = scope['scope_id']
+        color = scope_color(sid)
+        for suffix in ('full_library_length_weighted', 'full_library_count_based',
+                       'raw_lengths', 'insert_lengths', 'mnase', 'single_block'):
+            path = Path(assets) / f'{sample}.{sid}.{suffix}.svg'
+            if path.is_file():
+                svg = path.read_text()
+                updated = _TRACE_PAINT.sub(
+                    lambda m: m['area'] + color + m['curve'] + color + m['end'], svg, count=1)
+                if updated != svg:
+                    path.write_text(updated)
 
 
 def normalized_collision_stats(records, sizes, bin_size):

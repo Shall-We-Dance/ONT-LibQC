@@ -5,6 +5,7 @@ Counts are resolved genomic blocks, not direct biochemical junction measurements
 import argparse,collections,csv,gzip,json,math,re,subprocess
 from pathlib import Path
 CATEGORIES=['1','2','3','4','5+','unresolved']
+CATEGORY_COLORS=('#8293a4', '#3286a1', '#479976', '#c49a42', '#926b99', '#c1c7cc')
 
 def fastq_lengths(path):
     result={}
@@ -116,18 +117,24 @@ def plots(result,units_path,segments_path,output):
     import matplotlib;matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     import numpy as np
+    from report_palette import scope_color
     with gzip.open(units_path,'rt') as f:rows=list(csv.DictReader(f,delimiter='\t'))
     with gzip.open(segments_path,'rt') as f:segs=list(csv.DictReader(f,delimiter='\t'))
     base=Path(output);base.parent.mkdir(parents=True,exist_ok=True)
+    library_colors = {scope: scope_color(scope) for scope in result['scopes']
+                      if scope not in {'total', 'unassigned'}}
     for scope in ['total']+list(result['scopes']):
         selected=rows if scope=='total' else [r for r in rows if r['scope_id']==scope];stat=result if scope=='total' else result['scopes'][scope]
-        fig,axs=plt.subplots(1,2,figsize=(11,4.8),gridspec_kw={'width_ratios':[1.35,1]});colors=['#8293a4','#3286a1','#479976','#c49a42','#926b99','#c1c7cc'];vals=[stat['category_counts'][c] for c in CATEGORIES]
+        fig,axs=plt.subplots(1,2,figsize=(11,4.8),gridspec_kw={'width_ratios':[1.35,1]});colors=CATEGORY_COLORS;vals=[stat['category_counts'][c] for c in CATEGORIES]
         bars=axs[0].bar(range(6),vals,color=colors);axs[0].set_xticks(range(6),['1 block','2','3','4','≥5','Unresolved']);axs[0].set_xlabel('Inferred genomic fragments per library unit');axs[0].set_ylabel('Library units');axs[0].set_ylim(0,max(vals+[1])*1.25)
         for bar,v in zip(bars,vals):axs[0].text(bar.get_x()+bar.get_width()/2,v,f'{v:,}\n{v/max(1,len(selected)):.1%}',ha='center',va='bottom',fontsize=9)
         for i,c in enumerate(CATEGORIES):
             lengths=[int(x['insert_bp']) for x in selected if x['category']==c]
             if lengths:
-                b=axs[1].boxplot([lengths],positions=[i],widths=.55,showfliers=False,patch_artist=True);b['boxes'][0].set_facecolor(colors[i])
+                b=axs[1].boxplot([lengths],positions=[i],widths=.55,showfliers=False,patch_artist=True)
+                b['boxes'][0].set_facecolor(library_colors.get(scope, colors[i]))
+                if scope in library_colors:
+                    b['boxes'][0].set_gid(f'ligation-box-{i}')
         axs[1].set_xticks(range(6),['1','2','3','4','≥5','Unres.']);axs[1].set_ylabel('Adapter-bounded insert length (bp)');axs[1].set_xlabel('Inferred fragment count');axs[1].set_ylim(bottom=0)
         for ax in axs:ax.spines[['top','right']].set_visible(False)
         fig.suptitle(f"{result['sample']} · {scope}: Micro-C ligation evidence",fontsize=16)

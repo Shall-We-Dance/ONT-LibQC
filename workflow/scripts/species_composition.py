@@ -11,7 +11,7 @@ import tempfile
 from pathlib import Path
 
 from library_sequences import fastq_records, microc_leg_span, rc
-from report_palette import bar_ink
+from report_palette import AMBIGUOUS_COLOR, UNASSIGNED_COLOR, bar_ink
 
 NAMES = {"ARS_UCD2": "Cattle", "hg38": "Human", "mm39": "Mouse", "dm6": "Fruit fly",
          "ecoli": "E. coli", "ce11": "C. elegans", "sacCer3": "Budding yeast",
@@ -21,12 +21,10 @@ AMBIG = "Ambiguous species"
 NONE = "No confident match"
 TOTAL = "Total inserts"
 
-# ggsci pal_bmj("default"), keyed by reference so subsets and reorderings keep their colors.
-# https://nanx.me/ggsci/reference/pal_bmj.html
 SPECIES_COLORS = {
-    "ARS_UCD2": "#2a6ebb", "hg38": "#cd202c", "mm39": "#f0ab00", "dm6": "#00b2a9",
-    "ecoli": "#e37222", "ce11": "#c50084", "GRCz12ab": "#7d5cc6", "TAIR10": "#69be28",
-    "sacCer3": "#747678", AMBIG: "#a7aab8", NONE: "#e2e7ec",
+    "hg38": "#466575", "mm39": "#597860", "ARS_UCD2": "#8e614d", "dm6": "#b98653",
+    "ecoli": "#b67565", "ce11": "#8f7891", "sacCer3": "#c0aa78", "TAIR10": "#89936a",
+    "GRCz12ab": "#5c8b8c",
 }
 SPECIES_COLORS["danRer11"] = SPECIES_COLORS["GRCz12ab"]
 
@@ -190,7 +188,15 @@ def render(data):
                    else "A competitive species panel was not configured for this run.")
         return "<section class='report-section' id='species-composition'><h2>Species composition</h2><p>" + message + "</p></section>"
     columns = [*data["panel"], AMBIG, NONE]
-    colors = {k: SPECIES_COLORS.get(k, '#536b80') for k in columns}
+    # Keep known references stable across panels. Use the unused colors first for custom references.
+    panel = set(data["panel"])
+    used = {SPECIES_COLORS[key] for key in panel & SPECIES_COLORS.keys()}
+    available = [color for color in dict.fromkeys(SPECIES_COLORS.values()) if color not in used]
+    available.extend(("#675e78", "#9a8555", "#497884", "#9e6c75"))
+    colors = dict(SPECIES_COLORS)
+    for i, key in enumerate(sorted(panel - SPECIES_COLORS.keys())):
+        colors[key] = available[i % len(available)]
+    colors.update({AMBIG: AMBIGUOUS_COLOR, NONE: UNASSIGNED_COLOR})
     labels = {k: html.escape(NAMES.get(k, k) + (" (expected)" if k == data["reference"] else ""))
               for k in columns}
 

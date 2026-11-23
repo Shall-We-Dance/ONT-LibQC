@@ -2,6 +2,7 @@
 import csv,gzip,json,statistics
 from pathlib import Path
 from qc_plot_metrics import svg_size_trace
+from report_palette import scope_color
 
 BANDS=[('short_fraction',0,100),('mono_range_fraction',100,200),('intermediate_fraction',200,300),('long_fraction',300,float('inf'))]
 
@@ -40,14 +41,15 @@ def write_mnase(ligation_path,plot_prefix):
                 fragment_table=str(table),**summarize(rows),scopes={},
                 input_paths=[str(unitpath),str(segpath)],
                 limitations='Conditional on successful ligation, library selection, sequencing and alignment resolution. Short/repetitive fragments may be lost. Adjacent collinear fragments can merge; reference span estimates protected genomic length, not exact physical pre-ligation length. No calibrated digestion efficiency or nucleosome identity is inferred.')
-    for scope in ['total']+list(lig['scopes']):
+    for scope in ['total', *lig['scopes']]:
+        color = None if scope in ('total', 'unassigned') else scope_color(scope)
         selected=rows if scope=='total' else [r for r in rows if r['scope_id']==scope]
         if scope!='total':result['scopes'][scope]=summarize(selected)
         title=f"{lig['sample']} · {scope}: inferred pre-ligation fragments"
         note='Resolved multi-block units only; reference spans. Conditional length evidence, not a direct digestion trace.'
-        Path(str(plot_prefix)+f'.{scope}.mnase.svg').write_text(svg_size_trace([r['reference_bp'] for r in selected],title,1000,.045,footnote=note))
+        Path(str(plot_prefix)+f'.{scope}.mnase.svg').write_text(svg_size_trace([r['reference_bp'] for r in selected],title,1000,.045,footnote=note,color=color))
         single=[int(r['insert_bp']) for r in units if r['category']=='1' and (scope=='total' or r['scope_id']==scope)]
-        Path(str(plot_prefix)+f'.{scope}.single_block.svg').write_text(svg_size_trace(single,f"{lig['sample']} · {scope}: single-block library units",1000,.045,footnote='Whole insert lengths for resolved one-block units; one block does not establish unligated DNA.'))
+        Path(str(plot_prefix)+f'.{scope}.single_block.svg').write_text(svg_size_trace(single,f"{lig['sample']} · {scope}: single-block library units",1000,.045,footnote='Whole insert lengths for resolved one-block units; one block does not establish unligated DNA.',color=color))
     path.with_suffix('.mnase.json').write_text(json.dumps(result,indent=2)+'\n');return result
 
 if __name__=='__main__':

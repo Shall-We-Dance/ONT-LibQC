@@ -4,6 +4,7 @@ from pathlib import Path
 from xml.etree import ElementTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'workflow' / 'scripts'))
+from report_palette import POOLED, scope_color
 from scrna_metaplot_plot import figures
 from scrna_report import metaplot_section
 
@@ -29,6 +30,8 @@ class TranscriptPlots(unittest.TestCase):
             self.assertEqual(svg.get('role'), 'img')
             self.assertIn('transcript coverage', svg.find('{*}title').text)
             self.assertIn(axis, svg.find('{*}desc').text)
+            color = POOLED if scope == 'all' else scope_color(scope)
+            self.assertIn(f'stroke: {color}; stroke-width: 1.7', images[scope].decode('utf-8'))
         page = metaplot_section(metrics, images, 20)
         self.assertIn('Genes with coverage', page)
         self.assertIn('transcript_metaplot_lib01.svg', page)

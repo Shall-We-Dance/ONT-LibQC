@@ -2,10 +2,10 @@
 import html
 
 
-def svg_start(width, height, title):
+def svg_start(width, height, title, *, title_x=64):
     return [f"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 {width} {height}' role='img' aria-label='{html.escape(title, quote=True)}' style='font-family:Arial,Helvetica,sans-serif'>",
             f'<title>{html.escape(title)}</title>', "<rect width='100%' height='100%' fill='white'/>",
-            f"<text x='64' y='27' font-size='17' fill='#293f53' font-weight='600'>{html.escape(title)}</text>"]
+            f"<text x='{title_x}' y='27' font-size='17' fill='#293f53' font-weight='600'>{html.escape(title)}</text>"]
 
 
 def text(x, y, label, anchor='middle', size=12, color='#526579'):

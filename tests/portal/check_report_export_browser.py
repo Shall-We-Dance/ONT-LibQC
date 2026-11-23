@@ -309,9 +309,9 @@ def check_composition_tables(browser):
         assert all(label.is_visible() for label in segments.locator('b').all())
         assert segments.evaluate_all('''bars => bars.map(bar => [
             getComputedStyle(bar).backgroundColor, getComputedStyle(bar.querySelector("b")).color
-        ])''') == [['rgb(205, 32, 44)', 'rgb(255, 255, 255)'],
-                  ['rgb(0, 178, 169)', 'rgb(0, 0, 0)'],
-                  ['rgb(116, 118, 120)', 'rgb(255, 255, 255)']]
+        ])''') == [['rgb(70, 101, 117)', 'rgb(255, 255, 255)'],
+                  ['rgb(185, 134, 83)', 'rgb(0, 0, 0)'],
+                  ['rgb(192, 170, 120)', 'rgb(0, 0, 0)']]
 
     try:
         page.set_content(document)
@@ -371,11 +371,11 @@ def check_sublibrary_percentages(browser, engine):
             )'''), (media, width)
             assert labels.evaluate_all("""nodes => nodes.map(label => [
                 getComputedStyle(label.parentElement).backgroundColor, getComputedStyle(label).color
-            ])""") == [['rgb(230, 75, 53)', 'rgb(255, 255, 255)'],
-                       ['rgb(77, 187, 213)', 'rgb(255, 255, 255)'],
-                       ['rgb(0, 160, 135)', 'rgb(255, 255, 255)'],
-                       ['rgb(60, 84, 136)', 'rgb(255, 255, 255)'],
-                       ['rgb(170, 181, 196)', 'rgb(0, 0, 0)']]
+            ])""") == [['rgb(40, 120, 200)', 'rgb(255, 255, 255)'],
+                       ['rgb(223, 122, 20)', 'rgb(255, 255, 255)'],
+                       ['rgb(33, 147, 87)', 'rgb(255, 255, 255)'],
+                       ['rgb(147, 86, 192)', 'rgb(255, 255, 255)'],
+                       ['rgb(221, 220, 212)', 'rgb(0, 0, 0)']]
             assert page.locator('.mixture-legend strong').all_inner_texts() == percentages
         if engine == 'chromium':
             page.pdf(path=str(OUTPUT/'sublibrary-composition.pdf'), format='A4', print_background=True)

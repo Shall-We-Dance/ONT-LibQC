@@ -4,6 +4,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'workflow' / 'scripts'))
+from report_palette import UNASSIGNED_COLOR, scope_color
 from scrna_composition import sublibrary_composition
 
 
@@ -33,8 +34,8 @@ class SublibraryComposition(unittest.TestCase):
         self.assertEqual(chart.labels, ['lib01: 90.9%, 100 units; Unassigned: 9.1%, 10 units'])
         self.assertIn('mixture-deferred', chart.segments[1]['class'])
         self.assertIn('Unassigned <strong>9.1%</strong>', markup.split('<details class="mixture-other">')[1])
-        self.assertIn('background:#e64b35;color:#ffffff', chart.segments[0]['style'])
-        self.assertIn('background:#aab5c4;color:#000000', chart.segments[1]['style'])
+        self.assertIn(f'background:{scope_color("lib01")};color:#ffffff', chart.segments[0]['style'])
+        self.assertIn(f'background:{UNASSIGNED_COLOR};color:#000000', chart.segments[1]['style'])
 
     def test_native_and_ambiguous_are_distinct(self):
         physical = {'library_units': 9,

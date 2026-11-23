@@ -44,3 +44,75 @@
 .rna-profile-panels figcaption{font-size:13px;font-weight:600}
 .rna-profile-panels figcaption i{display:inline-block;width:9px;height:9px;margin-right:6px;border-radius:2px}
 @media print{.profile-comparison .rna-profile-panels,.profile-comparison .rna-composition-card{break-inside:auto}.rna-profile-panels figure{break-inside:avoid}}
+
+.microc-heading {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:4px 16px;
+  padding-bottom:8px;
+  margin-bottom:10px;
+  border-bottom:1px solid var(--line);
+}
+.microc-heading h2 {margin:0}
+.microc-heading a {font-size:13px}
+.microc-profiles .profile-size-heading {margin-top:4px;margin-bottom:2px}
+.microc-profiles .profile-comparison-grid {gap:10px}
+.microc-profiles .figure-link {padding:0 4px;margin-top:2px}
+.microc-profiles .profile-comparison>.comparison-note {margin:5px 0 8px}
+.microc-comparison {margin:8px 0;scroll-margin-top:72px}
+.microc-comparison .plot-card {padding:6px 10px}
+.microc-comparison .plot-card>a {display:block;width:100%;max-width:1000px;margin:auto}
+.ligation-comparisons {
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,355px),1fr));
+  align-items:start;
+  gap:10px;
+}
+#ligation .plot-card>a {min-width:0;max-width:none;margin:0}
+.microc-comparison details {margin:3px 0 0}
+.microc-comparison summary {font-size:13px}
+.microc-profiles .profile-detail {margin-top:8px}
+.microc-profiles .profile-detail>summary {padding:9px 14px}
+.microc-profiles .profile-detail[open]>summary {margin-bottom:0}
+.microc-profiles .profile-scope>.size-model-note {margin:0;padding:10px 0 6px}
+.microc-profiles .profile-scope>.primary-size-plots {margin:3px auto 10px}
+.microc-profiles .profile-scope>.size-profile-downloads {margin:0 0 8px}
+.microc-profiles .count-based-details {margin:8px 0}
+.profile-detail .microc-scope {background:#fff;padding:1px 16px 12px;border-radius:0 0 7px 7px}
+.microc-scope h4 {margin:14px 0 6px}
+.microc-scope figure {margin:0;min-width:0}
+.microc-scope img {display:block;width:100%;height:auto}
+.microc-scope figcaption {font-size:13px;color:var(--muted)}
+.microc-scope .pairtools-scope>.plot-card {padding:8px}
+.microc-scope .pairtools-scope>.plot-card>a {display:block}
+.microc-scope .pairtools-scope .table-scroll {min-width:0;margin:6px 0}
+.microc-scope .pairtools-scope table {width:100%;min-width:0;table-layout:fixed}
+.microc-scope .pairtools-scope :is(th,td) {
+  padding:5px 8px;
+  text-align:right;
+  white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+}
+.microc-scope .pairtools-scope th:first-child {width:33%;min-width:0;max-width:none;text-align:left}
+@media screen and (min-width:1000px) {
+  .microc-scope .pairtools-scope {
+    display:grid;
+    grid-template-columns:minmax(0,1.7fr) minmax(280px,1fr);
+    align-items:start;
+    gap:5px 16px;
+  }
+  .microc-scope .pairtools-scope>p {grid-column:1/-1;margin:4px 0}
+  .microc-scope .pairtools-scope .table-scroll {margin:0}
+}
+@media screen and (max-width:700px) {
+  .microc-profiles .profile-comparison-grid .comparison-gel>a {height:205px}
+  .microc-comparison .plot-card {overflow-x:auto}
+  .microc-comparison .plot-card>a {min-width:760px}
+  .microc-scope .plots {grid-template-columns:minmax(0,1fr)}
+}
+@media print {
+  .microc-comparison .plot-card {break-inside:avoid}
+  .microc-heading a {display:none}
+}

@@ -1,22 +1,20 @@
 """Categorical colors shared by the HTML, SVG and printed reports."""
 from zlib import crc32
 
-# ggsci pal_npg("nrc"), in Nature Reviews Cancer palette order.
-# https://nanx.me/ggsci/reference/pal_npg.html
-NPG = (
-    '#e64b35', '#4dbbd5', '#00a087', '#3c5488', '#f39b7f',
-    '#8491b4', '#91d1c2', '#dc0000', '#7e6148', '#b09c85',
-)
-POOLED = '#2a6cbd'
+SUBLIBRARY_COLORS = ('#2878c8', '#df7a14', '#219357', '#9356c0', '#ca4d87', '#1196aa', '#819610', '#d34d45')
+POOLED = '#496576'
+AMBIGUOUS_COLOR = '#a4a49c'
+UNASSIGNED_COLOR = '#dddcd4'
 
 
-def scope_color(scope):
+def scope_color(scope, index=None):
+    """Resolve by stable library ID, including calls that also pass its former list index."""
     if scope == 'total':
         return POOLED
     suffix = scope.removeprefix('lib')
     if suffix != scope and suffix.isascii() and suffix.isdecimal() and int(suffix) > 0:
-        return NPG[(int(suffix) - 1) % len(NPG)]
-    return NPG[crc32(scope.encode()) % len(NPG)]
+        return SUBLIBRARY_COLORS[(int(suffix) - 1) % len(SUBLIBRARY_COLORS)]
+    return SUBLIBRARY_COLORS[crc32(scope.encode()) % len(SUBLIBRARY_COLORS)]
 
 
 def bar_ink(fill):

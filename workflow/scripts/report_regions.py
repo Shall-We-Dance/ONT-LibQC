@@ -4,6 +4,7 @@ import collections
 import gzip
 import html
 import json
+import re
 from report_palette import POOLED
 from report_svg import svg_start, text
 
@@ -114,6 +115,18 @@ def region_track(rate, background, color, x, y, width):
         tick = x + width * background
         parts.append(f"<line x1='{tick:.3f}' x2='{tick:.3f}' y1='{y-10}' y2='{y+7}' stroke='#536475' stroke-width='1.3'/>")
     return ''.join(parts)
+
+
+def refresh_region_color(path, color):
+    if not path.is_file():
+        return
+    svg = path.read_text()
+    # Only the observed proportions have a data-value. Older category plots
+    # use colors for the region classes and have no library identity to update.
+    updated = re.sub(r"""(<rect\b[^>]*\bdata-value=['"][^'"]+['"][^>]*\bfill=['"])#[0-9a-fA-F]{6}""",
+                     lambda m: m[1] + color, svg)
+    if updated != svg:
+        path.write_text(updated)
 
 
 def svg_region_bars(metric, title, color=POOLED):

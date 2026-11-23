@@ -63,6 +63,22 @@ class ReportAccessTests(unittest.TestCase):
             row=db.execute('SELECT * FROM report_links WHERE key_hash=?',(key_hash(url.rsplit('/',1)[1]),)).fetchone()
         return dict(row) if row else None
 
+    def test_microc_overview_download_uses_its_filename_through_a_shared_link(self):
+        root = self.settings.state/'reports'/JID
+        figure = root/'assets'/'example.microc_qc.svg'
+        figure.write_bytes((root/'assets'/'figure.svg').read_bytes())
+        page = root/'samples'/'example.html'
+        page.write_text('<a href="../assets/example.microc_qc.svg" download>Download overview</a>'
+                        '<a href="../assets/figure.svg">Open figure</a>')
+        report = self.client.get(self.task()['report_url'])
+        download_url, figure_url = re.findall(r'href="(/r/[^"]+)"', report.text)[:2]
+        download = self.client.get(download_url)
+        self.assertEqual(download.status_code, 200)
+        self.assertEqual(download.headers['content-disposition'], 'attachment; filename="example.microc_qc.svg"')
+        self.assertEqual(download.headers['content-type'], 'image/svg+xml')
+        self.assertEqual(download.content, figure.read_bytes())
+        self.assertNotIn('content-disposition', self.client.get(figure_url).headers)
+
     def test_private_task_issues_cookie_free_short_report_and_download_links(self):
         job=self.task()
         self.assertEqual(job['report_access_expires'],int(self.now+7*86400))

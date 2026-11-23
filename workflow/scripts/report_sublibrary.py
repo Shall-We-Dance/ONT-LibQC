@@ -1,7 +1,7 @@
 """Shared, alignment-independent mixture proportions for every assay report."""
 import html
 
-from report_palette import NPG, bar_ink, scope_color
+from report_palette import AMBIGUOUS_COLOR, SUBLIBRARY_COLORS, UNASSIGNED_COLOR, bar_ink, scope_color
 
 
 CSS = '''
@@ -40,9 +40,9 @@ def mixture_counts(metric, color_for_scope=None):
         if min(unassigned, ambiguous) < 0 or unassigned + ambiguous != remaining:
             raise ValueError('Index-assignment counts do not sum to total library units')
         rows += [(label, n, color) for label, n, color in
-                 [('Ambiguous', ambiguous, '#717d92'), ('Unassigned', unassigned, '#aab5c4')] if n]
+                 [('Ambiguous', ambiguous, AMBIGUOUS_COLOR), ('Unassigned', unassigned, UNASSIGNED_COLOR)] if n]
     elif remaining:
-        rows.append(('Unassigned / ambiguous', remaining, '#8794a7'))
+        rows.append(('Unassigned / ambiguous', remaining, '#bcbab1'))
     return total, rows
 
 
@@ -67,7 +67,7 @@ def mixture_chart(total, rows, *, folded=()):
         title = esc(f'{label}: {percent(n, total)} ({unit_count(n)})', quote=True)
         ink = bar_ink(color)
         label_class = 'mixture-segment-text'
-        if color in NPG[:4] and ink != '#ffffff':
+        if color in SUBLIBRARY_COLORS[:4] and ink != '#ffffff':
             ink = '#ffffff'
             label_class += ' outlined'
         segment_class = 'mixture-segment' if i < len(rows) else 'mixture-segment mixture-deferred'

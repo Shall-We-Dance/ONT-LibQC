@@ -182,34 +182,6 @@ def extension_report_html(out, sample, scopes, metric):
                 scoped_screen=scoped_table_html(scopes,["spike_in_status","spike_in_screened_reads","spike_in_reads","spike_in_fraction"],{}) if len(scopes)>1 else ""
                 sections.append("<section class='report-section' id='spike-screen'><h2>Spike-in candidate screen <span class='metric-tip info-icon' tabindex='0' data-tip='"+html.escape(tip,quote=True)+"'>?</span></h2><p class='muted'>"+fmt(screen.get("screened_reads"))+" screened inserts · "+("Spike-in declared" if screen.get("declared_spike_in") else "No spike-in declared")+"</p><div class='table-scroll'><table><tr><th>Reference candidate</th><th>Role</th><th>Insert count</th><th>Fraction</th><th title='Distinct 100-bp reference windows with qualifying alignments'>Locus count</th><th>Result</th></tr>"+''.join(rows)+"</table></div>"+ecoli_calibration_note_html(screen)+scoped_screen+"</section>")
 
-    if metric["assay"]=="microc" and metric.get("ligation_screened_units") is not None:
-        plots=[]
-        for scope in scopes:
-            scope_id=scope["scope_id"];source=out/"plots"/"ligation"/f"{sample}.{scope_id}.svg"
-            if not source.exists():continue
-            asset=out/"reports"/"assets"/f"{sample}.{scope_id}.ligation.svg";asset.write_bytes(source.read_bytes())
-            plots.append(f"<figure class='extension-figure'><figcaption>{html.escape(scope.get('scope_name',scope_id))}</figcaption><img src='assets/{asset.name}' alt='Micro-C resolved genomic block counts and insert lengths'></figure>")
-        source=out/"plots"/"ligation"/f"{sample}.examples.svg"
-        if source.exists():
-            asset=out/"reports"/"assets"/f"{sample}.ligation_examples.svg";asset.write_bytes(source.read_bytes());plots.append(f"<figure class='extension-figure'><img src='assets/{asset.name}' alt='Representative query block structures'></figure>")
-        sections.append("<section class='report-section' id='ligation'><h2>Micro-C ligation structure</h2><div class='note'>Standard MNase blunt-end ligation has no fixed junction sequence. Whole-insert split alignments estimate the minimum number of resolved genomic fragments within each adapter-bounded library unit. ONT adapter-linked units are counted separately. One block does not establish unligated DNA; adjacent, short or repetitive fragments can be missed. Unresolved units remain in the all-unit denominator. These are exploratory structure measurements, not a calibrated ligation-efficiency assay.</div>"+''.join(plots)+"<details class='metric-group'><summary>Ligation counts and denominators</summary>"+scoped_table_html(scopes,[key for key in METRIC_META if key.startswith("ligation_")],{})+"</details>"+f"<p><a href='../qc/ligation/{sample}.units.tsv.gz'>Every unit and inferred count</a> · <a href='../qc/ligation/{sample}.segments.tsv.gz'>Genomic blocks and query coordinates</a></p></section>")
-    mnase_path=out/"qc/ligation"/f"{sample}.mnase.json"
-    if metric["assay"]=="microc" and mnase_path.exists():
-        mnase=json.loads(mnase_path.read_text());panels=[];rows=[]
-        for scope in scopes:
-            sid=scope["scope_id"];stats=mnase if sid=="total" else mnase["scopes"].get(sid,{})
-            cells=[html.escape(scope.get("scope_name",sid)),fmt(stats.get("mnase_resolved_fragments")),fmt(stats.get("mnase_contributing_molecules")),fmt(stats.get("mnase_median_bp"))]
-            for key in ["short_fraction","mono_range_fraction","intermediate_fraction","long_fraction"]:
-                value=stats.get("mnase_"+key);cells.append(f"{value:.1%}" if value is not None else "NA")
-            rows.append("<tr>"+''.join("<td>"+v+"</td>" for v in cells)+"</tr>")
-            images=[]
-            for suffix in ['mnase','single_block']:
-                source=out/"plots/ligation"/f"{sample}.{sid}.{suffix}.svg"
-                asset=out/"reports/assets"/source.name;asset.write_bytes(source.read_bytes())
-                caption=("<strong>A · Constituent fragments</strong><p>Each observation is one resolved genomic block inside a unit with ≥2 blocks. For example, a 300-bp unit resolved as two 150-bp blocks contributes two observations near 150 bp.</p>" if suffix=='mnase' else "<strong>B · Whole inserts with one mapped block</strong><p>Each observation is an entire insert resolved as one continuous genomic block. It can be unligated DNA or a product whose junction is not distinguishable, such as adjacent genomic fragments.</p>")
-                images.append(f"<figure class='plot-card'><figcaption class='fragment-caption'>{caption}</figcaption><a href='assets/{asset.name}' target='_blank' rel='noopener'><img src='assets/{asset.name}' alt='{suffix.replace('_',' ')} size trace'></a></figure>")
-            panels.append(f"<h3>{html.escape(scope.get('scope_name',sid))}</h3><div class='plots size-plots'>"+''.join(images)+"</div>")
-        sections.append("<section class='report-section' id='mnase'><h2>Inferred pre-ligation size &amp; MNase digestion</h2><p class='muted'>Reference-span lengths of resolved fragments in units with ≥2 genomic blocks. Panel A counts individual inferred fragments; panel B counts whole single-block inserts. They describe different observations.</p><div class='table-scroll'><table><tr><th>Library</th><th>Resolved fragments</th><th>Raw molecules</th><th>Median bp</th><th>&lt;100 bp</th><th>100–200 bp</th><th>200–300 bp</th><th>≥300 bp</th></tr>"+''.join(rows)+"</table></div>"+''.join(panels)+"<p class='muted trace-comparison-note'>Each curve has its own peak set to 100; its vertical grayscale lane shows the same count-weighted signal, with larger sizes at the top. Peak height and lane darkness cannot compare abundance between panels. Use the observation counts and ligation table for quantities. These are ONT-derived traces, not measured TapeStation fluorescence.</p><details><summary>How to interpret digestion evidence</summary><p>"+html.escape(mnase['limitations'])+" Size ranges are half-open: 100–200 means 100 ≤ length &lt; 200 bp. The 100–200 bp fraction is mononucleosome-size evidence, not proof of nucleosome identity or a calibrated digestion pass threshold. Blocks below the alignment minimum (40 bp) are not observable. A direct pre-ligation MNase titration trace is still needed to assess the original digestion mixture.</p></details>"+f"<p><a href='../qc/ligation/{sample}.mnase_fragments.tsv.gz'>Fragment lengths and parent molecules</a> · <a href='../qc/ligation/{sample}.mnase.json'>MNase size metrics</a></p></section>")
     return ''.join(sections)
 
 
@@ -349,18 +321,13 @@ def render_sample_report(sample, cfg, out, report_params, prior_provenance, anno
         if rna_summary_path.exists():
             rna_summary = json.loads(rna_summary_path.read_text())
     from report_profiles import render_profiles_card
-    profiles_html=render_profiles_card(sample, scopes, profile_sections, out/'reports/assets', out/'qc/gene_profile', rna_summary=rna_summary)
-    pairtools_html = ""
+    microc = None
     if metric["assay"] == "microc":
-        from microc_pairtools import report_html as pairtools_report
-        pairtools_result = json.loads((out/"qc/pairtools"/f"{sample}.json").read_text())
-        pairtools_html = pairtools_report(pairtools_result, out/"reports/assets", scopes)
-    funnel_assets=[]
-    if metric["assay"]=="microc":
+        from report_microc_layout import collect_ligation_assets, prepare_microc_profiles
+        collect_ligation_assets(out, sample, scopes)
         for scope in scopes:
             asset=out/"reports"/"assets"/f"{sample}.{scope['scope_id']}.contact_funnel.svg"
             asset.write_text(svg_contact_funnel(scope,f"{scope.get('scope_name',scope['scope_id'])}: valid-contact funnel"))
-            funnel_assets.append(asset.name)
             evidence=out/"reports"/"assets"/f"{sample}.{scope['scope_id']}.contact_evidence.svg"
             evidence.write_text(svg_contact_evidence(scope, f"{scope.get('scope_name',scope['scope_id'])}: contact evidence"))
             
@@ -368,7 +335,12 @@ def render_sample_report(sample, cfg, out, report_params, prior_provenance, anno
             distance_asset.write_text(svg_bars(["<1 kb", "1-10 kb", "10-100 kb", ">=100 kb", "trans"],
                 [scope.get(k,0) for k in ["cis_lt1kb","cis_1_10kb","cis_10_100kb","cis_ge100kb","trans_contacts"]],
                 f"{scope.get('scope_name',scope['scope_id'])}: contact counts (not P(s))"))
-            funnel_assets.append(distance_asset.name)
+        microc = prepare_microc_profiles(sample, scopes, out/'qc', out/'reports/assets', 'assets/', '../qc')
+    profiles_html = render_profiles_card(sample, scopes, profile_sections, out/'reports/assets', out/'qc/gene_profile',
+                                         rna_summary=rna_summary, microc=microc)
+    microc_nav = ''.join(f"<a href='#{key}'>{label}</a>" for key, label in
+                         [('pairtools', 'Pairtools'), ('ligation', 'Ligation'), ('mnase', 'MNase')]
+                         if microc and key in microc.section_ids)
     pairing=metric.get("index_pairing",{}); pairs=pairing.get("pairs",[])
     if pairing.get("mode")=="single_library" and pairs: pairs=[max(pairs,key=lambda x:x.get("informative_support",0))]
     top=''.join(traffic_html(x, ranges, metric["assay"]) for x in scopes)
@@ -391,7 +363,6 @@ def render_sample_report(sample, cfg, out, report_params, prior_provenance, anno
     library_primary_table=scoped_table_html(scopes,library_key_metrics,ranges)
     library_table=scoped_table_html(scopes,[key for key in library_keys if key not in library_key_metrics],ranges)
     type_specific_table=scoped_table_html(scopes,type_specific_keys,ranges)
-    funnel_html=''.join(f"<img src='assets/{x}' alt='Micro-C contact QC plot'>" for x in funnel_assets)
     funnel_details = ''
     if metric['assay']=='microc':
         detail_keys=["short_unmapped_units","both_legs_mapped","both_legs_mapping_rate","mapq_pass_pairs","mapq_pass_pair_rate","same_fragment_pairs","same_fragment_filter_pass_pairs","same_fragment_filter_pass_rate","contact_deduplication_retention","cis_contacts","trans_contacts","long_range_cis_contacts","long_range_within_cis_fraction","cis_lt1kb","cis_1_10kb","cis_10_100kb","cis_ge100kb"]
@@ -409,11 +380,11 @@ def render_sample_report(sample, cfg, out, report_params, prior_provenance, anno
                                       scope_labels={s['scope_id']: s.get('scope_name', s['scope_id']) for s in scopes})
     screen_html = rna_screening_html(scopes) if rna_html else ""
     assay_html = "" if rna_html else (f"<section class='report-section' id='assay-qc'><h2>{type_specific_title}</h2>{type_specific_table}<details><summary>Assay interpretation</summary><p>{html.escape(metric.get('classification_note',''))}</p></details>" +
-                ("<h3>Micro-C valid-contact funnel</h3><div class='plots'>"+funnel_html+"</div>"+funnel_details if funnel_html else "") + "</section>")
+                funnel_details + "</section>")
     report=f"""<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>{sample} · ONT-LibQC</title>{favicon("assets/ont-libqc-mark.svg")}<style id="report-base-style">{REPORT_CSS}</style></head><body>
 {brand_bar("assets/ont-libqc-mark.svg")}
 <header class='report-hero'><h1 class='sample-name'>{html.escape(sample)}</h1><div class='hero-meta'><span>{html.escape({'chromatin':'Chromatin','microc':'Micro-C','rnaseq':'RNA-seq · beta','clip':'CLIP-seq · beta'}.get(metric['assay'],metric['assay']))}</span><span>{html.escape(report_assembly)}</span><span>{metric['raw_reads']:,} raw molecules</span><span class="report-version" title="Report release and original analysis date">{html.escape(definition_label)}</span></div></header>
-<nav class='report-nav'>{"<a href='#species-composition'>Species</a>" if species_html else ""}<a href='#sequencing'>Sequencing</a><a href='#library-shape'>Library quality</a><a href='#profiles'>Size &amp; profiles</a>{"<a href='#rna-qc'>RNA QC · beta</a><a href='#contamination'>Contamination</a>" if rna_html else ""}{"" if rna_html else "<a href='#assay-qc'>Assay metrics</a>"}{"<a href='#custom-regions'>Custom regions</a>" if custom_html else ""}{"<a href='#pairtools'>Pairtools</a><a href='#ligation'>Ligation</a><a href='#mnase'>MNase</a>" if pairtools_html else ""}{"<a href='#spike-screen'>Spike-in screen</a>" if metric.get('spike_in_mode')=='auto' or json.loads((out/'qc/spike_in'/f'{sample}.json').read_text()).get('mode')=='auto' else ''}<a href='../summary/index.html'>All samples</a></nav>
+<nav class='report-nav'>{"<a href='#species-composition'>Species</a>" if species_html else ""}<a href='#sequencing'>Sequencing</a><a href='#library-shape'>Library quality</a><a href='#profiles'>{"Size &amp; Micro-C QC" if microc else "Size &amp; profiles"}</a>{"<a href='#rna-qc'>RNA QC · beta</a><a href='#contamination'>Contamination</a>" if rna_html else ""}{"" if rna_html else "<a href='#assay-qc'>Assay metrics</a>"}{"<a href='#custom-regions'>Custom regions</a>" if custom_html else ""}{microc_nav}{"<a href='#spike-screen'>Spike-in screen</a>" if metric.get('spike_in_mode')=='auto' or json.loads((out/'qc/spike_in'/f'{sample}.json').read_text()).get('mode')=='auto' else ''}<a href='../summary/index.html'>All samples</a></nav>
 <div class='traffic-grid'>{top}</div>
 {mixture_html}
 {species_html}
@@ -429,9 +400,12 @@ def render_sample_report(sample, cfg, out, report_params, prior_provenance, anno
 {rna_html}
 {screen_html}
 {assay_html}
-{pairtools_html}
 {custom_html}{extension_report_html(out, sample, scopes, metric)}
 <footer class='report-footer'><details><summary>Methods &amp; interpretation</summary><div class='report-explanation'><ul>{"<li><strong>Chromatin alignment:</strong> Local alignment; ≥30 aligned bp and ≥80% insert coverage. Sequence-supported terminal foldbacks are trimmed only after end-to-end remapping confirms the same locus. MAPQ threshold: ≥"+str(report_mapq)+".</li>" if metric.get('alignment_method') else ''}<li><strong>Reference values</strong> distinguish local screening settings, biological context and statistical expectations.</li><li><strong>Gene profiles:</strong> chromatin TSS–TES profiles use CPM; RNA profiles use per-gene exonic coverage normalization, detailed in the RNA section. SEM is across contributing genes, not biological replicates.</li><li><strong>Genomic distribution:</strong> chromatin uses mapped alignments, Micro-C uses endpoint legs, and RNA region fractions use aligned reference bases excluding skipped introns and deletions.</li><li><strong>Duplicates:</strong> Pairtools marks sample-level coordinate duplicates as DD. Shallow sequencing does not estimate PCR duplication or library complexity. Native Micro-C contact deduplication is an internal validity filter.</li></ul></div></details><p><a href='../summary/index.html'>All samples</a> · <a href='../qc/adapters/{sample}.reads.tsv.gz'>Adapter table</a> · <a href='../qc/adapters/{sample}.index_assignments.tsv.gz'>Index assignments</a></p></footer>{REPORT_TOOLTIP_SCRIPT}</body></html>"""
+    if rna_summary is not None:
+        from rna_report import color_transcript_assets
+        report = color_transcript_assets(report, sample, scopes, rna_summary, out/'qc/rna'/sample,
+                                         out/'reports/assets', f'../qc/rna/{sample}', 'assets/')
     (out/"reports"/f"{sample}.html").write_text(add_pdf_export(report))
     return metric
 

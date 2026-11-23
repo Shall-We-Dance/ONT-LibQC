@@ -13,6 +13,7 @@ from report_svg import svg_start, text
 from report_regions import REGION_ROWS, REGION_LEGEND, region_track, region_percent
 from report_profile_band import read_profile_band
 from profile_data import read_gene_profile, read_numeric_profile, read_data
+from qc_plot_metrics import refresh_scope_size_traces
 
 CSS = Path(__file__).with_name("report_profiles.css").read_text()
 
@@ -26,7 +27,8 @@ def size_figure(svg, url, legend=""):
     # Keep the standalone SVG intact; use a responsive HTML heading in the report.
     svg = re.sub(r"<text\b[^>]*>Full-library size profiles</text>", '', svg)
     svg = re.sub(r"<text\b[^>]*>ONT-derived · length-weighted</text>", '', svg)
-    svg = svg.replace("viewBox='0 0 780 390'", "viewBox='0 54 780 336'")
+    svg = re.sub(r"viewBox='0 0 780 (\d+)'",
+                 lambda match: f"viewBox='0 54 780 {int(match[1]) - 54}'", svg, count=1)
     heading = ("<div class='profile-size-heading'><div><h3>Full-library size profiles</h3>"
                "<p>ONT-derived · length-weighted</p></div>"+legend+"</div>")
     return ("<figure class='plot-card comparison-size'>"+heading+"<div class='profile-size-chart'>"+svg+
@@ -62,13 +64,16 @@ def read_size_profile(path):
     return xs, ys
 
 
-def size_comparison(series):
+def size_comparison(series, *, compact=False):
     # Match the individual electropherogram: the same grids, type and baseline.
-    left, right, top, bottom = 64, 744, 64, 314
+    left, right, top = 64, 744, 64
+    bottom, height = (250, 308) if compact else (314, 390)
+    mid = (top + bottom) / 2
+    signal_label = 'Relative signal (peak = 100)' if compact else 'Relative signal (a.u.; peak = 100)'
     maximum = max(row['sizes'][0][-1] for row in series)
     upper = math.log1p(maximum / 50)
     x = lambda bp: left + math.log1p(bp / 50) / upper * (right-left)
-    svg = svg_start(780, 390, 'Full-library size profiles')
+    svg = svg_start(780, height, 'Full-library size profiles')
     svg[3] = "<text x='64' y='28' font-size='19' font-weight='600'>Full-library size profiles</text>"
     svg.append(text(left, 46, 'ONT-derived · length-weighted', 'start', 13, '#576574'))
     for value in (0, 25, 50, 75, 100):
@@ -86,15 +91,17 @@ def size_comparison(series):
         svg.append(polyline([x(v) for v in xs], [bottom-v/100*(bottom-top) for v in ys], row['color'], row['id']))
     svg += [f"<line x1='{left}' x2='{right}' y1='{bottom}' y2='{bottom}' stroke='#586069'/>",
             text((left+right)/2, bottom+45, 'Fragment size (bp; nonlinear size axis)', size=14, color='#111'),
-            "<text x='23' y='189' transform='rotate(-90 23 189)' text-anchor='middle' font-size='14'>Relative signal (a.u.; peak = 100)</text>", '</svg>']
+            f"<text x='23' y='{mid:g}' transform='rotate(-90 23 {mid:g})' text-anchor='middle' font-size='14'>{signal_label}</text>", '</svg>']
     return ''.join(svg)
 
 
-def virtual_lanes(series):
-    width = max(190, 100 + 44*len(series));top, bottom = 64, 314
+def virtual_lanes(series, *, compact=False):
+    width = max(190, 100 + 44*len(series))
+    top = 64
+    bottom, height = (250, 308) if compact else (314, 390)
     maximum = max(row['sizes'][0][-1] for row in series);upper = math.log1p(maximum/50)
     y = lambda bp: bottom - math.log1p(bp/50)/upper*(bottom-top)
-    svg = svg_start(width, 390, 'Virtual lanes')
+    svg = svg_start(width, height, 'Virtual lanes')
     svg[3] = "<text x='68' y='28' font-size='19' font-weight='600'>Virtual lanes</text>"
     for value in sorted({0, 100, 300, 1000, maximum}):
         if value <= maximum:
@@ -264,7 +271,7 @@ def transcript_panels(series, metrics, prefix):
     return ''.join(panels) + '</div></section>'
 
 
-def render_profiles_card(sample, scopes, scope_html, asset_dir, gene_dir, asset_prefix='assets/', *, rna_summary=None, rna_prefix=None):
+def render_profiles_card(sample, scopes, scope_html, asset_dir, gene_dir, asset_prefix='assets/', *, rna_summary=None, rna_prefix=None, microc=None):
     """Works during report creation and on a retained, report-only bundle."""
     asset_dir, gene_dir = Path(asset_dir), Path(gene_dir)
     esc = html.escape
@@ -272,16 +279,25 @@ def render_profiles_card(sample, scopes, scope_html, asset_dir, gene_dir, asset_
         url=esc(asset_prefix+name,quote=True)
         return f"<figure class='plot-card {cls}'><a href='{url}' target='_blank' rel='noopener'><img src='{url}' alt='{esc(caption,quote=True)}'></a><figcaption class='figure-link'><a href='{url}' target='_blank' rel='noopener'>Open figure ↗</a></figcaption></figure>"
     title = "Size and RNA profiles" if rna_summary is not None else "Size and genomic profiles"
-    parts=["<section class='report-section' id='profiles'><style>"+CSS+"</style><h2>"+title+"</h2>"]
+    heading = f'<h2>{title}</h2>'
+    if microc:
+        link = esc(asset_prefix + f'{sample}.microc_qc.svg', quote=True)
+        heading = ("<div class='microc-heading'><h2>Size and Micro-C QC</h2>"
+                   f"<a href='{link}' download>Download overview (SVG)</a></div>")
+    section_class = 'report-section microc-profiles' if microc else 'report-section'
+    opening = f"<section class='{section_class}' id='profiles'>"
     sub=scopes[1:]
-    if not sub and rna_summary is None: return ''.join(parts)+scope_html[0]+'</section>'
+    refresh_scope_size_traces(asset_dir, sample, sub)
+    if not sub and rna_summary is None and microc is None:
+        return opening + heading + scope_html[0] + '</section>'
+    parts = [opening + f'<style>{CSS}</style>' + heading]
     series=[]
     for scope in sub or scopes[:1]:
         sid=scope['scope_id'];label=scope.get('scope_name',sid)
         series.append(dict(id=sid,label=label,color=scope_color(sid),
                            sizes=read_size_profile(asset_dir/f'{sample}.{sid}.full_library_profiles.tsv'),
                            gene=None))
-        if rna_summary is not None:
+        if rna_summary is not None or microc:
             continue
         series[-1]['gene'] = read_gene_profile(gene_dir/f'{sample}.{sid}.profile.tsv')
         series[-1]['regions'] = read_region_metrics(asset_dir/f'{sample}.{sid}.regions.svg')
@@ -291,16 +307,22 @@ def render_profiles_card(sample, scopes, scope_html, asset_dir, gene_dir, asset_
         else:
             series[-1]['band'] = read_profile_band(asset_dir/f'{sample}.{sid}.TSS_TES.svg', series[-1]['gene'])
     parts.append("<div class='profile-comparison'>")
-    legend = ["<ul class='profile-comparison-legend' aria-label='Size profile sublibraries'>"]
+    legend = ["<ul class='profile-comparison-legend' aria-label='Size profile legend'>"]
     for row in series:
-        label=row['label'] if row['label']==row['id'] else row['id']+' · '+row['label']
+        label=row['label'] if row['id'] == 'total' or row['label']==row['id'] else row['id']+' · '+row['label']
         legend.append(legend_item(row['id'],label,row['color']))
     legend.append('</ul>')
     size_name=f'{sample}.sublibraries.size_profiles.svg';gel_name=f'{sample}.sublibraries.virtual_gel.svg'
-    (asset_dir/size_name).write_text(size_comparison(series));(asset_dir/gel_name).write_text(virtual_lanes(series))
-    parts.append("<div class='profile-comparison-grid'>"+size_figure((asset_dir/size_name).read_text(),asset_prefix+size_name,''.join(legend))+figure(gel_name,'Sublibrary virtual lanes','comparison-gel')+'</div>')
+    size_svg = size_comparison(series, compact=bool(microc))
+    (asset_dir/size_name).write_text(size_svg)
+    (asset_dir/gel_name).write_text(virtual_lanes(series, compact=bool(microc)))
+    parts.append("<div class='profile-comparison-grid'>"+size_figure(size_svg,asset_prefix+size_name,''.join(legend))+figure(gel_name,'Sublibrary virtual lanes','comparison-gel')+'</div>')
     parts.append("<p class='comparison-note'>ONT-derived full-library sizes, length-weighted; each trace and lane is scaled to its own peak of 100.</p>")
     parts.append(INTERACTION_SCRIPT)
+    if microc:
+        from report_microc_layout import overview_html, write_overview_figure
+        write_overview_figure(sample, asset_dir, size_name, gel_name, microc, sub or scopes)
+        parts.append(overview_html(asset_prefix, microc))
     if rna_summary is not None:
         from rna_report import rna_family_comparison
         metrics = rna_summary['scopes']
@@ -329,8 +351,15 @@ def render_profiles_card(sample, scopes, scope_html, asset_dir, gene_dir, asset_
     for i, scope in enumerate(sub):
         label=scope.get('scope_name',scope['scope_id']);color=series[i]['color']
         content=re.sub(r'<h3>.*?</h3>','',scope_html[i+1],count=1,flags=re.S)
+        if microc:
+            content += "<div class='microc-scope'>" + microc.details[scope['scope_id']] + '</div>'
         count=int(scope.get('library_units',0))
         parts.append(f"<details class='profile-detail' data-scope='{esc(scope['scope_id'],quote=True)}' style='--scope-tint:{color}0f;--scope-border:{color}38'><summary><i style='background:{color}'></i>{esc(label)}<small>{count:,} units</small></summary>{content}</details>")
     total_label = 'Total library · pooled profiles' if sub else 'Total library details'
-    parts.append("<details class='profile-detail pooled-profile'><summary>"+total_label+'</summary>'+scope_html[0]+'</details>')
+    total_content = scope_html[0]
+    if microc:
+        total_label = 'Total library' if sub else 'Total library details'
+        total_content += "<div class='microc-scope'>" + microc.details['total'] + '</div>'
+    expanded = ' open' if microc and not sub else ''
+    parts.append(f"<details class='profile-detail pooled-profile'{expanded}><summary>{total_label}</summary>{total_content}</details>")
     return ''.join(parts)+'</section>'
