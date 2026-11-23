@@ -6,13 +6,9 @@
 
 [Web server](https://ontlibqc.org) · [Example reports](https://ontlibqc.org/example/index.html) · [Run locally](#run-your-data) · [Self-hosting](portal/README.md) · [Citation](#citation)
 
-ONT-LibQC checks completed **Chromatin and Micro-C libraries**, with **RNA-seq and CLIP-seq support in beta**, using shallow ONT sequencing. It reconstructs adapter-bounded library units, resolves physical i5/i7 index pairs, and reports library size, mapping and assay-specific metrics. Run it in the browser or locally with Snakemake.
+ONT-LibQC uses shallow Oxford Nanopore sequencing to check finished **Chromatin and Micro-C libraries**. It identifies i5/i7 index pairs and reports fragment sizes, mapping rates and assay-specific QC for each library and its sublibraries.
 
-[RNA/CLIP beta](docs/RNA_BETA.md) adds splice-aware STARlong alignment, RNA-family and transcript-region composition, physical strandedness, splice evidence, transcript coverage and observed-gene detection curves. CLIP reports include HOMER motif discovery. Library characteristics are inferred from observed evidence with explicit depth and annotation limits; no additional protocol questionnaire is required. Local RNA runs require STARlong and a prepared sparse index, as described in the guide.
-
-The local [single-cell RNA QC workflow (Beta)](docs/SCRNA_QC.md) identifies supported 10x, MGI C4 and Parse barcode layouts and reports gene-assigned UMIs, barcode ranks and RNA alignment evidence from shallow ONT sequencing.
-
-Chromatin Bowtie2 alignment allows terminal soft-clipping. Usable fragments require MAPQ ≥20 by default, at least 30 aligned bases and 80% query coverage. A terminal reverse-complement match to the opposite insert end can be trimmed only when end-to-end remapping confirms the same locus. The original recovered-unit denominator is retained. Reanalysed reports record the `r2` analysis revision alongside the release version and date; RNA/CLIP and Micro-C alignment methods are unchanged.
+Beta workflows are available for [RNA-seq and CLIP-seq](docs/RNA_BETA.md) and for [single-cell RNA-seq](docs/SCRNA_QC.md). The single-cell workflow runs locally and supports 10x Chromium, MGI C4 and Parse libraries.
 
 ## Try it online
 
@@ -77,6 +73,13 @@ Open `report/index.html` after the workflow finishes. Share the entire `report/`
 | `report/downloads.html` | Links to all report data |
 
 Chromatin reports accept additional BED files in the browser. Choose a plot mode, confirm the reference coordinates, then select **Draw metaplot**. The submitted BED plot stays available for comparison. Export new plots with their own controls before leaving the page; they are not added to the saved report ZIP.
+
+<details>
+<summary>Chromatin alignment and the r2 report label</summary>
+
+`r2` identifies the Chromatin alignment method. Bowtie2 uses local alignment with default thresholds of MAPQ ≥20, at least 30 aligned bases and ≥80% query coverage. A terminal foldback is trimmed only when end-to-end realignment of the trimmed insert confirms the same locus. The correction preserves the original recovered-unit denominator.
+
+</details>
 
 ### Micro-C interpretation
 
