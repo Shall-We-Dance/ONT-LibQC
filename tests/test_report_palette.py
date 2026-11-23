@@ -51,7 +51,13 @@ class PaletteTests(unittest.TestCase):
                 self.assertIn(f"background:{color};color:{bar_ink(color)}'", doc)
         self.assertEqual(SPECIES_COLORS['hg38'], '#466575')
         self.assertEqual(SPECIES_COLORS['dm6'], '#b98653')
-        self.assertEqual(set(SPECIES_COLORS), set(NAMES))
+        self.assertEqual(set(SPECIES_COLORS), set(NAMES) | {'danRer11'})
+        self.assertEqual(SPECIES_COLORS['danRer11'], SPECIES_COLORS['GRCz12ab'])
+        for fish in ('danRer11', 'GRCz12ab'):
+            panel = [*sorted(set(NAMES) - {'GRCz12ab'}), fish, 'custom']
+            colors = render(dict(panel=panel, reference=fish, rows=[
+                dict(scope='lib01', n=len(panel), counts=dict.fromkeys(panel, 1), windows={})]))
+            self.assertNotIn(f"background:{SPECIES_COLORS[fish]}'></i>custom</li>", colors)
 
     def test_automatic_label_colors_have_normal_text_contrast_on_all_fills(self):
         for fill in (*SUBLIBRARY_COLORS, *SPECIES_COLORS.values(), AMBIGUOUS_COLOR, UNASSIGNED_COLOR, '#bcbab1'):
