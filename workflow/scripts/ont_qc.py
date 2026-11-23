@@ -118,8 +118,10 @@ from report_render import (
 )
 
 def parser():
+    from scrna_qc import add_commands as add_scrna_commands
     p = argparse.ArgumentParser()
     sub = p.add_subparsers(dest="command", required=True)
+    add_scrna_commands(sub)
     x = sub.add_parser("prepare")
     x.add_argument("--sample", required=True); x.add_argument("--assay", choices=["chromatin", "microc", "rnaseq", "clip"], required=True)
     x.add_argument("--fastq", nargs="+", required=True); x.add_argument("--inserts", required=True); x.add_argument("--legs", required=True)

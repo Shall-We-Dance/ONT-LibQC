@@ -17,6 +17,7 @@ rule reports:
             "workflow/scripts/species_composition.py",
             "workflow/scripts/report_render.py",
             "workflow/scripts/report_metrics.py",
+            "workflow/scripts/report_palette.py",
             "workflow/scripts/report_base.css",
             "workflow/scripts/report_tooltips.js",
             "workflow/scripts/report_profiles.py",
